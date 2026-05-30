@@ -15,6 +15,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import api from '@/src/api/client';
 import { useAuth } from '@/src/contexts/AuthContext';
+import GamePanel from '@/src/components/GamePanel';
 import { COLORS, SPACING } from '@/src/constants/theme';
 
 interface Message {
@@ -132,6 +133,15 @@ export default function RoomScreen() {
 
   const renderMessage = ({ item }: { item: Message }) => {
     const isOwnMessage = item.senderId === user?.id;
+    const isSystem = item.senderId === 'system';
+    
+    if (isSystem) {
+      return (
+        <View style={styles.systemMessageContainer}>
+          <Text style={styles.systemMessageText}>{item.messageText}</Text>
+        </View>
+      );
+    }
     
     return (
       <View style={[styles.messageContainer, isOwnMessage && styles.ownMessage]}>
@@ -196,6 +206,15 @@ export default function RoomScreen() {
       </View>
 
       {renderMemberGrid()}
+
+      {user && (
+        <GamePanel
+          roomId={id as string}
+          currentUserId={user.id}
+          userCoins={user.coins}
+          onGameUpdate={refreshUser}
+        />
+      )}
 
       <KeyboardAvoidingView
         style={styles.chatContainer}
@@ -386,5 +405,21 @@ const styles = StyleSheet.create({
   },
   sendButtonDisabled: {
     opacity: 0.5,
+  },
+  systemMessageContainer: {
+    alignItems: 'center',
+    marginVertical: SPACING.xs,
+    paddingHorizontal: SPACING.md,
+  },
+  systemMessageText: {
+    fontSize: 12,
+    color: COLORS.accent,
+    backgroundColor: COLORS.cardBg,
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: 4,
+    borderRadius: 12,
+    fontStyle: 'italic',
+    textAlign: 'center',
+    overflow: 'hidden',
   },
 });

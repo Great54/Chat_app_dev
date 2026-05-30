@@ -1,0 +1,49 @@
+{
+  "summary": "Backend testing for the NEW multiplayer game system in GenC Vibez. 18/18 pytest cases passed (100%) after fixing one regression bug. Covered: GET /api/games/types/list, POST /api/rooms/{room_id}/games (host), POST /api/games/{game_id}/join, GET /api/rooms/{room_id}/games, GET /api/games/{game_id}. End-to-end mechanics verified — 20s join timer, solo abort + refund, 2-player completion with random results (card_higher 1-13, dice_roll 2-12), winner gets pot + 10 XP + 'game' notification, system messages posted on host/completion/abort. All validation paths confirmed: 403 host-not-in-room, 403 join-not-in-room, 400 duplicate join, 400 invalid gameType, 400 insufficient coins, 400 already has active game, 400 game full (6 players). Regression on auth/rooms/messages/friends/notifications/search/leaderboard also passes. Found and fixed one HIGH regression bug — /api/leaderboard/active returned 500 because the new system messages have senderId='system' which is not a valid ObjectId.",
+  "backend_issues": {
+    "critical": [
+      {"endpoint": "GET /api/leaderboard/active", "issue": "HIGH (FIXED) — Endpoint returned 500 InvalidId error after the new multiplayer system messages started writing senderId='system' to the messages collection. The aggregation grouped by senderId and then called ObjectId(_id), which crashed on the string 'system'. Fixed in server.py by adding $match {senderId: {$ne: 'system'}} stage and a defensive try/except around ObjectId() construction.", "priority": "HIGH"}
+    ],
+    "minor": [
+      {"endpoint": "GET /api/messages/{room_id}", "issue": "Message response model does not expose the isSystem flag even though documents are stored with isSystem:true. Clients distinguishing system messages must rely on senderId=='system' or senderName=='🎮 System'. Consider adding isSystem to the Message Pydantic model."},
+      {"endpoint": "POST /api/rooms/{room_id}/games & POST /api/games/{game_id}/join", "issue": "Entry-fee deduction is not atomic with the game-state mutation. If add_coins succeeds but the insert/update fails, the user is charged without joining. Low probability with MongoDB on localhost but worth a transaction or compensating refund in the catch path."},
+      {"endpoint": "POST /api/games/{game_id}/join", "issue": "Coin check uses current_user.get('coins',0) from the cached auth payload — if a user races multiple joins, they could theoretically over-spend. Re-fetch user inside the join handler before deducting."},
+      {"endpoint": "_resolve_game()", "issue": "Random winner uses Python's random module (not secrets) — fine for casual game, just noting for fairness/audit purposes."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_multiplayer_games.py",
+    "/app/test_reports/pytest/multiplayer_games.xml"
+  ],
+  "action_items": [
+    "(Optional) Add isSystem to the Message response model so the frontend can render system messages with a distinct UI without string-matching senderId.",
+    "(Optional) Wrap the entry-fee deduction + game mutation in a try/except so a failed insert/update refunds the coins instead of leaving the user charged.",
+    "(Optional) Re-fetch the user record inside join_room_game before checking/deducting coins to avoid stale-balance race conditions.",
+    "(Optional) Consider returning the game host's pre-resolution roll alongside completed game state so clients can animate results — currently only the final per-player 'result' is exposed once status='completed'."
+  ],
+  "critical_code_review_comments": [
+    "server.py is now ~1396 lines — strongly recommend splitting into routers (auth, rooms, messages, friends, notifications, games, leaderboard) before adding more features.",
+    "HIGH (now fixed): /api/leaderboard/active crashed on the 'system' senderId. Any new code path that writes non-ObjectId values into senderId-like fields must add explicit filters in aggregations.",
+    "_resolve_game is invoked lazily from GET endpoints — works as designed but means a game can sit in 'waiting' status in the DB past expiresAt until someone reads it. A background sweeper or TTL-driven scheduler would be more deterministic for leaderboards/notifications.",
+    "_check_and_resolve_if_expired races between two concurrent GET calls — the second caller may double-trigger refunds/pot transfer. Recommend a single $set update guarded by status=='waiting' before invoking add_coins.",
+    "GAME_TYPES is module-level and not exposed via DB — adding a new game type requires a deploy. Acceptable for MVP.",
+    "system message inserts duplicate the schema 6 times — extract a helper post_system_message(room_id, text).",
+    "Response models for /api/rooms/{id}/games and /api/games/{id} are dicts, not Pydantic — no schema enforcement on the contract."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_multiplayer_games.py (new)",
+    "/app/backend/server.py (FIX: /api/leaderboard/active now filters senderId=='system' and defensively skips non-ObjectId senderIds — lines 1298-1320)"
+  ],
+  "success_rate": {"backend": "100% (18/18)", "frontend": "not_tested_this_iteration"},
+  "seed_data_creation": "Reused alice@test.com and bob@test.com. Created 5 additional test users gtest1..gtest5@test.com (password123) for the 6-player game-full scenario — these persist in the DB after the run. Tests directly write to MongoDB (via MONGO_URL/DB_NAME from backend/.env) to (a) reset alice/bob coins to 100 between tests and (b) drop alice to 5 coins for the insufficient-coins test (restored to 100 in finally). After the suite: alice and bob have 100 coins, game_sessions collection has several aborted/completed test rows in the World Vibez room, messages collection has several 🎮 System messages and one 'TEST_msg_<ts>' message in World Vibez.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Backend public URL is https://room-chat-demo.preview.emergentagent.com (from EXPO_PUBLIC_BACKEND_URL). Tests fall back to http://localhost:8001. The test file /app/backend/tests/test_multiplayer_games.py is fully self-contained and idempotent — it normalizes alice/bob coins to 100 before each scenario via direct Mongo writes (uses pymongo + MONGO_URL/DB_NAME from backend/.env). Each scenario that hosts a game waits ~21.5s for the GAME_TIMER_SECONDS=20 timer, so the whole suite takes ~2 min. Five extra test users (gtest1..gtest5@test.com / password123) are auto-created on first run. The leaderboard/active 500 bug found this iteration is FIXED in server.py. No outstanding multiplayer-game defects.",
+  "rca_of_issue": "RCA — /api/leaderboard/active 500 InvalidId: When the new multiplayer feature was added, system chat messages started being written to db.messages with senderId='system' (lines 1024, 1083 in server.py). The pre-existing /api/leaderboard/active aggregation groups by senderId then calls ObjectId(result['_id']) on each grouped id to fetch the corresponding user, which raises bson.errors.InvalidId on the literal string 'system'. Reproduction: any room with a hosted/aborted/completed game → call GET /api/leaderboard/active → 500. Mitigation applied: prepended a {$match: {senderId: {$ne: 'system'}}} stage to the aggregation pipeline and wrapped the ObjectId() call in try/except to defensively skip any future non-ObjectId senderIds. Verified by re-running pytest — endpoint now returns 200 with a non-system-only leaderboard."
+}

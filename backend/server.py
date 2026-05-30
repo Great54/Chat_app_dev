@@ -438,21 +438,22 @@ async def join_room(room_id: str, current_user: dict = Depends(get_current_user)
     return {"message": "Joined room successfully"}
 
 async def leave_room_helper(room_id: str, user_id: str):
-    """Helper function to leave a room"""
-    # Remove from room_members
-    await db.room_members.delete_one({"userId": user_id, "roomId": room_id})
+    """Helper function to leave a room (only decrements if user was actually in room)"""
+    # Only proceed if user is actually a member
+    result = await db.room_members.delete_one({"userId": user_id, "roomId": room_id})
     
-    # Update room count
-    await db.rooms.update_one(
-        {"_id": ObjectId(room_id)},
-        {"$inc": {"currentUserCount": -1}}
-    )
-    
-    # Broadcast room update
-    await manager.broadcast(room_id, {
-        "type": "user_left",
-        "userId": user_id
-    })
+    if result.deleted_count > 0:
+        # Decrement count but never below 0
+        await db.rooms.update_one(
+            {"_id": ObjectId(room_id), "currentUserCount": {"$gt": 0}},
+            {"$inc": {"currentUserCount": -1}}
+        )
+        
+        # Broadcast room update
+        await manager.broadcast(room_id, {
+            "type": "user_left",
+            "userId": user_id
+        })
 
 @api_router.post("/rooms/{room_id}/leave")
 async def leave_room(room_id: str, current_user: dict = Depends(get_current_user)):
@@ -964,6 +965,304 @@ async def draw_card_game(current_user: dict = Depends(get_current_user)):
         "reward": reward
     }
 
+# ==================== MULTIPLAYER ROOM GAMES ====================
+
+GAME_TIMER_SECONDS = 20
+GAME_TYPES = {
+    "card_higher": {"name": "Higher Card", "minPlayers": 2, "maxPlayers": 6, "entryFee": 10},
+    "dice_roll": {"name": "Dice Roll", "minPlayers": 2, "maxPlayers": 6, "entryFee": 10},
+}
+
+class HostGameRequest(BaseModel):
+    gameType: str
+
+def _serialize_game(game: dict) -> dict:
+    """Convert game session document to API response"""
+    expires_at = game.get("expiresAt")
+    seconds_remaining = 0
+    if expires_at and game["status"] == "waiting":
+        delta = (expires_at - datetime.utcnow()).total_seconds()
+        seconds_remaining = max(0, int(delta))
+    
+    return {
+        "id": str(game["_id"]),
+        "roomId": game["roomId"],
+        "gameType": game["gameType"],
+        "gameTypeName": GAME_TYPES.get(game["gameType"], {}).get("name", game["gameType"]),
+        "hostId": game["hostId"],
+        "hostName": game["hostName"],
+        "players": game["players"],
+        "status": game["status"],
+        "minPlayers": game["minPlayers"],
+        "maxPlayers": game["maxPlayers"],
+        "entryFee": game["entryFee"],
+        "pot": game["pot"],
+        "winnerId": game.get("winnerId"),
+        "winnerName": game.get("winnerName"),
+        "secondsRemaining": seconds_remaining,
+        "createdAt": game["createdAt"],
+        "completedAt": game.get("completedAt"),
+    }
+
+async def _resolve_game(game: dict) -> dict:
+    """Resolve a game when timer expires: pick winner or abort if not enough players"""
+    game_id = game["_id"]
+    
+    if len(game["players"]) < game["minPlayers"]:
+        # Abort - refund all players their entry fee
+        for player in game["players"]:
+            await add_coins(player["userId"], game["entryFee"], "game", "Game aborted - refund")
+        
+        await db.game_sessions.update_one(
+            {"_id": game_id},
+            {"$set": {"status": "aborted", "completedAt": datetime.utcnow()}}
+        )
+        
+        # Post system message to chat
+        await db.messages.insert_one({
+            "roomId": game["roomId"],
+            "senderId": "system",
+            "senderName": "🎮 System",
+            "senderPhoto": None,
+            "messageText": f"{GAME_TYPES[game['gameType']]['name']} game aborted — not enough players. Entry fees refunded.",
+            "createdAt": datetime.utcnow(),
+            "reactions": [],
+            "isSystem": True
+        })
+        
+        return await db.game_sessions.find_one({"_id": game_id})
+    
+    # Play game - assign random values
+    game_type = game["gameType"]
+    players_with_results = []
+    
+    for player in game["players"]:
+        if game_type == "card_higher":
+            result_value = random.randint(1, 13)
+        elif game_type == "dice_roll":
+            result_value = random.randint(1, 6) + random.randint(1, 6)
+        else:
+            result_value = random.randint(1, 100)
+        
+        players_with_results.append({
+            **player,
+            "result": result_value
+        })
+    
+    # Find winner (highest result; if tie, first to join wins)
+    winner = max(players_with_results, key=lambda p: p["result"])
+    
+    # Award pot to winner
+    await add_coins(winner["userId"], game["pot"], "game_win", f"Won {GAME_TYPES[game_type]['name']} game")
+    await add_xp(winner["userId"], 10)  # Bonus XP for winning
+    
+    # Notify winner
+    await db.notifications.insert_one({
+        "userId": winner["userId"],
+        "title": "🏆 You Won!",
+        "body": f"Won {game['pot']} coins in {GAME_TYPES[game_type]['name']} game",
+        "type": "game",
+        "createdAt": datetime.utcnow(),
+        "readStatus": False
+    })
+    
+    # Update game session
+    await db.game_sessions.update_one(
+        {"_id": game_id},
+        {"$set": {
+            "status": "completed",
+            "players": players_with_results,
+            "winnerId": winner["userId"],
+            "winnerName": winner["displayName"],
+            "completedAt": datetime.utcnow()
+        }}
+    )
+    
+    # Post system message to chat
+    await db.messages.insert_one({
+        "roomId": game["roomId"],
+        "senderId": "system",
+        "senderName": "🎮 System",
+        "senderPhoto": None,
+        "messageText": f"🏆 {winner['displayName']} won {game['pot']} coins in {GAME_TYPES[game_type]['name']}!",
+        "createdAt": datetime.utcnow(),
+        "reactions": [],
+        "isSystem": True
+    })
+    
+    return await db.game_sessions.find_one({"_id": game_id})
+
+async def _check_and_resolve_if_expired(game: dict) -> dict:
+    """Check if game waiting timer has expired and resolve it"""
+    if game["status"] == "waiting" and datetime.utcnow() >= game["expiresAt"]:
+        return await _resolve_game(game)
+    return game
+
+@api_router.post("/rooms/{room_id}/games")
+async def host_room_game(room_id: str, req: HostGameRequest, current_user: dict = Depends(get_current_user)):
+    """Host a new multiplayer game in a room"""
+    user_id = str(current_user["_id"])
+    
+    # Verify game type
+    if req.gameType not in GAME_TYPES:
+        raise HTTPException(status_code=400, detail="Invalid game type")
+    
+    game_config = GAME_TYPES[req.gameType]
+    
+    # Verify user is in this room
+    if current_user.get("currentRoomId") != room_id:
+        raise HTTPException(status_code=403, detail="You must be in the room to host a game")
+    
+    # Check user has entry fee
+    if current_user.get("coins", 0) < game_config["entryFee"]:
+        raise HTTPException(status_code=400, detail=f"Need at least {game_config['entryFee']} coins to host")
+    
+    # Check if user already has an active game in this room
+    existing = await db.game_sessions.find_one({
+        "roomId": room_id,
+        "hostId": user_id,
+        "status": "waiting"
+    })
+    if existing:
+        existing = await _check_and_resolve_if_expired(existing)
+        if existing["status"] == "waiting":
+            raise HTTPException(status_code=400, detail="You already have an active game in this room")
+    
+    # Deduct entry fee from host
+    await add_coins(user_id, -game_config["entryFee"], "game", f"Hosted {game_config['name']} entry fee")
+    
+    # Create game session
+    expires_at = datetime.utcnow() + timedelta(seconds=GAME_TIMER_SECONDS)
+    session = {
+        "roomId": room_id,
+        "gameType": req.gameType,
+        "hostId": user_id,
+        "hostName": current_user["displayName"],
+        "players": [{
+            "userId": user_id,
+            "username": current_user["username"],
+            "displayName": current_user["displayName"],
+            "photoUrl": current_user.get("photoUrl"),
+        }],
+        "status": "waiting",
+        "minPlayers": game_config["minPlayers"],
+        "maxPlayers": game_config["maxPlayers"],
+        "entryFee": game_config["entryFee"],
+        "pot": game_config["entryFee"],
+        "expiresAt": expires_at,
+        "createdAt": datetime.utcnow(),
+        "gameState": {}
+    }
+    
+    result = await db.game_sessions.insert_one(session)
+    session["_id"] = result.inserted_id
+    
+    # Post system message to chat announcing the game
+    await db.messages.insert_one({
+        "roomId": room_id,
+        "senderId": "system",
+        "senderName": "🎮 System",
+        "senderPhoto": None,
+        "messageText": f"{current_user['displayName']} hosted a {game_config['name']} game! Join within 20s · {game_config['entryFee']} coins entry",
+        "createdAt": datetime.utcnow(),
+        "reactions": [],
+        "isSystem": True
+    })
+    
+    return _serialize_game(session)
+
+@api_router.post("/games/{game_id}/join")
+async def join_room_game(game_id: str, current_user: dict = Depends(get_current_user)):
+    """Join a multiplayer game"""
+    user_id = str(current_user["_id"])
+    
+    game = await db.game_sessions.find_one({"_id": ObjectId(game_id)})
+    if not game:
+        raise HTTPException(status_code=404, detail="Game not found")
+    
+    # Check timer (auto-resolve if expired)
+    game = await _check_and_resolve_if_expired(game)
+    
+    if game["status"] != "waiting":
+        raise HTTPException(status_code=400, detail="Game is not accepting players")
+    
+    # Verify user is in the game's room
+    if current_user.get("currentRoomId") != game["roomId"]:
+        raise HTTPException(status_code=403, detail="You must be in the same room to join")
+    
+    # Check not already joined
+    if any(p["userId"] == user_id for p in game["players"]):
+        raise HTTPException(status_code=400, detail="You already joined this game")
+    
+    # Check capacity
+    if len(game["players"]) >= game["maxPlayers"]:
+        raise HTTPException(status_code=400, detail="Game is full")
+    
+    # Check coins
+    if current_user.get("coins", 0) < game["entryFee"]:
+        raise HTTPException(status_code=400, detail=f"Need {game['entryFee']} coins to join")
+    
+    # Deduct entry fee
+    await add_coins(user_id, -game["entryFee"], "game", f"Joined {game['gameType']} game")
+    
+    # Add player to game
+    player_data = {
+        "userId": user_id,
+        "username": current_user["username"],
+        "displayName": current_user["displayName"],
+        "photoUrl": current_user.get("photoUrl"),
+    }
+    
+    await db.game_sessions.update_one(
+        {"_id": ObjectId(game_id)},
+        {"$push": {"players": player_data}, "$inc": {"pot": game["entryFee"]}}
+    )
+    
+    updated_game = await db.game_sessions.find_one({"_id": ObjectId(game_id)})
+    return _serialize_game(updated_game)
+
+@api_router.get("/rooms/{room_id}/games")
+async def get_room_games(room_id: str, current_user: dict = Depends(get_current_user)):
+    """Get active and recently completed games in a room"""
+    # Recent cutoff: include games completed within last 30 seconds (for results display)
+    cutoff = datetime.utcnow() - timedelta(seconds=30)
+    
+    games = await db.game_sessions.find({
+        "roomId": room_id,
+        "$or": [
+            {"status": "waiting"},
+            {"completedAt": {"$gte": cutoff}}
+        ]
+    }).sort("createdAt", -1).to_list(20)
+    
+    # Auto-resolve expired waiting games
+    resolved_games = []
+    for game in games:
+        game = await _check_and_resolve_if_expired(game)
+        resolved_games.append(game)
+    
+    return [_serialize_game(g) for g in resolved_games]
+
+@api_router.get("/games/{game_id}")
+async def get_game_state(game_id: str, current_user: dict = Depends(get_current_user)):
+    """Get detailed state of a specific game"""
+    game = await db.game_sessions.find_one({"_id": ObjectId(game_id)})
+    if not game:
+        raise HTTPException(status_code=404, detail="Game not found")
+    
+    # Auto-resolve if expired
+    game = await _check_and_resolve_if_expired(game)
+    
+    return _serialize_game(game)
+
+@api_router.get("/games/types/list")
+async def list_game_types():
+    """List available multiplayer game types"""
+    return [
+        {"id": key, **value}
+        for key, value in GAME_TYPES.items()
+    ]
+
 # ==================== LEADERBOARD ====================
 
 @api_router.get("/leaderboard/xp")
@@ -1000,6 +1299,8 @@ async def get_coins_leaderboard(limit: int = 50):
 async def get_active_leaderboard(limit: int = 50):
     """Most active users by message count"""
     pipeline = [
+        # Exclude system messages (senderId="system") which are not valid ObjectIds
+        {"$match": {"senderId": {"$ne": "system"}}},
         {"$group": {"_id": "$senderId", "messageCount": {"$sum": 1}}},
         {"$sort": {"messageCount": -1}},
         {"$limit": limit}
@@ -1009,7 +1310,12 @@ async def get_active_leaderboard(limit: int = 50):
     
     leaderboard = []
     for idx, result in enumerate(results):
-        user = await db.users.find_one({"_id": ObjectId(result["_id"])})
+        # Defensive: skip any non-ObjectId senderIds
+        try:
+            sender_oid = ObjectId(result["_id"])
+        except Exception:
+            continue
+        user = await db.users.find_one({"_id": sender_oid})
         if user:
             leaderboard.append({
                 "rank": idx + 1,
