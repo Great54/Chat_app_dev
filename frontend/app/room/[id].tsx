@@ -9,13 +9,18 @@ import {
   KeyboardAvoidingView,
   Platform,
   Alert,
+  PanResponder,
+  Animated,
+  LayoutChangeEvent,
 } from 'react-native';
+import { Image } from 'expo-image';
 import { useLocalSearchParams, router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import api from '@/src/api/client';
 import { useAuth } from '@/src/contexts/AuthContext';
 import GamePanel from '@/src/components/GamePanel';
+import DraggableMember from '@/src/components/DraggableMember';
 import { COLORS, SPACING } from '@/src/constants/theme';
 
 interface Message {
@@ -39,6 +44,7 @@ interface Room {
   id: string;
   roomName: string;
   roomCategory: string;
+  roomBanner?: string;
   currentUserCount: number;
   maxCapacity: number;
 }
@@ -51,14 +57,14 @@ export default function RoomScreen() {
   const [members, setMembers] = useState<Member[]>([]);
   const [messageText, setMessageText] = useState('');
   const [loading, setLoading] = useState(false);
+  const [memberSectionLayout, setMemberSectionLayout] = useState({ width: 0, height: 0 });
   const flatListRef = useRef<FlatList>(null);
 
   useEffect(() => {
     loadRoomData();
     const interval = setInterval(() => {
       refreshRoomData();
-    }, 3000); // Refresh every 3 seconds for real-time feel
-    
+    }, 3000);
     return () => {
       clearInterval(interval);
       handleLeaveRoom();
@@ -72,7 +78,6 @@ export default function RoomScreen() {
         api.get(`/messages/${id}`),
         api.get(`/rooms/${id}/members`),
       ]);
-      
       const currentRoom = roomResponse.data.find((r: Room) => r.id === id);
       setRoom(currentRoom);
       setMessages(messagesResponse.data);
@@ -89,10 +94,8 @@ export default function RoomScreen() {
         api.get(`/rooms/${id}/members`),
         api.get('/rooms'),
       ]);
-      
       setMessages(messagesResponse.data);
       setMembers(membersResponse.data);
-      
       const currentRoom = roomsResponse.data.find((r: Room) => r.id === id);
       setRoom(currentRoom);
     } catch (error) {
@@ -102,7 +105,6 @@ export default function RoomScreen() {
 
   const handleSendMessage = async () => {
     if (!messageText.trim()) return;
-
     setLoading(true);
     try {
       await api.post(`/messages/${id}`, { messageText: messageText.trim() });
@@ -134,7 +136,7 @@ export default function RoomScreen() {
   const renderMessage = ({ item }: { item: Message }) => {
     const isOwnMessage = item.senderId === user?.id;
     const isSystem = item.senderId === 'system';
-    
+
     if (isSystem) {
       return (
         <View style={styles.systemMessageContainer}>
@@ -142,50 +144,55 @@ export default function RoomScreen() {
         </View>
       );
     }
-    
+
     return (
       <View style={[styles.messageContainer, isOwnMessage && styles.ownMessage]}>
         {!isOwnMessage && (
           <View style={styles.avatar}>
-            <Ionicons name="person" size={16} color={COLORS.textSecondary} />
+            {item.senderPhoto ? (
+              <Image source={{ uri: item.senderPhoto }} style={styles.avatarImg} />
+            ) : (
+              <Ionicons name="person" size={16} color={COLORS.textSecondary} />
+            )}
           </View>
         )}
         <View style={[styles.messageBubble, isOwnMessage && styles.ownMessageBubble]}>
-          {!isOwnMessage && (
-            <Text style={styles.senderName}>{item.senderName}</Text>
-          )}
+          {!isOwnMessage && <Text style={styles.senderName}>{item.senderName}</Text>}
           <Text style={styles.messageText}>{item.messageText}</Text>
         </View>
       </View>
     );
   };
 
-  const renderMemberGrid = () => {
-    const maxSlots = room?.maxCapacity || 36;
-    const slots = [];
-    
-    // Fill with actual members
-    for (let i = 0; i < members.length; i++) {
-      slots.push(
-        <View key={`member-${i}`} style={styles.memberSlot}>
-          <View style={styles.memberAvatar}>
-            <Ionicons name="person" size={16} color={COLORS.primary} />
-          </View>
-          <Text style={styles.memberLevel}>Lv{members[i].level}</Text>
+  const onMemberSectionLayout = (e: LayoutChangeEvent) => {
+    const { width, height } = e.nativeEvent.layout;
+    setMemberSectionLayout({ width, height });
+  };
+
+  const renderProfileSection = () => {
+    return (
+      <View style={styles.profileSection} onLayout={onMemberSectionLayout}>
+        <View style={styles.profileSectionHeader}>
+          <Ionicons name="people" size={14} color={COLORS.textSecondary} />
+          <Text style={styles.profileSectionTitle}>
+            In the room ({members.length}/{room?.maxCapacity || 36})
+          </Text>
+          <Text style={styles.profileSectionHint}>Hold & drag your avatar</Text>
         </View>
-      );
-    }
-    
-    // Fill empty slots
-    for (let i = members.length; i < maxSlots; i++) {
-      slots.push(
-        <View key={`empty-${i}`} style={[styles.memberSlot, styles.emptySlot]}>
-          <Ionicons name="person-outline" size={16} color={COLORS.border} />
+        <View style={styles.profileGrid}>
+          {members.map((member, idx) => (
+            <DraggableMember
+              key={member.userId}
+              member={member}
+              isCurrentUser={member.userId === user?.id}
+              boundsWidth={memberSectionLayout.width - SPACING.sm * 2}
+              boundsHeight={memberSectionLayout.height - 40}
+              initialIndex={idx}
+            />
+          ))}
         </View>
-      );
-    }
-    
-    return <View style={styles.memberGrid}>{slots}</View>;
+      </View>
+    );
   };
 
   return (
@@ -194,6 +201,9 @@ export default function RoomScreen() {
         <TouchableOpacity onPress={handleBack} style={styles.backButton}>
           <Ionicons name="arrow-back" size={24} color={COLORS.text} />
         </TouchableOpacity>
+        {room?.roomBanner && (
+          <Image source={{ uri: room.roomBanner }} style={styles.headerBanner} />
+        )}
         <View style={styles.headerInfo}>
           <Text style={styles.headerTitle}>{room?.roomName}</Text>
           <Text style={styles.headerSubtitle}>
@@ -201,11 +211,9 @@ export default function RoomScreen() {
           </Text>
         </View>
         <TouchableOpacity onPress={loadRoomData}>
-          <Ionicons name="refresh" size={24} color={COLORS.text} />
+          <Ionicons name="refresh" size={22} color={COLORS.text} />
         </TouchableOpacity>
       </View>
-
-      {renderMemberGrid()}
 
       {user && (
         <GamePanel
@@ -221,21 +229,27 @@ export default function RoomScreen() {
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
       >
+        {/* Messages section - TOP */}
         <FlatList
           ref={flatListRef}
           data={messages}
           keyExtractor={(item) => item.id}
           renderItem={renderMessage}
           contentContainerStyle={styles.messagesList}
+          style={styles.messagesContainer}
           onContentSizeChange={() => flatListRef.current?.scrollToEnd()}
           ListEmptyComponent={
             <View style={styles.emptyMessages}>
-              <Ionicons name="chatbubbles-outline" size={48} color={COLORS.textSecondary} />
+              <Ionicons name="chatbubbles-outline" size={36} color={COLORS.textSecondary} />
               <Text style={styles.emptyText}>No messages yet. Start the conversation!</Text>
             </View>
           }
         />
 
+        {/* Profile section - BELOW messages */}
+        {renderProfileSection()}
+
+        {/* Input */}
         <View style={styles.inputContainer}>
           <TextInput
             style={styles.input}
@@ -270,9 +284,15 @@ const styles = StyleSheet.create({
     padding: SPACING.md,
     borderBottomWidth: 1,
     borderBottomColor: COLORS.border,
+    gap: SPACING.sm,
   },
   backButton: {
-    marginRight: SPACING.sm,
+    padding: 4,
+  },
+  headerBanner: {
+    width: 36,
+    height: 36,
+    borderRadius: 8,
   },
   headerInfo: {
     flex: 1,
@@ -286,41 +306,10 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: COLORS.textSecondary,
   },
-  memberGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    padding: SPACING.sm,
-    backgroundColor: COLORS.cardBg,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
-    height: 140,
-    overflow: 'hidden',
-  },
-  memberSlot: {
-    width: '16.66%',
-    height: 60,
-    padding: 2,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  memberAvatar: {
-    width: '100%',
-    aspectRatio: 1,
-    borderRadius: 4,
-    backgroundColor: COLORS.background,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 2,
-  },
-  memberLevel: {
-    fontSize: 8,
-    color: COLORS.textSecondary,
-    fontWeight: '600',
-  },
-  emptySlot: {
-    opacity: 0.3,
-  },
   chatContainer: {
+    flex: 1,
+  },
+  messagesContainer: {
     flex: 1,
   },
   messagesList: {
@@ -343,6 +332,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: SPACING.xs,
+    overflow: 'hidden',
+  },
+  avatarImg: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
   },
   messageBubble: {
     backgroundColor: COLORS.cardBg,
@@ -360,27 +355,56 @@ const styles = StyleSheet.create({
     marginBottom: 2,
   },
   messageText: {
-    fontSize: 16,
+    fontSize: 15,
     color: COLORS.text,
     lineHeight: 20,
   },
   emptyMessages: {
-    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: SPACING.xl * 2,
+    paddingVertical: SPACING.xl,
   },
   emptyText: {
     color: COLORS.textSecondary,
-    fontSize: 14,
-    marginTop: SPACING.md,
+    fontSize: 13,
+    marginTop: SPACING.sm,
     textAlign: 'center',
+  },
+  profileSection: {
+    height: 130,
+    backgroundColor: COLORS.cardBg,
+    borderTopWidth: 1,
+    borderBottomWidth: 1,
+    borderColor: COLORS.border,
+    paddingHorizontal: SPACING.sm,
+    paddingTop: 4,
+    paddingBottom: SPACING.sm,
+  },
+  profileSectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginBottom: 6,
+  },
+  profileSectionTitle: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: COLORS.textSecondary,
+    textTransform: 'uppercase',
+    flex: 1,
+  },
+  profileSectionHint: {
+    fontSize: 9,
+    color: COLORS.textSecondary,
+    fontStyle: 'italic',
+  },
+  profileGrid: {
+    flex: 1,
+    position: 'relative',
   },
   inputContainer: {
     flexDirection: 'row',
     padding: SPACING.md,
-    borderTopWidth: 1,
-    borderTopColor: COLORS.border,
     backgroundColor: COLORS.background,
     alignItems: 'flex-end',
   },
@@ -391,8 +415,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.sm,
     color: COLORS.text,
-    fontSize: 16,
-    maxHeight: 100,
+    fontSize: 15,
+    maxHeight: 80,
     marginRight: SPACING.sm,
   },
   sendButton: {

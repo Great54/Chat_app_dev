@@ -124,6 +124,8 @@ export default function RoomsScreen() {
       <FlatList
         data={rooms}
         keyExtractor={(item) => item.id}
+        numColumns={3}
+        columnWrapperStyle={styles.row}
         renderItem={({ item }) => (
           <RoomCard room={item} onPress={() => handleJoinRoom(item.id)} />
         )}
@@ -225,6 +227,11 @@ const styles = StyleSheet.create({
   },
   list: {
     padding: SPACING.md,
+  },
+  row: {
+    justifyContent: 'space-between',
+    marginBottom: 8,
+    gap: 8,
   },
   empty: {
     alignItems: 'center',

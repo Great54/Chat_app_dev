@@ -10,6 +10,8 @@ import {
   ActivityIndicator,
   Platform,
 } from 'react-native';
+import { Image } from 'expo-image';
+import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
@@ -24,7 +26,6 @@ export default function ProfileScreen() {
   const [bio, setBio] = useState(user?.bio || '');
   const [loading, setLoading] = useState(false);
 
-  // Pre-fill fields when entering edit mode
   useEffect(() => {
     if (editing && user) {
       setDisplayName(user.displayName);
@@ -32,9 +33,8 @@ export default function ProfileScreen() {
     }
   }, [editing, user]);
 
-  const pickImage = async () => {
+  const pickImage = async (target: 'photoUrl' | 'bannerUrl') => {
     const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
-
     if (!permissionResult.granted) {
       Alert.alert('Permission Required', 'Please allow access to your photos');
       return;
@@ -43,7 +43,7 @@ export default function ProfileScreen() {
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsEditing: true,
-      aspect: [1, 1],
+      aspect: target === 'photoUrl' ? [1, 1] : [16, 9],
       quality: 0.5,
       base64: true,
     });
@@ -51,11 +51,10 @@ export default function ProfileScreen() {
     if (!result.canceled && result.assets[0].base64) {
       const base64Image = `data:image/jpeg;base64,${result.assets[0].base64}`;
       try {
-        await api.put('/users/profile', { photoUrl: base64Image });
+        await api.put('/users/profile', { [target]: base64Image });
         await refreshUser();
-        Alert.alert('Success', 'Profile photo updated');
       } catch (error) {
-        Alert.alert('Error', 'Failed to update photo');
+        Alert.alert('Error', 'Failed to update image');
       }
     }
   };
@@ -66,7 +65,6 @@ export default function ProfileScreen() {
       await api.put('/users/profile', { displayName, bio });
       await refreshUser();
       setEditing(false);
-      Alert.alert('Success', 'Profile updated');
     } catch (error) {
       Alert.alert('Error', 'Failed to update profile');
     } finally {
@@ -75,12 +73,8 @@ export default function ProfileScreen() {
   };
 
   const handleLogout = () => {
-    // Use platform-aware confirmation
-    if (Platform.OS === 'web') {
-      const confirmed = typeof window !== 'undefined' && window.confirm('Are you sure you want to logout?');
-      if (confirmed) {
-        logout();
-      }
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      if (window.confirm('Are you sure you want to logout?')) logout();
     } else {
       Alert.alert('Logout', 'Are you sure you want to logout?', [
         { text: 'Cancel', style: 'cancel' },
@@ -92,49 +86,80 @@ export default function ProfileScreen() {
   if (!user) return null;
 
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>Profile</Text>
-        {!editing && (
-          <TouchableOpacity onPress={() => setEditing(true)}>
-            <Ionicons name="pencil" size={24} color={COLORS.primary} />
+    <SafeAreaView style={styles.container} edges={[]}>
+      <ScrollView contentContainerStyle={styles.scroll}>
+        {/* Banner / Background Image Section */}
+        <View style={styles.bannerSection}>
+          {user.bannerUrl ? (
+            <Image source={{ uri: user.bannerUrl }} style={styles.banner} contentFit="cover" />
+          ) : (
+            <LinearGradient
+              colors={[COLORS.primary, COLORS.accent, COLORS.secondary]}
+              style={styles.banner}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+            />
+          )}
+          <LinearGradient
+            colors={['transparent', 'rgba(0,0,0,0.5)', COLORS.background]}
+            style={styles.bannerGradient}
+          />
+          <TouchableOpacity
+            style={styles.bannerEditButton}
+            onPress={() => pickImage('bannerUrl')}
+            testID="edit-banner-btn"
+          >
+            <Ionicons name="image" size={16} color={COLORS.text} />
+            <Text style={styles.bannerEditText}>Edit Banner</Text>
           </TouchableOpacity>
-        )}
-      </View>
+          {!editing && (
+            <TouchableOpacity
+              style={styles.headerEditButton}
+              onPress={() => setEditing(true)}
+              testID="edit-profile-btn"
+            >
+              <Ionicons name="pencil" size={18} color={COLORS.text} />
+            </TouchableOpacity>
+          )}
+        </View>
 
-      <ScrollView contentContainerStyle={styles.content}>
+        {/* Avatar overlapping banner */}
         <View style={styles.avatarSection}>
-          <TouchableOpacity onPress={pickImage} style={styles.avatarContainer}>
+          <TouchableOpacity
+            onPress={() => pickImage('photoUrl')}
+            style={styles.avatarContainer}
+            testID="edit-avatar-btn"
+          >
             {user.photoUrl ? (
-              <View style={styles.avatar}>
-                <Text>Photo</Text>
-              </View>
+              <Image source={{ uri: user.photoUrl }} style={styles.avatarImg} />
             ) : (
               <View style={styles.avatarPlaceholder}>
-                <Ionicons name="person" size={48} color={COLORS.textSecondary} />
+                <Ionicons name="person" size={56} color={COLORS.textSecondary} />
               </View>
             )}
             <View style={styles.cameraIcon}>
-              <Ionicons name="camera" size={16} color={COLORS.text} />
+              <Ionicons name="camera" size={14} color={COLORS.text} />
             </View>
           </TouchableOpacity>
+          <Text style={styles.displayName}>{user.displayName}</Text>
           <Text style={styles.username}>@{user.username}</Text>
         </View>
 
+        {/* Stats Row */}
         <View style={styles.statsRow}>
           <View style={styles.statBox}>
-            <Ionicons name="wallet" size={24} color={COLORS.coin} />
+            <Ionicons name="wallet" size={22} color={COLORS.coin} />
             <Text style={styles.statValue}>{user.coins}</Text>
             <Text style={styles.statLabel}>Coins</Text>
           </View>
           <View style={styles.statBox}>
-            <Ionicons name="trending-up" size={24} color={COLORS.xp} />
+            <Ionicons name="trending-up" size={22} color={COLORS.xp} />
             <Text style={styles.statValue}>{user.xp}</Text>
             <Text style={styles.statLabel}>XP</Text>
           </View>
           <View style={styles.statBox}>
-            <Ionicons name="star" size={24} color={COLORS.primary} />
-            <Text style={styles.statValue}>Level {user.level}</Text>
+            <Ionicons name="star" size={22} color={COLORS.primary} />
+            <Text style={styles.statValue}>Lv {user.level}</Text>
             <Text style={styles.statLabel}>Level</Text>
           </View>
         </View>
@@ -148,6 +173,7 @@ export default function ProfileScreen() {
                 value={displayName}
                 onChangeText={setDisplayName}
                 placeholderTextColor={COLORS.textSecondary}
+                testID="display-name-input"
               />
             </View>
 
@@ -161,6 +187,7 @@ export default function ProfileScreen() {
                 numberOfLines={4}
                 placeholderTextColor={COLORS.textSecondary}
                 placeholder="Tell us about yourself..."
+                testID="bio-input"
               />
             </View>
 
@@ -175,6 +202,7 @@ export default function ProfileScreen() {
                 style={[styles.button, styles.buttonPrimary]}
                 onPress={handleSave}
                 disabled={loading}
+                testID="save-profile-btn"
               >
                 {loading ? (
                   <ActivityIndicator color={COLORS.text} />
@@ -187,15 +215,9 @@ export default function ProfileScreen() {
         ) : (
           <View style={styles.infoSection}>
             <View style={styles.infoBox}>
-              <Text style={styles.infoLabel}>Display Name</Text>
-              <Text style={styles.infoValue}>{user.displayName}</Text>
-            </View>
-
-            <View style={styles.infoBox}>
               <Text style={styles.infoLabel}>Bio</Text>
               <Text style={styles.infoValue}>{user.bio || 'No bio yet'}</Text>
             </View>
-
             <View style={styles.infoBox}>
               <Text style={styles.infoLabel}>Email</Text>
               <Text style={styles.infoValue}>{user.email}</Text>
@@ -212,70 +234,118 @@ export default function ProfileScreen() {
   );
 }
 
+const BANNER_HEIGHT = 180;
+const AVATAR_SIZE = 110;
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: COLORS.background,
   },
-  header: {
+  scroll: {
+    paddingBottom: SPACING.lg,
+  },
+  bannerSection: {
+    width: '100%',
+    height: BANNER_HEIGHT,
+    position: 'relative',
+    backgroundColor: COLORS.cardBg,
+  },
+  banner: {
+    width: '100%',
+    height: '100%',
+  },
+  bannerGradient: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: '60%',
+  },
+  bannerEditButton: {
+    position: 'absolute',
+    bottom: SPACING.sm,
+    right: SPACING.sm,
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    padding: SPACING.md,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: 6,
+    borderRadius: 8,
+    gap: 4,
   },
-  headerTitle: {
-    fontSize: 24,
-    fontWeight: '700',
+  bannerEditText: {
     color: COLORS.text,
+    fontSize: 12,
+    fontWeight: '600',
   },
-  content: {
-    padding: SPACING.md,
+  headerEditButton: {
+    position: 'absolute',
+    top: SPACING.md + 30,
+    right: SPACING.sm,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   avatarSection: {
     alignItems: 'center',
-    marginBottom: SPACING.lg,
+    marginTop: -AVATAR_SIZE / 2,
+    paddingHorizontal: SPACING.md,
   },
   avatarContainer: {
     position: 'relative',
     marginBottom: SPACING.sm,
   },
-  avatar: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
-    backgroundColor: COLORS.cardBg,
-    alignItems: 'center',
-    justifyContent: 'center',
+  avatarImg: {
+    width: AVATAR_SIZE,
+    height: AVATAR_SIZE,
+    borderRadius: AVATAR_SIZE / 2,
+    borderWidth: 4,
+    borderColor: COLORS.background,
   },
   avatarPlaceholder: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
+    width: AVATAR_SIZE,
+    height: AVATAR_SIZE,
+    borderRadius: AVATAR_SIZE / 2,
     backgroundColor: COLORS.cardBg,
     alignItems: 'center',
     justifyContent: 'center',
+    borderWidth: 4,
+    borderColor: COLORS.background,
   },
   cameraIcon: {
     position: 'absolute',
-    bottom: 0,
-    right: 0,
+    bottom: 4,
+    right: 4,
     backgroundColor: COLORS.primary,
     width: 32,
     height: 32,
     borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: COLORS.background,
+  },
+  displayName: {
+    fontSize: 22,
+    fontWeight: '700',
+    color: COLORS.text,
+    marginTop: 4,
   },
   username: {
-    fontSize: 16,
+    fontSize: 14,
     color: COLORS.textSecondary,
+    marginTop: 2,
   },
   statsRow: {
     flexDirection: 'row',
     justifyContent: 'space-around',
-    marginBottom: SPACING.lg,
+    paddingHorizontal: SPACING.md,
+    marginTop: SPACING.lg,
+    gap: 8,
   },
   statBox: {
     backgroundColor: COLORS.cardBg,
@@ -283,21 +353,22 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     alignItems: 'center',
     flex: 1,
-    marginHorizontal: 4,
   },
   statValue: {
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: '700',
     color: COLORS.text,
-    marginTop: SPACING.xs,
+    marginTop: 4,
   },
   statLabel: {
-    fontSize: 12,
+    fontSize: 11,
     color: COLORS.textSecondary,
     marginTop: 2,
   },
   form: {
     gap: SPACING.md,
+    paddingHorizontal: SPACING.md,
+    marginTop: SPACING.lg,
   },
   inputGroup: {
     gap: SPACING.xs,
@@ -350,6 +421,8 @@ const styles = StyleSheet.create({
   },
   infoSection: {
     gap: SPACING.md,
+    paddingHorizontal: SPACING.md,
+    marginTop: SPACING.lg,
   },
   infoBox: {
     backgroundColor: COLORS.cardBg,
@@ -373,6 +446,7 @@ const styles = StyleSheet.create({
     padding: SPACING.md,
     borderRadius: 12,
     marginTop: SPACING.lg,
+    marginHorizontal: SPACING.md,
     gap: SPACING.xs,
   },
   logoutText: {

@@ -1,7 +1,31 @@
 import React from 'react';
+import { View, Image, StyleSheet } from 'react-native';
 import { Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { useAuth } from '@/src/contexts/AuthContext';
 import { COLORS } from '@/src/constants/theme';
+
+function ProfileTabIcon({ color, size, focused }: { color: string; size: number; focused: boolean }) {
+  const { user } = useAuth();
+
+  if (user?.photoUrl) {
+    return (
+      <View
+        style={[
+          styles.avatarWrapper,
+          { width: size + 4, height: size + 4, borderRadius: (size + 4) / 2 },
+          focused && { borderColor: color, borderWidth: 2 },
+        ]}
+      >
+        <Image
+          source={{ uri: user.photoUrl }}
+          style={{ width: size, height: size, borderRadius: size / 2 }}
+        />
+      </View>
+    );
+  }
+  return <Ionicons name="person" size={size} color={color} />;
+}
 
 export default function TabsLayout() {
   return (
@@ -55,11 +79,20 @@ export default function TabsLayout() {
         name="profile"
         options={{
           title: 'Profile',
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="person" size={size} color={color} />
+          tabBarIcon: ({ color, size, focused }) => (
+            <ProfileTabIcon color={color} size={size} focused={focused} />
           ),
         }}
       />
     </Tabs>
   );
 }
+
+const styles = StyleSheet.create({
+  avatarWrapper: {
+    overflow: 'hidden',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: COLORS.cardBg,
+  },
+});

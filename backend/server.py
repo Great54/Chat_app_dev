@@ -104,6 +104,7 @@ class UserProfile(BaseModel):
     username: str
     displayName: str
     photoUrl: Optional[str] = None
+    bannerUrl: Optional[str] = None
     bio: Optional[str] = ""
     coins: int = 0
     xp: int = 0
@@ -116,6 +117,7 @@ class UserProfile(BaseModel):
 class UpdateProfile(BaseModel):
     displayName: Optional[str] = None
     photoUrl: Optional[str] = None
+    bannerUrl: Optional[str] = None
     bio: Optional[str] = None
 
 class RoomCreate(BaseModel):
@@ -283,6 +285,7 @@ async def get_me(current_user: dict = Depends(get_current_user)):
         username=current_user["username"],
         displayName=current_user["displayName"],
         photoUrl=current_user.get("photoUrl"),
+        bannerUrl=current_user.get("bannerUrl"),
         bio=current_user.get("bio", ""),
         coins=current_user.get("coins", 0),
         xp=current_user.get("xp", 0),
@@ -302,6 +305,8 @@ async def update_profile(update_data: UpdateProfile, current_user: dict = Depend
         update_fields["displayName"] = update_data.displayName
     if update_data.photoUrl is not None:
         update_fields["photoUrl"] = update_data.photoUrl
+    if update_data.bannerUrl is not None:
+        update_fields["bannerUrl"] = update_data.bannerUrl
     if update_data.bio is not None:
         update_fields["bio"] = update_data.bio
     
@@ -318,6 +323,7 @@ async def update_profile(update_data: UpdateProfile, current_user: dict = Depend
         username=updated_user["username"],
         displayName=updated_user["displayName"],
         photoUrl=updated_user.get("photoUrl"),
+        bannerUrl=updated_user.get("bannerUrl"),
         bio=updated_user.get("bio", ""),
         coins=updated_user.get("coins", 0),
         xp=updated_user.get("xp", 0),
@@ -340,6 +346,7 @@ async def get_user(user_id: str):
         username=user["username"],
         displayName=user["displayName"],
         photoUrl=user.get("photoUrl"),
+        bannerUrl=user.get("bannerUrl"),
         bio=user.get("bio", ""),
         coins=user.get("coins", 0),
         xp=user.get("xp", 0),
