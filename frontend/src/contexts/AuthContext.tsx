@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { router } from 'expo-router';
 import api from '../api/client';
-import { getItem, setItem, removeItem } from '@/src/utils/storage';
+import { storage } from '@/src/utils/storage';
 
 interface User {
   id: string;
@@ -38,13 +38,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const checkAuth = async () => {
     try {
-      const token = await getItem('auth_token');
+      const token = await storage.getItem('auth_token', '');
       if (token) {
         const response = await api.get('/auth/me');
         setUser(response.data);
       }
     } catch (error) {
-      await removeItem('auth_token');
+      await storage.removeItem('auth_token');
     } finally {
       setLoading(false);
     }
@@ -52,7 +52,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const login = async (email: string, password: string) => {
     const response = await api.post('/auth/login', { email, password });
-    await setItem('auth_token', response.data.access_token);
+    await storage.setItem('auth_token', response.data.access_token);
     const userResponse = await api.get('/auth/me');
     setUser(userResponse.data);
     router.replace('/(tabs)');
@@ -65,14 +65,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       username,
       displayName,
     });
-    await setItem('auth_token', response.data.access_token);
+    await storage.setItem('auth_token', response.data.access_token);
     const userResponse = await api.get('/auth/me');
     setUser(userResponse.data);
     router.replace('/(tabs)');
   };
 
   const logout = async () => {
-    await removeItem('auth_token');
+    await storage.removeItem('auth_token');
     setUser(null);
     router.replace('/(auth)/login');
   };
