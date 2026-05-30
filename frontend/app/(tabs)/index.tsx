@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -8,7 +8,7 @@ import {
   TouchableOpacity,
   Alert,
 } from 'react-native';
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import RoomCard from '@/src/components/RoomCard';
@@ -28,12 +28,28 @@ interface Room {
 export default function RoomsScreen() {
   const [rooms, setRooms] = useState<Room[]>([]);
   const [loading, setLoading] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
   const { user, refreshUser } = useAuth();
 
   useEffect(() => {
     loadRooms();
     initializeRooms();
   }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadUnreadCount();
+    }, [])
+  );
+
+  const loadUnreadCount = async () => {
+    try {
+      const res = await api.get('/notifications/unread-count');
+      setUnreadCount(res.data.count);
+    } catch (error) {
+      console.error('Failed to load notification count');
+    }
+  };
 
   const initializeRooms = async () => {
     try {
@@ -70,22 +86,38 @@ export default function RoomsScreen() {
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
         <View style={styles.headerContent}>
-          <View>
+          <View style={styles.headerLeft}>
             <Text style={styles.headerTitle}>GenC Vibez</Text>
             <Text style={styles.headerSubtitle}>Choose your vibe</Text>
           </View>
-          {user && (
-            <View style={styles.stats}>
-              <View style={styles.statItem}>
-                <Ionicons name="wallet" size={16} color={COLORS.coin} />
-                <Text style={styles.statText}>{user.coins}</Text>
+          <View style={styles.headerRight}>
+            {user && (
+              <View style={styles.stats}>
+                <View style={styles.statItem}>
+                  <Ionicons name="wallet" size={16} color={COLORS.coin} />
+                  <Text style={styles.statText}>{user.coins}</Text>
+                </View>
+                <View style={styles.statItem}>
+                  <Ionicons name="trending-up" size={16} color={COLORS.xp} />
+                  <Text style={styles.statText}>Lv {user.level}</Text>
+                </View>
               </View>
-              <View style={styles.statItem}>
-                <Ionicons name="trending-up" size={16} color={COLORS.xp} />
-                <Text style={styles.statText}>Lv {user.level}</Text>
-              </View>
-            </View>
-          )}
+            )}
+            <TouchableOpacity
+              style={styles.notifButton}
+              onPress={() => router.push('/notifications')}
+              testID="notifications-bell"
+            >
+              <Ionicons name="notifications" size={22} color={COLORS.text} />
+              {unreadCount > 0 && (
+                <View style={styles.notifBadge}>
+                  <Text style={styles.notifBadgeText}>
+                    {unreadCount > 9 ? '9+' : unreadCount}
+                  </Text>
+                </View>
+              )}
+            </TouchableOpacity>
+          </View>
         </View>
       </View>
 
@@ -129,6 +161,14 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
   },
+  headerLeft: {
+    flex: 1,
+  },
+  headerRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+  },
   headerTitle: {
     fontSize: 24,
     fontWeight: '700',
@@ -141,7 +181,7 @@ const styles = StyleSheet.create({
   },
   stats: {
     flexDirection: 'row',
-    gap: SPACING.md,
+    gap: SPACING.xs,
   },
   statItem: {
     flexDirection: 'row',
@@ -154,7 +194,33 @@ const styles = StyleSheet.create({
   },
   statText: {
     color: COLORS.text,
-    fontSize: 14,
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  notifButton: {
+    backgroundColor: COLORS.cardBg,
+    width: 40,
+    height: 36,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'relative',
+  },
+  notifBadge: {
+    position: 'absolute',
+    top: -4,
+    right: -4,
+    backgroundColor: COLORS.error,
+    borderRadius: 10,
+    minWidth: 18,
+    height: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 4,
+  },
+  notifBadgeText: {
+    color: COLORS.text,
+    fontSize: 10,
     fontWeight: '700',
   },
   list: {

@@ -642,6 +642,16 @@ async def accept_friend_request(request_id: str, current_user: dict = Depends(ge
         {"$set": {"status": "accepted"}}
     )
     
+    # Notify sender that request was accepted
+    await db.notifications.insert_one({
+        "userId": friend_req["senderId"],
+        "title": "Friend Request Accepted",
+        "body": f"{current_user['displayName']} accepted your friend request",
+        "type": "friend_accepted",
+        "createdAt": datetime.utcnow(),
+        "readStatus": False
+    })
+    
     return {"message": "Friend request accepted"}
 
 @api_router.get("/friends/list")
@@ -676,6 +686,214 @@ async def get_friends(current_user: dict = Depends(get_current_user)):
     
     return friend_users
 
+@api_router.get("/friends/pending")
+async def get_pending_requests(current_user: dict = Depends(get_current_user)):
+    """Get friend requests received by current user (pending)"""
+    user_id = str(current_user["_id"])
+    
+    pending = await db.friends.find({
+        "receiverId": user_id,
+        "status": "pending"
+    }).to_list(100)
+    
+    requests = []
+    for req in pending:
+        sender = await db.users.find_one({"_id": ObjectId(req["senderId"])})
+        if sender:
+            requests.append({
+                "requestId": str(req["_id"]),
+                "senderId": str(sender["_id"]),
+                "username": sender["username"],
+                "displayName": sender["displayName"],
+                "photoUrl": sender.get("photoUrl"),
+                "level": sender.get("level", 0),
+                "createdAt": req["createdAt"]
+            })
+    
+    return requests
+
+@api_router.get("/friends/sent")
+async def get_sent_requests(current_user: dict = Depends(get_current_user)):
+    """Get friend requests sent by current user (pending)"""
+    user_id = str(current_user["_id"])
+    
+    sent = await db.friends.find({
+        "senderId": user_id,
+        "status": "pending"
+    }).to_list(100)
+    
+    requests = []
+    for req in sent:
+        receiver = await db.users.find_one({"_id": ObjectId(req["receiverId"])})
+        if receiver:
+            requests.append({
+                "requestId": str(req["_id"]),
+                "receiverId": str(receiver["_id"]),
+                "username": receiver["username"],
+                "displayName": receiver["displayName"],
+                "photoUrl": receiver.get("photoUrl"),
+                "level": receiver.get("level", 0),
+                "createdAt": req["createdAt"]
+            })
+    
+    return requests
+
+@api_router.post("/friends/reject/{request_id}")
+async def reject_friend_request(request_id: str, current_user: dict = Depends(get_current_user)):
+    friend_req = await db.friends.find_one({"_id": ObjectId(request_id)})
+    if not friend_req:
+        raise HTTPException(status_code=404, detail="Friend request not found")
+    
+    if friend_req["receiverId"] != str(current_user["_id"]):
+        raise HTTPException(status_code=403, detail="Not authorized")
+    
+    await db.friends.delete_one({"_id": ObjectId(request_id)})
+    
+    return {"message": "Friend request rejected"}
+
+@api_router.delete("/friends/{friend_id}")
+async def remove_friend(friend_id: str, current_user: dict = Depends(get_current_user)):
+    """Remove a friend (delete accepted friendship)"""
+    user_id = str(current_user["_id"])
+    
+    result = await db.friends.delete_one({
+        "$or": [
+            {"senderId": user_id, "receiverId": friend_id, "status": "accepted"},
+            {"senderId": friend_id, "receiverId": user_id, "status": "accepted"}
+        ]
+    })
+    
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Friendship not found")
+    
+    return {"message": "Friend removed"}
+
+@api_router.get("/search/users")
+async def search_users(q: str, current_user: dict = Depends(get_current_user)):
+    """Search users by username or display name"""
+    user_id = str(current_user["_id"])
+    
+    if len(q) < 2:
+        return []
+    
+    # Case-insensitive search on username and displayName
+    users = await db.users.find({
+        "_id": {"$ne": current_user["_id"]},
+        "$or": [
+            {"username": {"$regex": q, "$options": "i"}},
+            {"displayName": {"$regex": q, "$options": "i"}}
+        ]
+    }).limit(20).to_list(20)
+    
+    # Get friend status for each
+    results = []
+    for user in users:
+        target_id = str(user["_id"])
+        
+        # Check friendship status
+        friendship = await db.friends.find_one({
+            "$or": [
+                {"senderId": user_id, "receiverId": target_id},
+                {"senderId": target_id, "receiverId": user_id}
+            ]
+        })
+        
+        if friendship:
+            if friendship["status"] == "accepted":
+                friend_status = "friends"
+            elif friendship["senderId"] == user_id:
+                friend_status = "sent"
+            else:
+                friend_status = "received"
+        else:
+            friend_status = "none"
+        
+        results.append({
+            "id": target_id,
+            "username": user["username"],
+            "displayName": user["displayName"],
+            "photoUrl": user.get("photoUrl"),
+            "level": user.get("level", 0),
+            "onlineStatus": user.get("onlineStatus", False),
+            "friendStatus": friend_status
+        })
+    
+    return results
+
+# ==================== NOTIFICATIONS ====================
+
+@api_router.get("/notifications")
+async def get_notifications(current_user: dict = Depends(get_current_user), limit: int = 50):
+    """Get user notifications"""
+    user_id = str(current_user["_id"])
+    
+    notifications = await db.notifications.find(
+        {"userId": user_id}
+    ).sort("createdAt", -1).limit(limit).to_list(limit)
+    
+    return [
+        {
+            "id": str(notif["_id"]),
+            "title": notif["title"],
+            "body": notif["body"],
+            "type": notif.get("type", "general"),
+            "readStatus": notif.get("readStatus", False),
+            "createdAt": notif["createdAt"]
+        } for notif in notifications
+    ]
+
+@api_router.get("/notifications/unread-count")
+async def get_unread_count(current_user: dict = Depends(get_current_user)):
+    """Get count of unread notifications"""
+    user_id = str(current_user["_id"])
+    count = await db.notifications.count_documents({
+        "userId": user_id,
+        "readStatus": False
+    })
+    return {"count": count}
+
+@api_router.post("/notifications/{notification_id}/read")
+async def mark_notification_read(notification_id: str, current_user: dict = Depends(get_current_user)):
+    """Mark a single notification as read"""
+    user_id = str(current_user["_id"])
+    
+    result = await db.notifications.update_one(
+        {"_id": ObjectId(notification_id), "userId": user_id},
+        {"$set": {"readStatus": True}}
+    )
+    
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Notification not found")
+    
+    return {"message": "Notification marked as read"}
+
+@api_router.post("/notifications/read-all")
+async def mark_all_read(current_user: dict = Depends(get_current_user)):
+    """Mark all notifications as read"""
+    user_id = str(current_user["_id"])
+    
+    await db.notifications.update_many(
+        {"userId": user_id, "readStatus": False},
+        {"$set": {"readStatus": True}}
+    )
+    
+    return {"message": "All notifications marked as read"}
+
+@api_router.delete("/notifications/{notification_id}")
+async def delete_notification(notification_id: str, current_user: dict = Depends(get_current_user)):
+    """Delete a notification"""
+    user_id = str(current_user["_id"])
+    
+    result = await db.notifications.delete_one({
+        "_id": ObjectId(notification_id),
+        "userId": user_id
+    })
+    
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Notification not found")
+    
+    return {"message": "Notification deleted"}
+
 # ==================== GAMES ====================
 
 @api_router.post("/games/spin-wheel")
@@ -695,6 +913,17 @@ async def spin_wheel(current_user: dict = Depends(get_current_user)):
     
     if reward > 0:
         await add_coins(user_id, reward, "game_win", f"Spin wheel reward: {reward} coins")
+    
+    # Notify on big wins
+    if reward >= 50:
+        await db.notifications.insert_one({
+            "userId": user_id,
+            "title": "🎉 Big Win!",
+            "body": f"You won {reward} coins on Spin the Wheel!",
+            "type": "game",
+            "createdAt": datetime.utcnow(),
+            "readStatus": False
+        })
     
     return {"reward": reward, "message": f"You won {reward} coins!"}
 

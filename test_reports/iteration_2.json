@@ -1,0 +1,42 @@
+{
+  "summary": "Backend testing for NEW Friends & Notifications endpoints on GenC Vibez. 32/32 pytest cases passed (100%). Covered: friends/pending, friends/sent, friends/reject/{id}, DELETE friends/{id}, search/users (empty/short/case-insensitive/self-exclusion/friendStatus transitions none->sent->received->friends), full friend flow with auto-notification generation (friend_request and friend_accepted), notifications list/unread-count/mark-read/read-all/delete, cross-user authorization (cannot reject others' requests, cannot read/delete others' notifications), spin-wheel 50+ coin big-win game notification, plus regression on auth/rooms/leaderboard/friends-request-duplicate. All responses correctly omit raw mongo _id and return string ids. No backend defects found in the new endpoints.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/notifications/{id}/read & DELETE /api/notifications/{id}", "issue": "When another user attempts to modify/delete a notification that exists but doesn't belong to them, the API returns 404 (because the filter combines _id+userId). Functionally safe, but semantically a 403 'Not authorized' would be more accurate. Same applies to /api/friends/reject/{id} which already returns 403 — inconsistent behavior between resources."},
+      {"endpoint": "GET /api/search/users", "issue": "Regex search uses raw user input directly (q is passed into $regex without escaping). Special regex characters from user input (e.g. '.*', '(', '|') will alter the query semantics; consider re.escape() on the server side before building the $regex."},
+      {"endpoint": "GET /api/search/users", "issue": "No auth check on empty/short query path: returns [] before validating credentials would be acceptable, but currently still requires auth (verified). Just flagging that the limit-2-char rule and empty-list-response could be documented to clients."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_friends_notifications.py",
+    "/app/test_reports/pytest/friends_notifications.xml"
+  ],
+  "action_items": [
+    "(Optional) Make cross-user notification access return 403 instead of 404 to be consistent with friends/reject/{id}.",
+    "(Optional) Escape user-supplied 'q' in /api/search/users with re.escape() before passing to $regex to prevent regex-injection / unexpected matches.",
+    "Add testID coverage on the new frontend Friends and Notifications screens (separate frontend testing pass) once UI is implemented."
+  ],
+  "critical_code_review_comments": [
+    "server.py has grown to ~1100 lines — consider splitting routers (auth, rooms, messages, friends, notifications, games, leaderboard) into separate modules for maintainability.",
+    "Friend reject endpoint correctly returns 403 when caller is not the receiver, but notification mark-read/delete endpoints silently return 404 for the same authorization scenario — inconsistent.",
+    "Auto-notification generation works as specified: friend_request on /friends/request, friend_accepted on /friends/accept, game on spin-wheel >= 50 coins (verified live).",
+    "All responses correctly exclude raw mongo _id; ids returned as 24-char hex strings.",
+    "Search uses $regex with $options:'i' on unescaped user input — minor security/correctness issue (regex injection)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_friends_notifications.py (new)"
+  ],
+  "success_rate": {"backend": "100%", "frontend": "not_tested_this_iteration"},
+  "seed_data_creation": "Used existing alice@test.com and bob@test.com. Tests create/cleanup friend requests and notifications between Alice and Bob. After test run, residual state: friendship cleared, notifications may have a leftover read notification or two for Bob (read-all called); Alice may have an extra 'game' notification from spin-wheel test if RNG triggered (otherwise none). No persistent unwanted data.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Backend public URL is in frontend/.env as EXPO_PUBLIC_BACKEND_URL=https://room-chat-demo.preview.emergentagent.com. The test file /app/backend/tests/test_friends_notifications.py reads EXPO_PUBLIC_BACKEND_URL (falls back to http://localhost:8001). Alice and Bob remain valid logins. The cleanup_friendship helper inside the test handles inter-test state. Friend reject returns 403 for unauthorized; notification cross-user access returns 404 (by-design but inconsistent). No backend defects to retest.",
+  "rca_of_issue": "N/A — all 32 new + regression tests pass; no bugs found in the new Friends & Notifications endpoints."
+}
