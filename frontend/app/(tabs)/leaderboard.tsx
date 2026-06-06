@@ -11,16 +11,15 @@ interface LeaderboardEntry {
   username: string;
   displayName: string;
   photoUrl?: string;
-  xp?: number;
   coins?: number;
   messageCount?: number;
   level: number;
 }
 
-type LeaderboardType = 'xp' | 'coins' | 'active';
+type LeaderboardType = 'coins' | 'active';
 
 export default function LeaderboardScreen() {
-  const [activeTab, setActiveTab] = useState<LeaderboardType>('xp');
+  const [activeTab, setActiveTab] = useState<LeaderboardType>('coins');
   const [data, setData] = useState<LeaderboardEntry[]>([]);
   const [loading, setLoading] = useState(false);
 
@@ -60,12 +59,6 @@ export default function LeaderboardScreen() {
       </View>
       
       <View style={styles.entryStats}>
-        {activeTab === 'xp' && (
-          <>
-            <Ionicons name="trending-up" size={16} color={COLORS.xp} />
-            <Text style={styles.statValue}>{entry.xp}</Text>
-          </>
-        )}
         {activeTab === 'coins' && (
           <>
             <Ionicons name="wallet" size={16} color={COLORS.coin} />
@@ -89,20 +82,6 @@ export default function LeaderboardScreen() {
       </View>
 
       <View style={styles.tabs}>
-        <TouchableOpacity
-          style={[styles.tab, activeTab === 'xp' && styles.tabActive]}
-          onPress={() => setActiveTab('xp')}
-        >
-          <Ionicons
-            name="trending-up"
-            size={20}
-            color={activeTab === 'xp' ? COLORS.text : COLORS.textSecondary}
-          />
-          <Text style={[styles.tabText, activeTab === 'xp' && styles.tabTextActive]}>
-            XP
-          </Text>
-        </TouchableOpacity>
-
         <TouchableOpacity
           style={[styles.tab, activeTab === 'coins' && styles.tabActive]}
           onPress={() => setActiveTab('coins')}
