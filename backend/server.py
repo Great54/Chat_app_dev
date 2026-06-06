@@ -183,6 +183,7 @@ class Room(BaseModel):
     roomCategory: str
     roomDescription: str
     roomBanner: Optional[str] = None
+    roomBackground: Optional[str] = None  # Soft/light interior background image
     maxCapacity: int = 36
     currentUserCount: int = 0
     createdBy: str
@@ -413,12 +414,39 @@ async def get_rooms():
             roomCategory=room["roomCategory"],
             roomDescription=room["roomDescription"],
             roomBanner=room.get("roomBanner"),
+            roomBackground=room.get("roomBackground"),
             maxCapacity=room.get("maxCapacity", 36),
             currentUserCount=room.get("currentUserCount", 0),
             createdBy=room["createdBy"],
             createdAt=room["createdAt"]
         ) for room in rooms
     ]
+
+
+@api_router.post("/rooms/{room_id}/favorite")
+async def toggle_favorite_room(room_id: str, current_user: dict = Depends(get_current_user)):
+    """Toggle room in current user's favorites list."""
+    room = await db.rooms.find_one({"_id": ObjectId(room_id)})
+    if not room:
+        raise HTTPException(status_code=404, detail="Room not found")
+    favorites = current_user.get("favoriteRoomIds", []) or []
+    if room_id in favorites:
+        favorites = [r for r in favorites if r != room_id]
+        is_favorite = False
+    else:
+        favorites = favorites + [room_id]
+        is_favorite = True
+    await db.users.update_one(
+        {"_id": current_user["_id"]},
+        {"$set": {"favoriteRoomIds": favorites}},
+    )
+    return {"isFavorite": is_favorite, "favoriteRoomIds": favorites}
+
+
+@api_router.get("/users/me/favorites")
+async def get_my_favorite_rooms(current_user: dict = Depends(get_current_user)):
+    """Return the list of room ids the current user has favorited."""
+    return {"favoriteRoomIds": current_user.get("favoriteRoomIds", []) or []}
 
 @api_router.post("/rooms/{room_id}/join")
 async def join_room(room_id: str, current_user: dict = Depends(get_current_user)):
@@ -1619,57 +1647,96 @@ async def get_active_leaderboard(limit: int = 50):
 
 @api_router.post("/init/rooms")
 async def initialize_rooms():
-    """Initialize default rooms - call once"""
+    """Initialize / upsert default rooms with banner images."""
+    # Banner = card / outside thumbnail. Background = soft light interior image.
     default_rooms = [
         {
             "roomName": "World Vibez",
             "roomCategory": "World Vibez",
             "roomDescription": "Connect with people from around the world",
-            "roomBanner": None,
-            "maxCapacity": 36,
-            "currentUserCount": 0,
-            "createdBy": "system",
-            "createdAt": datetime.utcnow()
+            "roomBanner": "https://images.unsplash.com/photo-1451187580459-43490279c0fa?w=600&q=70",
+            "roomBackground": "https://images.unsplash.com/photo-1502082553048-f009c37129b9?w=900&q=60",
         },
         {
             "roomName": "Games Hub",
             "roomCategory": "Games",
             "roomDescription": "Discuss your favorite games",
-            "roomBanner": None,
-            "maxCapacity": 36,
-            "currentUserCount": 0,
-            "createdBy": "system",
-            "createdAt": datetime.utcnow()
+            "roomBanner": "https://images.unsplash.com/photo-1542751371-adc38448a05e?w=600&q=70",
+            "roomBackground": "https://images.unsplash.com/photo-1606639386377-e89bcf2dbb44?w=900&q=60",
         },
         {
             "roomName": "BTS Army",
             "roomCategory": "BTS",
             "roomDescription": "For BTS fans worldwide",
-            "roomBanner": None,
-            "maxCapacity": 36,
-            "currentUserCount": 0,
-            "createdBy": "system",
-            "createdAt": datetime.utcnow()
+            "roomBanner": "https://images.unsplash.com/photo-1493225457124-a3eb161ffa5f?w=600&q=70",
+            "roomBackground": "https://images.unsplash.com/photo-1499415479124-43c32433a620?w=900&q=60",
         },
         {
             "roomName": "Harry Potter Fans",
             "roomCategory": "Harry Potter",
             "roomDescription": "Welcome to Hogwarts",
-            "roomBanner": None,
-            "maxCapacity": 36,
-            "currentUserCount": 0,
-            "createdBy": "system",
-            "createdAt": datetime.utcnow()
-        }
+            "roomBanner": "https://images.unsplash.com/photo-1551269901-5c5e14c25df7?w=600&q=70",
+            "roomBackground": "https://images.unsplash.com/photo-1519074069444-1ba4fff66d16?w=900&q=60",
+        },
+        {
+            "roomName": "India",
+            "roomCategory": "Country",
+            "roomDescription": "Namaste! Chat with people from India",
+            "roomBanner": "https://images.unsplash.com/photo-1564507592333-c60657eea523?w=600&q=70",
+            "roomBackground": "https://images.unsplash.com/photo-1524492412937-b28074a5d7da?w=900&q=60",
+        },
+        {
+            "roomName": "Philippines",
+            "roomCategory": "Country",
+            "roomDescription": "Mabuhay! Vibe with friends from the PH",
+            "roomBanner": "https://images.unsplash.com/photo-1518509562904-e7ef99cddc85?w=600&q=70",
+            "roomBackground": "https://images.unsplash.com/photo-1519181258491-c302bc59b46a?w=900&q=60",
+        },
+        {
+            "roomName": "Hindi",
+            "roomCategory": "Language",
+            "roomDescription": "Hindi mein baatchit karne wali jagah",
+            "roomBanner": "https://images.unsplash.com/photo-1602216056096-3b40cc0c9944?w=600&q=70",
+            "roomBackground": "https://images.unsplash.com/photo-1582719188393-bb71ca45dbb9?w=900&q=60",
+        },
+        {
+            "roomName": "Party",
+            "roomCategory": "Vibe",
+            "roomDescription": "Let the party never stop",
+            "roomBanner": "https://images.unsplash.com/photo-1530103862676-de8c9debad1d?w=600&q=70",
+            "roomBackground": "https://images.unsplash.com/photo-1496843916299-590492c751f4?w=900&q=60",
+        },
+        {
+            "roomName": "Birthday",
+            "roomCategory": "Vibe",
+            "roomDescription": "Celebrate birthdays together",
+            "roomBanner": "https://images.unsplash.com/photo-1530648672449-81f6c623f3ce?w=600&q=70",
+            "roomBackground": "https://images.unsplash.com/photo-1558636508-e0db3814bd1d?w=900&q=60",
+        },
     ]
-    
-    # Check if rooms already exist
-    existing_count = await db.rooms.count_documents({})
-    if existing_count > 0:
-        return {"message": "Rooms already initialized"}
-    
-    await db.rooms.insert_many(default_rooms)
-    return {"message": "Default rooms created successfully"}
+
+    now = datetime.utcnow()
+    for r in default_rooms:
+        await db.rooms.update_one(
+            {"roomName": r["roomName"]},
+            {
+                "$set": {
+                    "roomCategory": r["roomCategory"],
+                    "roomDescription": r["roomDescription"],
+                    "roomBanner": r["roomBanner"],
+                    "roomBackground": r["roomBackground"],
+                    "maxCapacity": 36,
+                },
+                "$setOnInsert": {
+                    "roomName": r["roomName"],
+                    "currentUserCount": 0,
+                    "createdBy": "system",
+                    "createdAt": now,
+                },
+            },
+            upsert=True,
+        )
+    return {"message": "Default rooms initialized", "count": len(default_rooms)}
 
 # Include router
 app.include_router(api_router)

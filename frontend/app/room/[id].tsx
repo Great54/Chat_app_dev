@@ -14,6 +14,7 @@ import {
   GestureResponderEvent,
 } from 'react-native';
 import { Image } from 'expo-image';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useLocalSearchParams, router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -47,6 +48,7 @@ interface Room {
   roomName: string;
   roomCategory: string;
   roomBanner?: string;
+  roomBackground?: string;
   currentUserCount: number;
   maxCapacity: number;
 }
@@ -202,8 +204,20 @@ export default function RoomScreen() {
   const renderProfileSection = () => {
     return (
       <View style={styles.profileSection} onLayout={onMemberSectionLayout}>
+        {/* Light-colored room background image with soft white veil */}
+        {room?.roomBackground ? (
+          <Image
+            source={{ uri: room.roomBackground }}
+            style={StyleSheet.absoluteFill}
+            contentFit="cover"
+          />
+        ) : null}
+        <LinearGradient
+          colors={['rgba(255,255,255,0.75)', 'rgba(255,255,255,0.65)', 'rgba(255,255,255,0.78)']}
+          style={StyleSheet.absoluteFill}
+        />
         <View style={styles.profileSectionHeader}>
-          <Ionicons name="people" size={14} color={COLORS.textSecondary} />
+          <Ionicons name="people" size={14} color="#1f2937" />
           <Text style={styles.profileSectionTitle}>
             In the room ({members.length}/{room?.maxCapacity || 36})
           </Text>
@@ -274,24 +288,33 @@ export default function RoomScreen() {
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
       >
-        {/* Messages section - TOP */}
-        <FlatList
-          ref={flatListRef}
-          data={messages}
-          keyExtractor={(item) => item.id}
-          renderItem={renderMessage}
-          contentContainerStyle={styles.messagesList}
-          style={styles.messagesContainer}
-          onContentSizeChange={() => flatListRef.current?.scrollToEnd()}
-          ListEmptyComponent={
-            <View style={styles.emptyMessages}>
-              <Ionicons name="chatbubbles-outline" size={36} color={COLORS.textSecondary} />
-              <Text style={styles.emptyText}>No messages yet. Start the conversation!</Text>
-            </View>
-          }
-        />
+        {/* Messages section - TOP (matte aesthetic) */}
+        <View style={styles.messagesWrap}>
+          <LinearGradient
+            colors={['#0e0a17', '#15101f', '#1a1226']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={StyleSheet.absoluteFill}
+          />
+          <View style={styles.matteVeil} pointerEvents="none" />
+          <FlatList
+            ref={flatListRef}
+            data={messages}
+            keyExtractor={(item) => item.id}
+            renderItem={renderMessage}
+            contentContainerStyle={styles.messagesList}
+            style={styles.messagesContainer}
+            onContentSizeChange={() => flatListRef.current?.scrollToEnd()}
+            ListEmptyComponent={
+              <View style={styles.emptyMessages}>
+                <Ionicons name="chatbubbles-outline" size={36} color={COLORS.textSecondary} />
+                <Text style={styles.emptyText}>No messages yet. Start the conversation!</Text>
+              </View>
+            }
+          />
+        </View>
 
-        {/* Profile section - BELOW messages */}
+        {/* Profile section - BELOW messages (light room background image) */}
         {renderProfileSection()}
 
         {/* Input */}
@@ -385,8 +408,18 @@ const styles = StyleSheet.create({
   chatContainer: {
     flex: 1,
   },
+  messagesWrap: {
+    flex: 1,
+    position: 'relative',
+    overflow: 'hidden',
+  },
+  matteVeil: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.35)',
+  },
   messagesContainer: {
     flex: 1,
+    backgroundColor: 'transparent',
   },
   messagesList: {
     padding: SPACING.md,
@@ -404,7 +437,7 @@ const styles = StyleSheet.create({
     width: 32,
     height: 32,
     borderRadius: 16,
-    backgroundColor: COLORS.cardBg,
+    backgroundColor: 'rgba(255,255,255,0.08)',
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: SPACING.xs,
@@ -416,13 +449,16 @@ const styles = StyleSheet.create({
     borderRadius: 16,
   },
   messageBubble: {
-    backgroundColor: COLORS.cardBg,
+    backgroundColor: 'rgba(255,255,255,0.08)',
     padding: SPACING.sm,
     borderRadius: 12,
     maxWidth: '70%',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.06)',
   },
   ownMessageBubble: {
     backgroundColor: COLORS.primary,
+    borderColor: 'transparent',
   },
   senderName: {
     fontSize: 12,
@@ -448,35 +484,40 @@ const styles = StyleSheet.create({
   },
   profileSection: {
     flex: 1,
-    backgroundColor: COLORS.cardBg,
+    backgroundColor: '#f3eee8',
     borderTopWidth: 1,
     borderBottomWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: 'rgba(0,0,0,0.08)',
     paddingHorizontal: SPACING.sm,
     paddingTop: 4,
     paddingBottom: SPACING.sm,
+    overflow: 'hidden',
+    position: 'relative',
   },
   profileSectionHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
     marginBottom: 6,
+    zIndex: 1,
   },
   profileSectionTitle: {
     fontSize: 11,
-    fontWeight: '700',
-    color: COLORS.textSecondary,
+    fontWeight: '800',
+    color: '#1f2937',
     textTransform: 'uppercase',
     flex: 1,
+    letterSpacing: 0.4,
   },
   profileSectionHint: {
     fontSize: 9,
-    color: COLORS.textSecondary,
+    color: '#374151',
     fontStyle: 'italic',
   },
   profileGrid: {
     flex: 1,
     position: 'relative',
+    zIndex: 1,
   },
   inputContainer: {
     flexDirection: 'row',

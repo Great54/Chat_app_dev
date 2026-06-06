@@ -13,6 +13,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import RoomCard from '@/src/components/RoomCard';
 import VipShopModal from '@/src/components/VipShopModal';
+import AnimatedBackground from '@/src/components/AnimatedBackground';
 import api from '@/src/api/client';
 import { useAuth } from '@/src/contexts/AuthContext';
 import { VIP_STYLES } from '@/src/utils/vip';
@@ -23,44 +24,34 @@ interface Room {
   roomName: string;
   roomCategory: string;
   roomDescription: string;
+  roomBanner?: string | null;
   currentUserCount: number;
   maxCapacity: number;
 }
 
+type ViewMode = 'all' | 'favorites';
+
 export default function RoomsScreen() {
   const [rooms, setRooms] = useState<Room[]>([]);
+  const [favoriteIds, setFavoriteIds] = useState<string[]>([]);
+  const [viewMode, setViewMode] = useState<ViewMode>('all');
   const [loading, setLoading] = useState(false);
-  const [unreadCount, setUnreadCount] = useState(0);
   const [vipModalOpen, setVipModalOpen] = useState(false);
   const { user, refreshUser } = useAuth();
 
   useEffect(() => {
-    loadRooms();
-    initializeRooms();
+    (async () => {
+      try { await api.post('/init/rooms'); } catch {}
+      await loadRooms();
+      await loadFavorites();
+    })();
   }, []);
 
   useFocusEffect(
     useCallback(() => {
-      loadUnreadCount();
+      loadFavorites();
     }, [])
   );
-
-  const loadUnreadCount = async () => {
-    try {
-      const res = await api.get('/notifications/unread-count');
-      setUnreadCount(res.data.count);
-    } catch (error) {
-      console.error('Failed to load notification count');
-    }
-  };
-
-  const initializeRooms = async () => {
-    try {
-      await api.post('/init/rooms');
-    } catch (error) {
-      // Rooms already exist, ignore error
-    }
-  };
 
   const loadRooms = async () => {
     setLoading(true);
@@ -71,6 +62,15 @@ export default function RoomsScreen() {
       Alert.alert('Error', 'Failed to load rooms');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadFavorites = async () => {
+    try {
+      const res = await api.get('/users/me/favorites');
+      setFavoriteIds(res.data.favoriteRoomIds || []);
+    } catch {
+      // Not signed in or no favorites yet — silent
     }
   };
 
@@ -85,34 +85,70 @@ export default function RoomsScreen() {
     }
   };
 
+  const handleToggleFavorite = async (roomId: string) => {
+    // Optimistic update
+    const wasFav = favoriteIds.includes(roomId);
+    setFavoriteIds((prev) =>
+      wasFav ? prev.filter((id) => id !== roomId) : [...prev, roomId]
+    );
+    try {
+      const res = await api.post(`/rooms/${roomId}/favorite`);
+      setFavoriteIds(res.data.favoriteRoomIds || []);
+    } catch {
+      // Revert on error
+      setFavoriteIds((prev) =>
+        wasFav ? [...prev, roomId] : prev.filter((id) => id !== roomId)
+      );
+    }
+  };
+
+  const visibleRooms =
+    viewMode === 'favorites'
+      ? rooms.filter((r) => favoriteIds.includes(r.id))
+      : rooms;
+
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
+      <AnimatedBackground variant="dark" />
+
       <View style={styles.header}>
         <View style={styles.headerContent}>
           <TouchableOpacity
             style={[
               styles.vipCrownBtn,
-              user?.vipTier && { backgroundColor: VIP_STYLES[user.vipTier].crownColor + '30', borderColor: VIP_STYLES[user.vipTier].crownColor },
+              user?.vipTier && {
+                backgroundColor: VIP_STYLES[user.vipTier].crownColor + '30',
+                borderColor: VIP_STYLES[user.vipTier].crownColor,
+              },
             ]}
             onPress={() => setVipModalOpen(true)}
             testID="vip-crown-button"
           >
             <Ionicons
-              name={user?.vipTier === 'elite' ? 'diamond' : user?.vipTier === 'pro' ? 'star' : 'diamond-outline'}
+              name={
+                user?.vipTier === 'elite'
+                  ? 'diamond'
+                  : user?.vipTier === 'pro'
+                  ? 'star'
+                  : 'diamond-outline'
+              }
               size={20}
               color={user?.vipTier ? VIP_STYLES[user.vipTier].crownColor : COLORS.coin}
             />
             {user?.vipTier && (
-              <Text style={[styles.vipLabel, { color: VIP_STYLES[user.vipTier].crownColor }]}>
+              <Text
+                style={[styles.vipLabel, { color: VIP_STYLES[user.vipTier].crownColor }]}
+              >
                 {user.vipTier === 'elite' ? 'ELITE' : 'PRO'}
               </Text>
             )}
           </TouchableOpacity>
-          
+
           <View style={styles.headerLeft}>
             <Text style={styles.headerTitle}>GenC Vibez</Text>
             <Text style={styles.headerSubtitle}>Choose your vibe</Text>
           </View>
+
           <View style={styles.headerRight}>
             {user && (
               <View style={styles.statItem}>
@@ -121,32 +157,81 @@ export default function RoomsScreen() {
               </View>
             )}
             <TouchableOpacity
-              style={styles.notifButton}
-              onPress={() => router.push('/notifications')}
-              testID="notifications-bell"
+              style={[
+                styles.starButton,
+                viewMode === 'favorites' && styles.starButtonActive,
+              ]}
+              onPress={() =>
+                setViewMode((m) => (m === 'favorites' ? 'all' : 'favorites'))
+              }
+              testID="liked-rooms-star"
             >
-              <Ionicons name="notifications" size={22} color={COLORS.text} />
-              {unreadCount > 0 && (
-                <View style={styles.notifBadge}>
-                  <Text style={styles.notifBadgeText}>
-                    {unreadCount > 9 ? '9+' : unreadCount}
-                  </Text>
+              <Ionicons
+                name={viewMode === 'favorites' ? 'star' : 'star-outline'}
+                size={22}
+                color={viewMode === 'favorites' ? COLORS.coin : COLORS.text}
+              />
+              {favoriteIds.length > 0 && (
+                <View style={styles.starBadge}>
+                  <Text style={styles.starBadgeText}>{favoriteIds.length}</Text>
                 </View>
               )}
             </TouchableOpacity>
           </View>
+        </View>
+
+        <View style={styles.segmentRow}>
+          <TouchableOpacity
+            style={[styles.segment, viewMode === 'all' && styles.segmentActive]}
+            onPress={() => setViewMode('all')}
+            testID="seg-all"
+          >
+            <Text
+              style={[
+                styles.segmentText,
+                viewMode === 'all' && styles.segmentTextActive,
+              ]}
+            >
+              All rooms
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.segment, viewMode === 'favorites' && styles.segmentActive]}
+            onPress={() => setViewMode('favorites')}
+            testID="seg-fav"
+          >
+            <Ionicons
+              name="star"
+              size={12}
+              color={viewMode === 'favorites' ? COLORS.coin : COLORS.textSecondary}
+            />
+            <Text
+              style={[
+                styles.segmentText,
+                viewMode === 'favorites' && styles.segmentTextActive,
+                { marginLeft: 4 },
+              ]}
+            >
+              Liked ({favoriteIds.length})
+            </Text>
+          </TouchableOpacity>
         </View>
       </View>
 
       <VipShopModal visible={vipModalOpen} onClose={() => setVipModalOpen(false)} />
 
       <FlatList
-        data={rooms}
+        data={visibleRooms}
         keyExtractor={(item) => item.id}
         numColumns={3}
         columnWrapperStyle={styles.row}
         renderItem={({ item }) => (
-          <RoomCard room={item} onPress={() => handleJoinRoom(item.id)} />
+          <RoomCard
+            room={item}
+            isFavorite={favoriteIds.includes(item.id)}
+            onPress={() => handleJoinRoom(item.id)}
+            onToggleFavorite={() => handleToggleFavorite(item.id)}
+          />
         )}
         contentContainerStyle={styles.list}
         refreshControl={
@@ -158,8 +243,16 @@ export default function RoomsScreen() {
         }
         ListEmptyComponent={
           <View style={styles.empty}>
-            <Ionicons name="planet-outline" size={48} color={COLORS.textSecondary} />
-            <Text style={styles.emptyText}>No rooms available</Text>
+            <Ionicons
+              name={viewMode === 'favorites' ? 'star-outline' : 'planet-outline'}
+              size={48}
+              color={COLORS.textSecondary}
+            />
+            <Text style={styles.emptyText}>
+              {viewMode === 'favorites'
+                ? 'No liked rooms yet — tap the ★ on any room'
+                : 'No rooms available'}
+            </Text>
           </View>
         }
       />
@@ -170,12 +263,15 @@ export default function RoomsScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: COLORS.background,
+    backgroundColor: 'transparent',
   },
   header: {
-    padding: SPACING.md,
+    paddingHorizontal: SPACING.md,
+    paddingTop: SPACING.md,
+    paddingBottom: SPACING.sm,
     borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
+    borderBottomColor: 'rgba(255,255,255,0.06)',
+    backgroundColor: 'rgba(12,12,18,0.55)',
   },
   headerContent: {
     flexDirection: 'row',
@@ -216,10 +312,6 @@ const styles = StyleSheet.create({
     color: COLORS.textSecondary,
     marginTop: 2,
   },
-  stats: {
-    flexDirection: 'row',
-    gap: SPACING.xs,
-  },
   statItem: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -234,7 +326,7 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
   },
-  notifButton: {
+  starButton: {
     backgroundColor: COLORS.cardBg,
     width: 40,
     height: 36,
@@ -242,12 +334,18 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     position: 'relative',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.06)',
   },
-  notifBadge: {
+  starButtonActive: {
+    borderColor: COLORS.coin,
+    backgroundColor: COLORS.coin + '20',
+  },
+  starBadge: {
     position: 'absolute',
     top: -4,
     right: -4,
-    backgroundColor: COLORS.error,
+    backgroundColor: COLORS.coin,
     borderRadius: 10,
     minWidth: 18,
     height: 18,
@@ -255,10 +353,37 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: 4,
   },
-  notifBadgeText: {
-    color: COLORS.text,
+  starBadgeText: {
+    color: '#1a1a1a',
     fontSize: 10,
-    fontWeight: '700',
+    fontWeight: '800',
+  },
+  segmentRow: {
+    flexDirection: 'row',
+    gap: 6,
+    marginTop: SPACING.sm,
+  },
+  segment: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.06)',
+  },
+  segmentActive: {
+    backgroundColor: 'rgba(139,92,246,0.18)',
+    borderColor: COLORS.primary,
+  },
+  segmentText: {
+    color: COLORS.textSecondary,
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  segmentTextActive: {
+    color: COLORS.text,
   },
   list: {
     padding: SPACING.md,
@@ -275,7 +400,9 @@ const styles = StyleSheet.create({
   },
   emptyText: {
     color: COLORS.textSecondary,
-    fontSize: 16,
+    fontSize: 14,
     marginTop: SPACING.md,
+    textAlign: 'center',
+    paddingHorizontal: SPACING.lg,
   },
 });

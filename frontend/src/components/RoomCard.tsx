@@ -1,9 +1,9 @@
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Pressable } from 'react-native';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
-import { COLORS, SPACING } from '../constants/theme';
+import { COLORS } from '../constants/theme';
 
 interface RoomCardProps {
   room: {
@@ -15,7 +15,9 @@ interface RoomCardProps {
     currentUserCount: number;
     maxCapacity: number;
   };
+  isFavorite?: boolean;
   onPress: () => void;
+  onToggleFavorite?: () => void;
 }
 
 const categoryIcons: Record<string, keyof typeof Ionicons.glyphMap> = {
@@ -23,9 +25,17 @@ const categoryIcons: Record<string, keyof typeof Ionicons.glyphMap> = {
   Games: 'game-controller',
   BTS: 'musical-notes',
   'Harry Potter': 'sparkles',
+  Country: 'flag',
+  Language: 'language',
+  Vibe: 'flame',
 };
 
-export default function RoomCard({ room, onPress }: RoomCardProps) {
+export default function RoomCard({
+  room,
+  onPress,
+  isFavorite = false,
+  onToggleFavorite,
+}: RoomCardProps) {
   const isFull = room.currentUserCount >= room.maxCapacity;
   const occupancyPercent = (room.currentUserCount / room.maxCapacity) * 100;
   const categoryIcon = categoryIcons[room.roomCategory] || 'planet';
@@ -35,7 +45,7 @@ export default function RoomCard({ room, onPress }: RoomCardProps) {
       style={[styles.card, isFull && styles.cardFull]}
       onPress={onPress}
       disabled={isFull}
-      activeOpacity={0.8}
+      activeOpacity={0.85}
       testID={`room-card-${room.id}`}
     >
       <View style={styles.bannerContainer}>
@@ -64,6 +74,23 @@ export default function RoomCard({ room, onPress }: RoomCardProps) {
             {room.currentUserCount}/{room.maxCapacity}
           </Text>
         </View>
+        {onToggleFavorite && (
+          <Pressable
+            style={styles.favBtn}
+            onPress={(e) => {
+              e.stopPropagation?.();
+              onToggleFavorite();
+            }}
+            hitSlop={6}
+            testID={`fav-${room.id}`}
+          >
+            <Ionicons
+              name={isFavorite ? 'star' : 'star-outline'}
+              size={16}
+              color={isFavorite ? COLORS.coin : '#fff'}
+            />
+          </Pressable>
+        )}
         {isFull && (
           <View style={styles.fullBadge}>
             <Text style={styles.fullText}>FULL</Text>
@@ -86,11 +113,11 @@ export default function RoomCard({ room, onPress }: RoomCardProps) {
 const styles = StyleSheet.create({
   card: {
     flex: 1,
-    backgroundColor: COLORS.cardBg,
-    borderRadius: 12,
+    backgroundColor: 'rgba(26,26,26,0.7)',
+    borderRadius: 14,
     overflow: 'hidden',
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: 'rgba(255,255,255,0.08)',
     maxWidth: '33%',
   },
   cardFull: {
@@ -135,9 +162,20 @@ const styles = StyleSheet.create({
     fontSize: 9,
     fontWeight: '700',
   },
-  fullBadge: {
+  favBtn: {
     position: 'absolute',
     top: 4,
+    left: 4,
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  fullBadge: {
+    position: 'absolute',
+    top: 32,
     left: 4,
     backgroundColor: COLORS.error,
     paddingHorizontal: 5,
@@ -160,7 +198,7 @@ const styles = StyleSheet.create({
   },
   progressBar: {
     height: 3,
-    backgroundColor: COLORS.background,
+    backgroundColor: 'rgba(255,255,255,0.08)',
     borderRadius: 2,
     overflow: 'hidden',
   },
