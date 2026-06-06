@@ -21,6 +21,7 @@ import api from '@/src/api/client';
 import { useAuth } from '@/src/contexts/AuthContext';
 import GamePanel from '@/src/components/GamePanel';
 import DraggableMember from '@/src/components/DraggableMember';
+import PrivateMessagesModal from '@/src/components/PrivateMessagesModal';
 import { COLORS, SPACING } from '@/src/constants/theme';
 
 interface Message {
@@ -38,6 +39,7 @@ interface Member {
   profilePhoto?: string;
   level: number;
   onlineStatus: boolean;
+  vipTier?: string | null;
 }
 
 interface Room {
@@ -58,6 +60,7 @@ export default function RoomScreen() {
   const [messageText, setMessageText] = useState('');
   const [loading, setLoading] = useState(false);
   const [memberSectionLayout, setMemberSectionLayout] = useState({ width: 0, height: 0 });
+  const [messagesModalVisible, setMessagesModalVisible] = useState(false);
   const flatListRef = useRef<FlatList>(null);
 
   useEffect(() => {
@@ -188,6 +191,7 @@ export default function RoomScreen() {
               boundsWidth={memberSectionLayout.width - SPACING.sm * 2}
               boundsHeight={memberSectionLayout.height - 40}
               initialIndex={idx}
+              totalMembers={members.length}
             />
           ))}
         </View>
@@ -210,6 +214,13 @@ export default function RoomScreen() {
             {room?.currentUserCount || 0}/{room?.maxCapacity || 36} members
           </Text>
         </View>
+        <TouchableOpacity 
+          style={styles.messagesButton}
+          onPress={() => setMessagesModalVisible(true)}
+          testID="direct-messages-btn"
+        >
+          <Ionicons name="chatbox" size={22} color={COLORS.text} />
+        </TouchableOpacity>
         <TouchableOpacity onPress={loadRoomData}>
           <Ionicons name="refresh" size={22} color={COLORS.text} />
         </TouchableOpacity>
@@ -269,6 +280,11 @@ export default function RoomScreen() {
           </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>
+
+      <PrivateMessagesModal 
+        visible={messagesModalVisible}
+        onClose={() => setMessagesModalVisible(false)}
+      />
     </SafeAreaView>
   );
 }
@@ -305,6 +321,9 @@ const styles = StyleSheet.create({
   headerSubtitle: {
     fontSize: 12,
     color: COLORS.textSecondary,
+  },
+  messagesButton: {
+    padding: 8,
   },
   chatContainer: {
     flex: 1,
