@@ -175,10 +175,16 @@ export default function RoomScreen() {
   };
 
   // Tap empty space → smoothly move current user's avatar to that point
-  const handleProfileGridPress = (e: GestureResponderEvent) => {
-    const { locationX, locationY } = e.nativeEvent;
-    // Center the avatar around the tap location; clamping is handled inside DraggableMember
-    setCurrentUserTarget({ x: locationX - 24, y: locationY - 24 });
+  const handleGridTap = (e: GestureResponderEvent) => {
+    const native: any = e.nativeEvent;
+    let x = native.locationX;
+    let y = native.locationY;
+    // Web fallback: react-native-web passes synthetic events whose nativeEvent is the MouseEvent
+    if (typeof x !== 'number' || isNaN(x)) {
+      x = native.offsetX ?? native.layerX ?? 0;
+      y = native.offsetY ?? native.layerY ?? 0;
+    }
+    setCurrentUserTarget({ x: x - 24, y: y - 24 });
   };
 
   // Tap on another user's avatar → open private chat with them
@@ -203,11 +209,13 @@ export default function RoomScreen() {
           </Text>
           <Text style={styles.profileSectionHint}>Tap empty space to move • Tap avatar to chat</Text>
         </View>
-        <Pressable
-          style={styles.profileGrid}
-          onPress={handleProfileGridPress}
-          testID="profile-grid-tap-area"
-        >
+        <View style={styles.profileGrid} testID="profile-grid-tap-area">
+          {/* Backdrop captures clicks on empty space. Avatars render above and consume taps on themselves. */}
+          <Pressable
+            style={StyleSheet.absoluteFill}
+            onPress={handleGridTap}
+            testID="profile-grid-backdrop"
+          />
           {members.map((member, idx) => (
             <DraggableMember
               key={member.userId}
@@ -221,7 +229,7 @@ export default function RoomScreen() {
               onAvatarPress={handleAvatarPress}
             />
           ))}
-        </Pressable>
+        </View>
       </View>
     );
   };
@@ -232,25 +240,24 @@ export default function RoomScreen() {
         <TouchableOpacity onPress={handleBack} style={styles.backButton}>
           <Ionicons name="arrow-back" size={24} color={COLORS.text} />
         </TouchableOpacity>
-        {room?.roomBanner && (
-          <Image source={{ uri: room.roomBanner }} style={styles.headerBanner} />
-        )}
-        <View style={styles.headerInfo}>
-          <Text style={styles.headerTitle}>{room?.roomName}</Text>
+        <View style={[styles.headerInfo, { pointerEvents: 'none' }]}>
+          <Text style={styles.headerTitle} numberOfLines={1}>{room?.roomName}</Text>
           <Text style={styles.headerSubtitle}>
             {room?.currentUserCount || 0}/{room?.maxCapacity || 36} members
           </Text>
         </View>
-        <TouchableOpacity 
-          style={styles.messagesButton}
-          onPress={() => { setDmInitialUserId(null); setMessagesModalVisible(true); }}
-          testID="direct-messages-btn"
-        >
-          <Ionicons name="chatbox" size={22} color={COLORS.text} />
-        </TouchableOpacity>
-        <TouchableOpacity onPress={loadRoomData}>
-          <Ionicons name="refresh" size={22} color={COLORS.text} />
-        </TouchableOpacity>
+        <View style={styles.headerRight}>
+          <TouchableOpacity
+            style={styles.messagesButton}
+            onPress={() => { setDmInitialUserId(null); setMessagesModalVisible(true); }}
+            testID="direct-messages-btn"
+          >
+            <Ionicons name="chatbox" size={22} color={COLORS.text} />
+          </TouchableOpacity>
+          <TouchableOpacity onPress={loadRoomData} style={styles.headerIconBtn}>
+            <Ionicons name="refresh" size={22} color={COLORS.text} />
+          </TouchableOpacity>
+        </View>
       </View>
 
       {user && (
@@ -325,12 +332,25 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: SPACING.md,
+    justifyContent: 'space-between',
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
     borderBottomWidth: 1,
     borderBottomColor: COLORS.border,
-    gap: SPACING.sm,
+    position: 'relative',
+    minHeight: 56,
   },
   backButton: {
+    padding: 4,
+    zIndex: 2,
+  },
+  headerRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.xs,
+    zIndex: 2,
+  },
+  headerIconBtn: {
     padding: 4,
   },
   headerBanner: {
@@ -339,16 +359,25 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   headerInfo: {
-    flex: 1,
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   headerTitle: {
     fontSize: 18,
     fontWeight: '700',
     color: COLORS.text,
+    textAlign: 'center',
   },
   headerSubtitle: {
     fontSize: 12,
     color: COLORS.textSecondary,
+    textAlign: 'center',
+    marginTop: 2,
   },
   messagesButton: {
     padding: 8,
@@ -418,7 +447,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   profileSection: {
-    height: 130,
+    flex: 1,
     backgroundColor: COLORS.cardBg,
     borderTopWidth: 1,
     borderBottomWidth: 1,
