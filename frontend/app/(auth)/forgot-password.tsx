@@ -8,59 +8,51 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
-  Alert,
   ActivityIndicator,
 } from 'react-native';
-import { Link } from 'expo-router';
+import { Link, router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { useAuth } from '@/src/contexts/AuthContext';
 import { COLORS, SPACING } from '@/src/constants/theme';
+import api from '@/src/api/client';
 
-export default function Login() {
-  const [identifier, setIdentifier] = useState('');
-  const [password, setPassword] = useState('');
+export default function ForgotPassword() {
+  const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
-  const { login } = useAuth();
+  const [successMessage, setSuccessMessage] = useState('');
 
-  const handleLogin = async () => {
-    // Clear previous error
+  const handleSubmit = async () => {
     setErrorMessage('');
-    
-    if (!identifier.trim()) {
-      setErrorMessage('Please enter your email or username');
+    setSuccessMessage('');
+
+    if (!email.trim()) {
+      setErrorMessage('Please enter your email address');
       return;
     }
-    
-    if (!password) {
-      setErrorMessage('Please enter your password');
+
+    // Basic email validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email.trim())) {
+      setErrorMessage('Please enter a valid email address');
       return;
     }
 
     setLoading(true);
     try {
-      await login(identifier.trim(), password);
+      await api.post('/auth/forgot-password', { email: email.trim().toLowerCase() });
+      setSuccessMessage('If an account with that email exists, a reset token has been sent. Check your console/logs for the token.');
+      
+      // Navigate to reset password screen after a short delay
+      setTimeout(() => {
+        router.push({
+          pathname: '/(auth)/reset-password',
+          params: { email: email.trim().toLowerCase() }
+        });
+      }, 2000);
     } catch (error: any) {
-      console.log('Login error:', error);
+      console.log('Forgot password error:', error);
       const detail = error.response?.data?.detail;
-      
-      // Provide more helpful error messages
-      if (error.response?.status === 401) {
-        setErrorMessage('Incorrect email/username or password. Please try again.');
-      } else if (error.response?.status === 422) {
-        setErrorMessage('Invalid input. Please check your email and password format.');
-      } else if (detail) {
-        setErrorMessage(detail);
-      } else if (error.message?.includes('Network')) {
-        setErrorMessage('Network error. Please check your connection.');
-      } else {
-        setErrorMessage('Login failed. Please try again.');
-      }
-      
-      // Also show alert for mobile users
-      if (Platform.OS !== 'web') {
-        Alert.alert('Login Failed', detail || 'Invalid credentials');
-      }
+      setErrorMessage(detail || 'Something went wrong. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -72,16 +64,25 @@ export default function Login() {
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
       <ScrollView contentContainerStyle={styles.scrollContent}>
+        <TouchableOpacity 
+          style={styles.backButton}
+          onPress={() => router.back()}
+        >
+          <Ionicons name="arrow-back" size={24} color={COLORS.text} />
+        </TouchableOpacity>
+
         <View style={styles.header}>
-          <View style={styles.logoContainer}>
-            <Ionicons name="radio" size={48} color={COLORS.primary} />
+          <View style={styles.iconContainer}>
+            <Ionicons name="key-outline" size={48} color={COLORS.primary} />
           </View>
-          <Text style={styles.title}>GenC Vibez</Text>
-          <Text style={styles.subtitle}>Connect, Chat, Vibe</Text>
+          <Text style={styles.title}>Forgot Password?</Text>
+          <Text style={styles.subtitle}>
+            Enter your email address and we'll send you a reset token.
+          </Text>
         </View>
 
         <View style={styles.form}>
-          {/* Error Message Display */}
+          {/* Error Message */}
           {errorMessage ? (
             <View style={styles.errorContainer}>
               <Ionicons name="alert-circle" size={18} color={COLORS.error} />
@@ -89,61 +90,50 @@ export default function Login() {
             </View>
           ) : null}
 
+          {/* Success Message */}
+          {successMessage ? (
+            <View style={styles.successContainer}>
+              <Ionicons name="checkmark-circle" size={18} color="#10B981" />
+              <Text style={styles.successText}>{successMessage}</Text>
+            </View>
+          ) : null}
+
           <View style={styles.inputContainer}>
-            <Ionicons name="person-circle-outline" size={20} color={COLORS.textSecondary} style={styles.inputIcon} />
+            <Ionicons name="mail-outline" size={20} color={COLORS.textSecondary} style={styles.inputIcon} />
             <TextInput
               style={styles.input}
-              placeholder="Email or Username"
+              placeholder="Email Address"
               placeholderTextColor={COLORS.textSecondary}
-              value={identifier}
+              value={email}
               onChangeText={(text) => {
-                setIdentifier(text);
+                setEmail(text);
                 if (errorMessage) setErrorMessage('');
+                if (successMessage) setSuccessMessage('');
               }}
               autoCapitalize="none"
               autoCorrect={false}
-              testID="login-identifier-input"
-            />
-          </View>
-
-          <View style={styles.inputContainer}>
-            <Ionicons name="lock-closed-outline" size={20} color={COLORS.textSecondary} style={styles.inputIcon} />
-            <TextInput
-              style={styles.input}
-              placeholder="Password"
-              placeholderTextColor={COLORS.textSecondary}
-              value={password}
-              onChangeText={(text) => {
-                setPassword(text);
-                if (errorMessage) setErrorMessage('');
-              }}
-              secureTextEntry
+              keyboardType="email-address"
+              autoComplete="email"
             />
           </View>
 
           <TouchableOpacity
             style={[styles.button, loading && styles.buttonDisabled]}
-            onPress={handleLogin}
+            onPress={handleSubmit}
             disabled={loading}
           >
             {loading ? (
               <ActivityIndicator color={COLORS.text} />
             ) : (
-              <Text style={styles.buttonText}>Sign In</Text>
+              <Text style={styles.buttonText}>Send Reset Token</Text>
             )}
           </TouchableOpacity>
 
-          <Link href="/(auth)/forgot-password" asChild>
-            <TouchableOpacity style={styles.forgotPassword}>
-              <Text style={styles.forgotPasswordText}>Forgot Password?</Text>
-            </TouchableOpacity>
-          </Link>
-
           <View style={styles.footer}>
-            <Text style={styles.footerText}>Don't have an account? </Text>
-            <Link href="/(auth)/register" asChild>
+            <Text style={styles.footerText}>Remember your password? </Text>
+            <Link href="/(auth)/login" asChild>
               <TouchableOpacity>
-                <Text style={styles.link}>Sign Up</Text>
+                <Text style={styles.link}>Sign In</Text>
               </TouchableOpacity>
             </Link>
           </View>
@@ -160,14 +150,22 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     flexGrow: 1,
-    justifyContent: 'center',
     padding: SPACING.lg,
+  },
+  backButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: COLORS.cardBg,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: SPACING.lg,
   },
   header: {
     alignItems: 'center',
     marginBottom: SPACING.xl * 2,
   },
-  logoContainer: {
+  iconContainer: {
     width: 80,
     height: 80,
     borderRadius: 40,
@@ -177,14 +175,16 @@ const styles = StyleSheet.create({
     marginBottom: SPACING.md,
   },
   title: {
-    fontSize: 32,
+    fontSize: 28,
     fontWeight: '700',
     color: COLORS.text,
-    marginBottom: SPACING.xs,
+    marginBottom: SPACING.sm,
   },
   subtitle: {
-    fontSize: 16,
+    fontSize: 14,
     color: COLORS.textSecondary,
+    textAlign: 'center',
+    paddingHorizontal: SPACING.lg,
   },
   form: {
     width: '100%',
@@ -202,6 +202,23 @@ const styles = StyleSheet.create({
   },
   errorText: {
     color: COLORS.error,
+    fontSize: 14,
+    marginLeft: SPACING.sm,
+    flex: 1,
+  },
+  successContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(16, 185, 129, 0.15)',
+    paddingVertical: SPACING.sm,
+    paddingHorizontal: SPACING.md,
+    borderRadius: 10,
+    marginBottom: SPACING.md,
+    borderWidth: 1,
+    borderColor: '#10B981',
+  },
+  successText: {
+    color: '#10B981',
     fontSize: 14,
     marginLeft: SPACING.sm,
     flex: 1,
@@ -239,16 +256,6 @@ const styles = StyleSheet.create({
     color: COLORS.text,
     fontSize: 16,
     fontWeight: '700',
-  },
-  forgotPassword: {
-    alignItems: 'center',
-    marginTop: SPACING.md,
-    paddingVertical: SPACING.sm,
-  },
-  forgotPasswordText: {
-    color: COLORS.primary,
-    fontSize: 14,
-    fontWeight: '500',
   },
   footer: {
     flexDirection: 'row',

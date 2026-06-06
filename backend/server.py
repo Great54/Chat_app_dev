@@ -98,6 +98,14 @@ class Token(BaseModel):
     access_token: str
     token_type: str
 
+class ForgotPasswordRequest(BaseModel):
+    email: EmailStr
+
+class ResetPasswordRequest(BaseModel):
+    email: EmailStr
+    token: str
+    new_password: str
+
 class UserProfile(BaseModel):
     id: str
     email: str
@@ -459,6 +467,101 @@ async def login(user_data: UserLogin):
     
     access_token = create_access_token({"sub": str(user["_id"])})
     return {"access_token": access_token, "token_type": "bearer"}
+
+@api_router.post("/auth/forgot-password")
+async def forgot_password(request: ForgotPasswordRequest):
+    """
+    Request a password reset token. 
+    The token is logged to console (for testing) - in production, send via email.
+    """
+    email = request.email.lower().strip()
+    
+    # Find user by email
+    user = await db.users.find_one({"email": email})
+    
+    # Always return success to prevent email enumeration attacks
+    # But only generate token if user exists
+    if user:
+        # Generate 6-digit token
+        token = ''.join([str(random.randint(0, 9)) for _ in range(6)])
+        
+        # Store token with 15 minute expiry
+        expiry = datetime.utcnow() + timedelta(minutes=15)
+        
+        await db.password_reset_tokens.update_one(
+            {"email": email},
+            {
+                "$set": {
+                    "email": email,
+                    "token": token,
+                    "expiry": expiry,
+                    "used": False,
+                    "createdAt": datetime.utcnow()
+                }
+            },
+            upsert=True
+        )
+        
+        # Log the token to console (MOCK - replace with email service in production)
+        logger.info("=" * 50)
+        logger.info(f"PASSWORD RESET TOKEN for {email}: {token}")
+        logger.info(f"Token expires at: {expiry}")
+        logger.info("=" * 50)
+        print(f"\n{'=' * 50}")
+        print(f"PASSWORD RESET TOKEN for {email}: {token}")
+        print(f"Token expires at: {expiry}")
+        print(f"{'=' * 50}\n")
+    
+    return {"message": "If an account with that email exists, a reset token has been sent."}
+
+@api_router.post("/auth/reset-password")
+async def reset_password(request: ResetPasswordRequest):
+    """
+    Reset password using the token received via email.
+    """
+    email = request.email.lower().strip()
+    token = request.token.strip()
+    new_password = request.new_password
+    
+    # Validate password length
+    if len(new_password) < 6:
+        raise HTTPException(status_code=400, detail="Password must be at least 6 characters long")
+    
+    # Find the token
+    reset_record = await db.password_reset_tokens.find_one({
+        "email": email,
+        "token": token,
+        "used": False
+    })
+    
+    if not reset_record:
+        raise HTTPException(status_code=400, detail="Invalid or expired reset token")
+    
+    # Check if token is expired
+    if datetime.utcnow() > reset_record["expiry"]:
+        raise HTTPException(status_code=400, detail="Reset token has expired. Please request a new one.")
+    
+    # Find the user
+    user = await db.users.find_one({"email": email})
+    if not user:
+        raise HTTPException(status_code=400, detail="User not found")
+    
+    # Update the password
+    hashed_password = get_password_hash(new_password)
+    await db.users.update_one(
+        {"_id": user["_id"]},
+        {"$set": {"password": hashed_password}}
+    )
+    
+    # Mark token as used
+    await db.password_reset_tokens.update_one(
+        {"_id": reset_record["_id"]},
+        {"$set": {"used": True}}
+    )
+    
+    logger.info(f"Password reset successful for {email}")
+    
+    return {"message": "Password has been reset successfully. You can now login with your new password."}
 
 @api_router.get("/auth/me", response_model=UserProfile)
 async def get_me(current_user: dict = Depends(get_current_user)):
