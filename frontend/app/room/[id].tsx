@@ -68,7 +68,7 @@ export default function RoomScreen() {
   const [memberSectionLayout, setMemberSectionLayout] = useState({ width: 0, height: 0 });
   const [messagesModalVisible, setMessagesModalVisible] = useState(false);
   const [dmInitialUserId, setDmInitialUserId] = useState<string | null>(null);
-  const [activeRoomTab, setActiveRoomTab] = useState<'board' | 'chat'>('chat');
+  const [activeRoomTab, setActiveRoomTab] = useState<'feed' | 'chat' | 'board'>('feed');
   const [currentUserTarget, setCurrentUserTarget] = useState<{ x: number; y: number } | null>(null);
   const flatListRef = useRef<FlatList>(null);
   const gameRef = useRef<GamePanelHandle>(null);
@@ -300,21 +300,21 @@ export default function RoomScreen() {
         />
       )}
 
-      {/* Board / Chat tab bar (room-scoped) */}
+      {/* Feed / Chat / Board tab bar (room-scoped) */}
       <View style={styles.roomTabs}>
         <TouchableOpacity
-          onPress={() => setActiveRoomTab('board')}
-          style={[styles.roomTab, activeRoomTab === 'board' && styles.roomTabActive]}
+          onPress={() => setActiveRoomTab('feed')}
+          style={[styles.roomTab, activeRoomTab === 'feed' && styles.roomTabActive]}
           activeOpacity={0.8}
-          testID="room-tab-board"
+          testID="room-tab-feed"
         >
           <Ionicons
-            name={activeRoomTab === 'board' ? 'clipboard' : 'clipboard-outline'}
+            name={activeRoomTab === 'feed' ? 'home' : 'home-outline'}
             size={16}
-            color={activeRoomTab === 'board' ? COLORS.primary : COLORS.textSecondary}
+            color={activeRoomTab === 'feed' ? COLORS.primary : COLORS.textSecondary}
           />
-          <Text style={[styles.roomTabText, activeRoomTab === 'board' && styles.roomTabTextActive]}>
-            Board
+          <Text style={[styles.roomTabText, activeRoomTab === 'feed' && styles.roomTabTextActive]}>
+            Feed
           </Text>
         </TouchableOpacity>
         <TouchableOpacity
@@ -332,9 +332,35 @@ export default function RoomScreen() {
             Chat
           </Text>
         </TouchableOpacity>
+        <TouchableOpacity
+          onPress={() => setActiveRoomTab('board')}
+          style={[styles.roomTab, activeRoomTab === 'board' && styles.roomTabActive]}
+          activeOpacity={0.8}
+          testID="room-tab-board"
+        >
+          <Ionicons
+            name={activeRoomTab === 'board' ? 'clipboard' : 'clipboard-outline'}
+            size={16}
+            color={activeRoomTab === 'board' ? COLORS.primary : COLORS.textSecondary}
+          />
+          <Text style={[styles.roomTabText, activeRoomTab === 'board' && styles.roomTabTextActive]}>
+            Board
+          </Text>
+        </TouchableOpacity>
       </View>
 
-      {activeRoomTab === 'board' ? (
+      {activeRoomTab === 'feed' ? (
+        <View style={styles.feedWrap}>
+          {/* Feed Tab - Placeholder for now */}
+          <View style={styles.feedPlaceholder}>
+            <Ionicons name="newspaper-outline" size={48} color={COLORS.textSecondary} />
+            <Text style={styles.feedPlaceholderTitle}>Feed</Text>
+            <Text style={styles.feedPlaceholderText}>
+              Room feed content coming soon...
+            </Text>
+          </View>
+        </View>
+      ) : activeRoomTab === 'board' ? (
         <View style={styles.boardWrap}>
           <BoardTab roomId={id as string} active={activeRoomTab === 'board'} />
         </View>
@@ -442,6 +468,28 @@ const styles = StyleSheet.create({
   boardWrap: {
     flex: 1,
     marginTop: SPACING.sm,
+  },
+  feedWrap: {
+    flex: 1,
+    marginTop: SPACING.sm,
+  },
+  feedPlaceholder: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: SPACING.xl,
+  },
+  feedPlaceholderTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: COLORS.text,
+    marginTop: SPACING.md,
+    marginBottom: SPACING.sm,
+  },
+  feedPlaceholderText: {
+    fontSize: 14,
+    color: COLORS.textSecondary,
+    textAlign: 'center',
   },
   header: {
     flexDirection: 'row',
