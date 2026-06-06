@@ -26,6 +26,7 @@ import PrivateMessagesModal from '@/src/components/PrivateMessagesModal';
 import JumpingHostIcon from '@/src/components/JumpingHostIcon';
 import { COLORS, SPACING } from '@/src/constants/theme';
 import { useProfilePopup } from '@/src/contexts/ProfilePopupContext';
+import FeedTab from '@/src/components/FeedTab';
 
 interface Message {
   id: string;
@@ -67,6 +68,7 @@ export default function RoomScreen() {
   const [memberSectionLayout, setMemberSectionLayout] = useState({ width: 0, height: 0 });
   const [messagesModalVisible, setMessagesModalVisible] = useState(false);
   const [dmInitialUserId, setDmInitialUserId] = useState<string | null>(null);
+  const [activeRoomTab, setActiveRoomTab] = useState<'feed' | 'chat'>('chat');
   const [currentUserTarget, setCurrentUserTarget] = useState<{ x: number; y: number } | null>(null);
   const flatListRef = useRef<FlatList>(null);
   const gameRef = useRef<GamePanelHandle>(null);
@@ -297,6 +299,45 @@ export default function RoomScreen() {
         />
       )}
 
+      {/* Feed / Chat tab bar (room-scoped) */}
+      <View style={styles.roomTabs}>
+        <TouchableOpacity
+          onPress={() => setActiveRoomTab('feed')}
+          style={[styles.roomTab, activeRoomTab === 'feed' && styles.roomTabActive]}
+          activeOpacity={0.8}
+          testID="room-tab-feed"
+        >
+          <Ionicons
+            name={activeRoomTab === 'feed' ? 'sparkles' : 'sparkles-outline'}
+            size={16}
+            color={activeRoomTab === 'feed' ? COLORS.primary : COLORS.textSecondary}
+          />
+          <Text style={[styles.roomTabText, activeRoomTab === 'feed' && styles.roomTabTextActive]}>
+            Feed
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          onPress={() => setActiveRoomTab('chat')}
+          style={[styles.roomTab, activeRoomTab === 'chat' && styles.roomTabActive]}
+          activeOpacity={0.8}
+          testID="room-tab-chat"
+        >
+          <Ionicons
+            name={activeRoomTab === 'chat' ? 'chatbubbles' : 'chatbubbles-outline'}
+            size={16}
+            color={activeRoomTab === 'chat' ? COLORS.primary : COLORS.textSecondary}
+          />
+          <Text style={[styles.roomTabText, activeRoomTab === 'chat' && styles.roomTabTextActive]}>
+            Chat
+          </Text>
+        </TouchableOpacity>
+      </View>
+
+      {activeRoomTab === 'feed' ? (
+        <View style={styles.feedWrap}>
+          <FeedTab active={activeRoomTab === 'feed'} />
+        </View>
+      ) : (
       <KeyboardAvoidingView
         style={styles.chatContainer}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -351,6 +392,7 @@ export default function RoomScreen() {
           </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>
+      )}
 
       <PrivateMessagesModal 
         visible={messagesModalVisible}
@@ -365,6 +407,40 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: COLORS.background,
+  },
+  roomTabs: {
+    flexDirection: 'row',
+    marginHorizontal: SPACING.md,
+    marginTop: SPACING.sm,
+    backgroundColor: '#15101f',
+    borderRadius: 12,
+    padding: 4,
+    borderWidth: 1,
+    borderColor: '#2a2240',
+  },
+  roomTab: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 8,
+    borderRadius: 9,
+  },
+  roomTabActive: {
+    backgroundColor: '#1f1830',
+  },
+  roomTabText: {
+    color: COLORS.textSecondary,
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  roomTabTextActive: {
+    color: COLORS.primary,
+  },
+  feedWrap: {
+    flex: 1,
+    marginTop: SPACING.sm,
   },
   header: {
     flexDirection: 'row',

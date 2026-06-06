@@ -307,6 +307,48 @@ async def add_xp(user_id: str, amount: int):
         {"$set": {"xp": new_xp, "level": new_level}}
     )
 
+async def _create_activity(
+    user_id: str,
+    activity_type: str,
+    message: str,
+    *,
+    actor_id: Optional[str] = None,
+    metadata: Optional[Dict[str, Any]] = None,
+    audience: str = "friends",
+):
+    """Create a feed activity entry.
+    user_id  → the subject of the activity (whose feed it shows in by default)
+    actor_id → optional: who performed the action (for "X did Y to you" items)
+    audience → 'self' (only user sees) | 'friends' (user + their friends see it)
+    """
+    if not user_id:
+        return
+    actor_name: Optional[str] = None
+    actor_photo: Optional[str] = None
+    actor_vip: Optional[str] = None
+    if actor_id:
+        try:
+            actor = await db.users.find_one({"_id": ObjectId(actor_id)})
+            if actor:
+                actor_name = actor.get("displayName")
+                actor_photo = actor.get("photoUrl")
+                actor_vip = actor.get("vipTier")
+        except Exception:
+            pass
+
+    await db.activities.insert_one({
+        "userId": user_id,
+        "actorId": actor_id,
+        "actorName": actor_name,
+        "actorPhoto": actor_photo,
+        "actorVipTier": actor_vip,
+        "type": activity_type,
+        "message": message,
+        "metadata": metadata or {},
+        "audience": audience,
+        "createdAt": datetime.utcnow(),
+    })
+
 # ==================== AUTH ROUTES ====================
 
 @api_router.post("/auth/register", response_model=Token)
@@ -626,11 +668,153 @@ async def send_gift(payload: GiftSendPayload, current_user: dict = Depends(get_c
         "readStatus": False,
     })
 
+    # Feed activities
+    await _create_activity(
+        user_id=payload.receiverId,
+        actor_id=me_id,
+        activity_type="gift_received",
+        message=f"received a {gift['name']} from {current_user['displayName']}",
+        metadata={
+            "giftId": gift["id"],
+            "giftName": gift["name"],
+            "giftIcon": gift["icon"],
+            "giftColor": gift.get("color"),
+            "price": gift["price"],
+        },
+        audience="friends",
+    )
+    await _create_activity(
+        user_id=me_id,
+        actor_id=payload.receiverId,
+        activity_type="gift_sent",
+        message=f"sent a {gift['name']} to {receiver['displayName']}",
+        metadata={
+            "giftId": gift["id"],
+            "giftName": gift["name"],
+            "giftIcon": gift["icon"],
+            "giftColor": gift.get("color"),
+            "price": gift["price"],
+            "receiverName": receiver['displayName'],
+            "receiverPhoto": receiver.get("photoUrl"),
+        },
+        audience="self",
+    )
+
     return {
         "message": f"Sent {gift['name']} to {receiver['displayName']}",
         "gift": gift,
         "remainingCoins": current_user.get("coins", 0) - gift["price"],
     }
+
+# ==================== FEED ====================
+
+@api_router.get("/feed")
+async def get_feed(
+    limit: int = 30,
+    before: Optional[str] = None,
+    current_user: dict = Depends(get_current_user),
+):
+    """Return feed items for the current user.
+    Includes: my own activities (all audiences) + friends' activities where audience='friends'.
+    Newest first. Supports cursor pagination via `before` (ISO timestamp).
+    """
+    me_id = str(current_user["_id"])
+
+    # Get friend ids
+    friendships = await db.friends.find({
+        "status": "accepted",
+        "$or": [{"senderId": me_id}, {"receiverId": me_id}],
+    }).to_list(500)
+    friend_ids = [
+        f["receiverId"] if f["senderId"] == me_id else f["senderId"]
+        for f in friendships
+    ]
+
+    query: Dict[str, Any] = {
+        "$or": [
+            {"userId": me_id},  # my own activities
+            {"userId": {"$in": friend_ids}, "audience": "friends"},
+        ],
+    }
+    if before:
+        try:
+            query["createdAt"] = {"$lt": datetime.fromisoformat(before.replace("Z", "+00:00")).replace(tzinfo=None)}
+        except Exception:
+            pass
+
+    items = await db.activities.find(query).sort("createdAt", -1).limit(min(limit, 100)).to_list(limit)
+
+    # Build subject (user) info map
+    user_ids = list({i["userId"] for i in items})
+    users_map: Dict[str, dict] = {}
+    for uid in user_ids:
+        try:
+            u = await db.users.find_one({"_id": ObjectId(uid)})
+            if u:
+                users_map[uid] = {
+                    "id": str(u["_id"]),
+                    "username": u["username"],
+                    "displayName": u["displayName"],
+                    "photoUrl": u.get("photoUrl"),
+                    "vipTier": u.get("vipTier"),
+                }
+        except Exception:
+            continue
+
+    result = []
+    for it in items:
+        subject = users_map.get(it["userId"], {})
+        result.append({
+            "id": str(it["_id"]),
+            "type": it["type"],
+            "message": it["message"],
+            "metadata": it.get("metadata", {}),
+            "audience": it.get("audience", "friends"),
+            "createdAt": it["createdAt"].isoformat() + "Z",
+            "user": subject,
+            "actor": {
+                "id": it.get("actorId"),
+                "displayName": it.get("actorName"),
+                "photoUrl": it.get("actorPhoto"),
+                "vipTier": it.get("actorVipTier"),
+            } if it.get("actorId") else None,
+            "isOwn": it["userId"] == me_id,
+        })
+    return result
+
+@api_router.get("/feed/unread-count")
+async def get_feed_unread_count(current_user: dict = Depends(get_current_user)):
+    """Number of feed items newer than user's last seen timestamp."""
+    me_id = str(current_user["_id"])
+    last_seen = current_user.get("feedLastSeenAt") or datetime.utcfromtimestamp(0)
+
+    friendships = await db.friends.find({
+        "status": "accepted",
+        "$or": [{"senderId": me_id}, {"receiverId": me_id}],
+    }).to_list(500)
+    friend_ids = [
+        f["receiverId"] if f["senderId"] == me_id else f["senderId"]
+        for f in friendships
+    ]
+
+    count = await db.activities.count_documents({
+        "$or": [
+            {"userId": me_id},
+            {"userId": {"$in": friend_ids}, "audience": "friends"},
+        ],
+        "createdAt": {"$gt": last_seen},
+        "actorId": {"$ne": me_id},  # don't count actions I initiated
+    })
+    return {"count": count}
+
+@api_router.post("/feed/mark-seen")
+async def mark_feed_seen(current_user: dict = Depends(get_current_user)):
+    """Mark the current time as the feed last-seen for the user."""
+    await db.users.update_one(
+        {"_id": current_user["_id"]},
+        {"$set": {"feedLastSeenAt": datetime.utcnow()}},
+    )
+    return {"message": "ok"}
 
 @api_router.get("/avatars/predefined")
 async def get_predefined_avatars():
@@ -1053,6 +1237,14 @@ async def claim_daily_reward(current_user: dict = Depends(get_current_user)):
         raise HTTPException(status_code=400, detail="Daily reward already claimed")
     
     await add_coins(user_id, 50, "daily_login", "Daily login bonus")
+    await _create_activity(
+        user_id=user_id,
+        actor_id=None,
+        activity_type="coins_received",
+        message="claimed 50 daily login coins",
+        metadata={"amount": 50, "source": "daily_login"},
+        audience="self",
+    )
     return {"message": "Daily reward claimed", "coins": 50}
 
 # ==================== FRIENDS ====================
@@ -1089,7 +1281,21 @@ async def send_friend_request(friend_req: FriendRequest, current_user: dict = De
         "createdAt": datetime.utcnow(),
         "readStatus": False
     })
-    
+
+    # Feed activity for the receiver (self-only — they should see it in their own feed)
+    await _create_activity(
+        user_id=receiver_id,
+        actor_id=sender_id,
+        activity_type="friend_request_received",
+        message=f"{current_user['displayName']} sent you a friend request",
+        metadata={
+            "senderId": sender_id,
+            "senderName": current_user['displayName'],
+            "senderPhoto": current_user.get("photoUrl"),
+        },
+        audience="self",
+    )
+
     return {"message": "Friend request sent"}
 
 @api_router.post("/friends/accept/{request_id}")
@@ -1115,7 +1321,35 @@ async def accept_friend_request(request_id: str, current_user: dict = Depends(ge
         "createdAt": datetime.utcnow(),
         "readStatus": False
     })
-    
+
+    # Feed activity for both sides (visible to friends → social)
+    sender_user = await db.users.find_one({"_id": ObjectId(friend_req["senderId"])})
+    sender_name = sender_user.get("displayName", "Someone") if sender_user else "Someone"
+    await _create_activity(
+        user_id=friend_req["senderId"],
+        actor_id=str(current_user["_id"]),
+        activity_type="friend_added",
+        message=f"became friends with {current_user['displayName']}",
+        metadata={
+            "friendId": str(current_user["_id"]),
+            "friendName": current_user['displayName'],
+            "friendPhoto": current_user.get("photoUrl"),
+        },
+        audience="friends",
+    )
+    await _create_activity(
+        user_id=str(current_user["_id"]),
+        actor_id=friend_req["senderId"],
+        activity_type="friend_added",
+        message=f"became friends with {sender_name}",
+        metadata={
+            "friendId": friend_req["senderId"],
+            "friendName": sender_name,
+            "friendPhoto": sender_user.get("photoUrl") if sender_user else None,
+        },
+        audience="friends",
+    )
+
     return {"message": "Friend request accepted"}
 
 @api_router.get("/friends/list")
@@ -1778,7 +2012,23 @@ async def purchase_vip(req: VipPurchase, current_user: dict = Depends(get_curren
         "createdAt": datetime.utcnow(),
         "readStatus": False
     })
-    
+
+    # Feed activity (public to friends — VIP is a flex)
+    activity_type = "vip_purchased" if req.tier == "pro" else "elite_purchased" if req.tier == "elite" else "vip_purchased"
+    await _create_activity(
+        user_id=user_id,
+        actor_id=None,
+        activity_type=activity_type,
+        message=f"unlocked {tier_config['name']}",
+        metadata={
+            "tier": req.tier,
+            "tierName": tier_config["name"],
+            "bonusCoins": tier_config["bonusCoins"],
+            "vouchers": tier_config["vouchers"],
+        },
+        audience="friends",
+    )
+
     updated = await db.users.find_one({"_id": current_user["_id"]})
     return _build_user_profile(updated)
 
