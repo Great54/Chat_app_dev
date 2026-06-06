@@ -25,6 +25,7 @@ import DraggableMember from '@/src/components/DraggableMember';
 import PrivateMessagesModal from '@/src/components/PrivateMessagesModal';
 import JumpingHostIcon from '@/src/components/JumpingHostIcon';
 import { COLORS, SPACING } from '@/src/constants/theme';
+import { useProfilePopup } from '@/src/contexts/ProfilePopupContext';
 
 interface Message {
   id: string;
@@ -57,6 +58,7 @@ interface Room {
 export default function RoomScreen() {
   const { id } = useLocalSearchParams();
   const { user, refreshUser } = useAuth();
+  const { openProfile } = useProfilePopup();
   const [room, setRoom] = useState<Room | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [members, setMembers] = useState<Member[]>([]);
@@ -157,16 +159,25 @@ export default function RoomScreen() {
     return (
       <View style={[styles.messageContainer, isOwnMessage && styles.ownMessage]}>
         {!isOwnMessage && (
-          <View style={styles.avatar}>
+          <TouchableOpacity
+            style={styles.avatar}
+            onPress={() => openProfile(item.senderId)}
+            activeOpacity={0.7}
+            testID={`msg-avatar-${item.senderId}`}
+          >
             {item.senderPhoto ? (
               <Image source={{ uri: item.senderPhoto }} style={styles.avatarImg} />
             ) : (
               <Ionicons name="person" size={16} color={COLORS.textSecondary} />
             )}
-          </View>
+          </TouchableOpacity>
         )}
         <View style={[styles.messageBubble, isOwnMessage && styles.ownMessageBubble]}>
-          {!isOwnMessage && <Text style={styles.senderName}>{item.senderName}</Text>}
+          {!isOwnMessage && (
+            <TouchableOpacity onPress={() => openProfile(item.senderId)} activeOpacity={0.7}>
+              <Text style={styles.senderName}>{item.senderName}</Text>
+            </TouchableOpacity>
+          )}
           <Text style={styles.messageText}>{item.messageText}</Text>
         </View>
       </View>
@@ -191,11 +202,10 @@ export default function RoomScreen() {
     setCurrentUserTarget({ x: x - 24, y: y - 24 });
   };
 
-  // Tap on another user's avatar → open private chat with them
+  // Tap on another user's avatar → open profile popup
   const handleAvatarPress = (member: Member) => {
     if (member.userId === user?.id) return;
-    setDmInitialUserId(member.userId);
-    setMessagesModalVisible(true);
+    openProfile(member.userId);
   };
 
   const handleCloseDmModal = () => {

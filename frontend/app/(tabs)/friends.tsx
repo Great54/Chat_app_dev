@@ -16,6 +16,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from 'expo-router';
 import api from '@/src/api/client';
 import { COLORS, SPACING } from '@/src/constants/theme';
+import { useProfilePopup } from '@/src/contexts/ProfilePopupContext';
 
 interface Friend {
   id: string;
@@ -69,6 +70,7 @@ const showConfirm = (title: string, message: string, onConfirm: () => void) => {
 };
 
 export default function FriendsScreen() {
+  const { openProfile } = useProfilePopup();
   const [activeTab, setActiveTab] = useState<TabType>('friends');
   const [friends, setFriends] = useState<Friend[]>([]);
   const [pendingRequests, setPendingRequests] = useState<FriendRequest[]>([]);
@@ -182,7 +184,13 @@ export default function FriendsScreen() {
         </View>
       ) : (
         friends.map((friend) => (
-          <View key={friend.id} style={styles.userCard} testID={`friend-${friend.id}`}>
+          <TouchableOpacity
+            key={friend.id}
+            style={styles.userCard}
+            testID={`friend-${friend.id}`}
+            activeOpacity={0.7}
+            onPress={() => openProfile(friend.id)}
+          >
             {renderAvatar(friend.photoUrl)}
             <View style={styles.userInfo}>
               <Text style={styles.displayName}>{friend.displayName}</Text>
@@ -203,7 +211,7 @@ export default function FriendsScreen() {
                 <Ionicons name="person-remove" size={18} color={COLORS.error} />
               </TouchableOpacity>
             </View>
-          </View>
+          </TouchableOpacity>
         ))
       )}
     </>
@@ -307,7 +315,13 @@ export default function FriendsScreen() {
         </View>
       ) : (
         searchResults.map((user) => (
-          <View key={user.id} style={styles.userCard} testID={`search-${user.id}`}>
+          <TouchableOpacity
+            key={user.id}
+            style={styles.userCard}
+            testID={`search-${user.id}`}
+            activeOpacity={0.7}
+            onPress={() => openProfile(user.id)}
+          >
             {renderAvatar(user.photoUrl)}
             <View style={styles.userInfo}>
               <Text style={styles.displayName}>{user.displayName}</Text>
@@ -338,7 +352,7 @@ export default function FriendsScreen() {
                 <Ionicons name="checkmark" size={14} color={COLORS.text} />
               </View>
             )}
-          </View>
+          </TouchableOpacity>
         ))
       )}
     </>

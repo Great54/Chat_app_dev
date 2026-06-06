@@ -5,6 +5,7 @@ import { useEffect } from "react";
 
 import { useIconFonts } from "@/src/hooks/use-icon-fonts";
 import { AuthProvider } from "@/src/contexts/AuthContext";
+import { ProfilePopupProvider } from "@/src/contexts/ProfilePopupContext";
 
 // Keep the native splash visible from cold start until icon fonts register.
 // Required because @expo/vector-icons' componentDidMount fallback fires
@@ -27,7 +28,9 @@ export default function RootLayout() {
 
   return (
     <AuthProvider>
-      <Stack screenOptions={{ headerShown: false }} />
+      <ProfilePopupProvider>
+        <Stack screenOptions={{ headerShown: false }} />
+      </ProfilePopupProvider>
     </AuthProvider>
   );
 }

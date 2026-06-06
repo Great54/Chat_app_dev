@@ -205,6 +205,27 @@ class Message(BaseModel):
 class FriendRequest(BaseModel):
     receiverId: str
 
+class ReportPayload(BaseModel):
+    reason: str
+    details: Optional[str] = ""
+
+class GiftSendPayload(BaseModel):
+    receiverId: str
+    giftId: str
+    message: Optional[str] = ""
+
+# Static catalog of gifts (id, name, icon, price in coins)
+GIFTS_CATALOG = [
+    {"id": "rose",        "name": "Rose",         "icon": "rose",          "price": 10,  "color": "#ec4899"},
+    {"id": "heart",       "name": "Heart",        "icon": "heart",         "price": 25,  "color": "#ef4444"},
+    {"id": "coffee",      "name": "Coffee",       "icon": "cafe",          "price": 50,  "color": "#a16207"},
+    {"id": "cake",        "name": "Birthday Cake","icon": "ice-cream",     "price": 100, "color": "#f59e0b"},
+    {"id": "diamond",     "name": "Diamond",      "icon": "diamond",       "price": 250, "color": "#06b6d4"},
+    {"id": "crown",       "name": "Royal Crown",  "icon": "trophy",        "price": 500, "color": "#fbbf24"},
+    {"id": "rocket",      "name": "Rocket",       "icon": "rocket",        "price": 750, "color": "#8b5cf6"},
+    {"id": "sportscar",   "name": "Sports Car",   "icon": "car-sport",     "price": 1500,"color": "#ef4444"},
+]
+
 class PredefinedAvatar(BaseModel):
     id: str
     avatarUrl: str
@@ -388,6 +409,228 @@ async def get_user(user_id: str):
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     return _build_user_profile(user)
+
+@api_router.get("/users/{user_id}/profile-card")
+async def get_profile_card(user_id: str, current_user: dict = Depends(get_current_user)):
+    """Rich profile data for the profile popup / profile page.
+    Returns user info + friend status + friend count + isBlocked + isSelf."""
+    if not ObjectId.is_valid(user_id):
+        raise HTTPException(status_code=400, detail="Invalid user id")
+    user = await db.users.find_one({"_id": ObjectId(user_id)})
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    me_id = str(current_user["_id"])
+    target_id = str(user["_id"])
+    is_self = me_id == target_id
+
+    # Friend count for target
+    friend_count = await db.friends.count_documents({
+        "status": "accepted",
+        "$or": [{"senderId": target_id}, {"receiverId": target_id}],
+    })
+
+    # Friendship status with current user
+    friend_status = "none"
+    friend_request_id: Optional[str] = None
+    if not is_self:
+        friendship = await db.friends.find_one({
+            "$or": [
+                {"senderId": me_id, "receiverId": target_id},
+                {"senderId": target_id, "receiverId": me_id},
+            ]
+        })
+        if friendship:
+            friend_request_id = str(friendship["_id"])
+            if friendship["status"] == "accepted":
+                friend_status = "friends"
+            elif friendship["senderId"] == me_id:
+                friend_status = "sent"
+            else:
+                friend_status = "received"
+
+    # Block status — is the current user blocking target?
+    is_blocked = await db.user_blocks.find_one({
+        "blockerId": me_id,
+        "blockedId": target_id,
+    }) is not None
+
+    # Badges (computed from vipTier + future achievements)
+    badges = []
+    vip = user.get("vipTier")
+    if vip == "elite":
+        badges.append({"id": "elite", "label": "ELITE", "color": "#FF6B9D", "icon": "diamond"})
+    elif vip == "pro":
+        badges.append({"id": "pro", "label": "PRO", "color": "#FFD700", "icon": "star"})
+
+    return {
+        "id": target_id,
+        "username": user["username"],
+        "displayName": user["displayName"],
+        "photoUrl": user.get("photoUrl"),
+        "bannerUrl": user.get("bannerUrl"),
+        "bio": user.get("bio", ""),
+        "vipTier": vip,
+        "onlineStatus": user.get("onlineStatus", False),
+        "lastSeen": user.get("lastSeen"),
+        "createdAt": user.get("createdAt"),
+        "coins": user.get("coins", 0),
+        "level": user.get("level", 0),
+        "badges": badges,
+        "friendCount": friend_count,
+        "friendStatus": friend_status,
+        "friendRequestId": friend_request_id,
+        "isBlocked": is_blocked,
+        "isSelf": is_self,
+    }
+
+@api_router.get("/users/{user_id}/friends")
+async def get_user_friends(user_id: str, current_user: dict = Depends(get_current_user), limit: int = 30):
+    """List of accepted friends of a given user (used by profile page Friends tab)."""
+    if not ObjectId.is_valid(user_id):
+        raise HTTPException(status_code=400, detail="Invalid user id")
+
+    friendships = await db.friends.find({
+        "status": "accepted",
+        "$or": [{"senderId": user_id}, {"receiverId": user_id}],
+    }).to_list(limit)
+
+    friend_ids = []
+    for f in friendships:
+        friend_ids.append(f["receiverId"] if f["senderId"] == user_id else f["senderId"])
+
+    result = []
+    for fid in friend_ids:
+        try:
+            u = await db.users.find_one({"_id": ObjectId(fid)})
+        except Exception:
+            continue
+        if not u:
+            continue
+        result.append({
+            "id": str(u["_id"]),
+            "username": u["username"],
+            "displayName": u["displayName"],
+            "photoUrl": u.get("photoUrl"),
+            "vipTier": u.get("vipTier"),
+            "onlineStatus": u.get("onlineStatus", False),
+        })
+    return result
+
+# ==================== BLOCK / REPORT ====================
+
+@api_router.post("/users/{user_id}/block")
+async def block_user(user_id: str, current_user: dict = Depends(get_current_user)):
+    me_id = str(current_user["_id"])
+    if me_id == user_id:
+        raise HTTPException(status_code=400, detail="You cannot block yourself")
+    target = await db.users.find_one({"_id": ObjectId(user_id)})
+    if not target:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    await db.user_blocks.update_one(
+        {"blockerId": me_id, "blockedId": user_id},
+        {"$set": {
+            "blockerId": me_id,
+            "blockedId": user_id,
+            "createdAt": datetime.utcnow(),
+        }},
+        upsert=True,
+    )
+    # Also remove any existing friendship
+    await db.friends.delete_many({
+        "$or": [
+            {"senderId": me_id, "receiverId": user_id},
+            {"senderId": user_id, "receiverId": me_id},
+        ]
+    })
+    return {"message": "User blocked", "isBlocked": True}
+
+@api_router.delete("/users/{user_id}/block")
+async def unblock_user(user_id: str, current_user: dict = Depends(get_current_user)):
+    me_id = str(current_user["_id"])
+    result = await db.user_blocks.delete_one({"blockerId": me_id, "blockedId": user_id})
+    return {"message": "User unblocked", "isBlocked": False, "removed": result.deleted_count}
+
+@api_router.post("/users/{user_id}/report")
+async def report_user(user_id: str, payload: ReportPayload, current_user: dict = Depends(get_current_user)):
+    me_id = str(current_user["_id"])
+    if me_id == user_id:
+        raise HTTPException(status_code=400, detail="You cannot report yourself")
+    target = await db.users.find_one({"_id": ObjectId(user_id)})
+    if not target:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    await db.user_reports.insert_one({
+        "reporterId": me_id,
+        "reportedId": user_id,
+        "reason": payload.reason,
+        "details": payload.details or "",
+        "createdAt": datetime.utcnow(),
+        "status": "open",
+    })
+    return {"message": "Report submitted. Our team will review it shortly."}
+
+# ==================== GIFTS ====================
+
+@api_router.get("/gifts/catalog")
+async def get_gift_catalog():
+    return GIFTS_CATALOG
+
+@api_router.post("/gifts/send")
+async def send_gift(payload: GiftSendPayload, current_user: dict = Depends(get_current_user)):
+    me_id = str(current_user["_id"])
+    if me_id == payload.receiverId:
+        raise HTTPException(status_code=400, detail="You cannot send a gift to yourself")
+
+    gift = next((g for g in GIFTS_CATALOG if g["id"] == payload.giftId), None)
+    if not gift:
+        raise HTTPException(status_code=400, detail="Invalid gift")
+
+    receiver = await db.users.find_one({"_id": ObjectId(payload.receiverId)})
+    if not receiver:
+        raise HTTPException(status_code=404, detail="Recipient not found")
+
+    if current_user.get("coins", 0) < gift["price"]:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Need {gift['price']} coins (you have {current_user.get('coins', 0)})",
+        )
+
+    # Deduct coins from sender
+    await add_coins(me_id, -gift["price"], "gift_sent", f"Sent {gift['name']} to {receiver['displayName']}")
+
+    # Log gift
+    await db.gifts.insert_one({
+        "senderId": me_id,
+        "senderName": current_user["displayName"],
+        "senderPhoto": current_user.get("photoUrl"),
+        "receiverId": payload.receiverId,
+        "giftId": gift["id"],
+        "giftName": gift["name"],
+        "giftIcon": gift["icon"],
+        "giftColor": gift.get("color"),
+        "price": gift["price"],
+        "message": payload.message or "",
+        "createdAt": datetime.utcnow(),
+    })
+
+    # Notify receiver
+    await db.notifications.insert_one({
+        "userId": payload.receiverId,
+        "title": f"🎁 You received a {gift['name']}!",
+        "body": f"{current_user['displayName']} sent you a {gift['name']}",
+        "type": "gift",
+        "relatedUserId": me_id,
+        "createdAt": datetime.utcnow(),
+        "readStatus": False,
+    })
+
+    return {
+        "message": f"Sent {gift['name']} to {receiver['displayName']}",
+        "gift": gift,
+        "remainingCoins": current_user.get("coins", 0) - gift["price"],
+    }
 
 @api_router.get("/avatars/predefined")
 async def get_predefined_avatars():

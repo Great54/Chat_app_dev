@@ -333,6 +333,66 @@ backend:
         agent: "testing"
         comment: "✅ Games correctly check coin balance before allowing play. Returns 400 error with 'Not enough coins' when user has insufficient coins."
 
+  - task: "Profile Card / Popup Endpoint"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Added GET /api/users/{id}/profile-card returning rich profile (user info, friend count, friend status, isBlocked, badges from vipTier, isSelf). Also added GET /api/users/{id}/friends listing accepted friends of a user."
+      - working: true
+        agent: "testing"
+        comment: "✅ Profile card endpoints fully functional. GET /api/users/{id}/profile-card correctly returns all fields (id, username, displayName, photoUrl, bio, vipTier, onlineStatus, friendCount, friendStatus, friendRequestId, isBlocked, isSelf, badges). Tested all friendship states: 'none' (initial), 'sent' (after request), 'received' (for receiver), 'friends' (after acceptance). isSelf correctly identifies own profile. GET /api/users/{id}/friends returns list of accepted friends with correct structure."
+
+  - task: "Block / Unblock User"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Added POST /api/users/{id}/block and DELETE /api/users/{id}/block. Blocking also removes existing friendship. Stored in user_blocks collection."
+      - working: true
+        agent: "testing"
+        comment: "✅ Block/unblock functionality working perfectly. POST /api/users/{id}/block successfully blocks user and returns isBlocked=true. Verified that blocking removes existing friendship (friendStatus changes from 'friends' to 'none'). Profile card correctly reflects isBlocked=true after blocking. DELETE /api/users/{id}/block successfully unblocks and returns isBlocked=false. Profile card correctly shows isBlocked=false after unblocking."
+
+  - task: "Report User"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "medium"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Added POST /api/users/{id}/report. Accepts {reason, details?}. Stored in user_reports collection with status=open."
+      - working: true
+        agent: "testing"
+        comment: "✅ Report user functionality working correctly. POST /api/users/{id}/report successfully accepts reports with reason and optional details. Returns confirmation message 'Report submitted. Our team will review it shortly.' Correctly rejects self-reporting with 400 error and message 'You cannot report yourself'. Report data stored in user_reports collection with status=open."
+
+  - task: "Gifts Catalog + Send Gift"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Added GET /api/gifts/catalog (static list) and POST /api/gifts/send (deducts coins from sender, logs gift in gifts collection, creates notification for receiver)."
+      - working: true
+        agent: "testing"
+        comment: "✅ Gifts system fully functional. GET /api/gifts/catalog returns 8 gifts (Rose, Heart, Coffee, Birthday Cake, Diamond, Royal Crown, Rocket, Sports Car) with correct structure (id, name, icon, price, color). POST /api/gifts/send successfully sends gifts: deducts coins from sender (tested with Rose -10 coins), creates gift record in gifts collection, and generates notification for receiver. Correctly validates insufficient coins (tested with Diamond 250 coins when user had 90) returning 400 error with message 'Need 250 coins (you have 90)'. Correctly rejects sending gifts to self with 400 error 'You cannot send a gift to yourself'."
+
 frontend:
   - task: "Frontend UI"
     implemented: true
@@ -349,9 +409,9 @@ frontend:
 metadata:
   created_by: "testing_agent"
   version: "1.0"
-  test_sequence: 1
+  test_sequence: 2
   run_ui: false
-  last_updated: "2025-01-XX"
+  last_updated: "2026-06-06"
 
 test_plan:
   current_focus: []
@@ -362,3 +422,7 @@ test_plan:
 agent_communication:
   - agent: "testing"
     message: "✅ COMPREHENSIVE BACKEND TESTING COMPLETE - ALL 18 TESTS PASSED (100% success rate). All backend APIs are fully functional and working as expected. Auth flow, room management, messaging, coins/XP system, games, leaderboards, and error handling all verified. Backend is production-ready. Test file created at /app/backend_test.py for future regression testing."
+  - agent: "main"
+    message: "Added 5 new backend endpoints for the profile popup feature: GET /api/users/{id}/profile-card, GET /api/users/{id}/friends, POST/DELETE /api/users/{id}/block, POST /api/users/{id}/report, GET /api/gifts/catalog, POST /api/gifts/send. Need testing of these new endpoints — flows: profile-card with isSelf vs isBlocked vs friendStatus variations, block flow removes friendship, gift send deducts coins & creates notification."
+  - agent: "testing"
+    message: "✅ PROFILE POPUP FEATURE TESTING COMPLETE - ALL 13 TESTS PASSED (100% success rate). All new endpoints working perfectly: (1) Profile card endpoint returns rich profile data with correct friendStatus transitions (none→sent→received→friends), isSelf detection, and isBlocked status. (2) Friends list endpoint returns accepted friends correctly. (3) Block/unblock functionality working with friendship removal. (4) Report user working with self-report validation. (5) Gifts catalog returns 8 gifts. (6) Gift sending deducts coins, creates notifications, validates insufficient funds and self-gifting. Test credentials saved to /app/memory/test_credentials.md. Test file: /app/test_profile_popup.py"
