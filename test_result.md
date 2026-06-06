@@ -408,6 +408,78 @@ backend:
         agent: "testing"
         comment: "✅ FEED SYSTEM FULLY FUNCTIONAL - 23/26 tests passed (88.5% success rate). All three feed endpoints working correctly: (1) GET /api/feed returns feed items with correct structure (id, type, message, metadata, audience, createdAt, user, actor, isOwn), supports pagination with before parameter, sorted newest first. (2) GET /api/feed/unread-count correctly counts unread activities excluding user's own actions. (3) POST /api/feed/mark-seen updates feedLastSeenAt and resets unread count to 0. Activity creation hooks verified: gift_sent (audience=self) and gift_received (audience=friends) both created on gift send, friend_request_received (audience=self) created on friend request, friend_added (audience=friends) created for both users on friend accept. Feed visibility rules working correctly: users see their own activities (all audiences) + friends' activities where audience=friends. Auth protection working on all endpoints (403 without token). Test file: /app/test_feed_system.py. Minor: VIP purchase activity not tested due to insufficient test coins (not a bug), friend request tests show 400 when users already friends (expected behavior)."
 
+  - task: "Board Posts - Create Post"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ POST /api/rooms/{room_id}/posts working perfectly. Successfully creates posts with text (required, max 2000 chars) and optional imageBase64 (max 5MB). Returns complete post object with id, roomId, authorId, authorUsername, authorDisplayName, authorPhotoUrl, authorVipTier, text, imageBase64, likesCount, commentsCount, likedByMe, createdAt. Validation working: rejects empty text (400), text exceeding 2000 chars (400), invalid room_id (404). Auth protection working (403 without token)."
+
+  - task: "Board Posts - Get Posts"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ GET /api/rooms/{room_id}/posts working perfectly. Returns array of posts for a room, sorted newest first. Supports pagination with 'before' parameter (post_id) and 'limit' parameter (default 50). Each post includes all fields with correct structure. likedByMe field correctly reflects current user's like status. Auth protection working."
+
+  - task: "Board Posts - Like/Unlike Post"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ POST /api/posts/{post_id}/like working perfectly. Toggles like/unlike on a post. Returns {liked: boolean, likesCount: number}. Like count increments/decrements correctly. likedByMe field in post responses correctly reflects each user's like status (tested with 2 users). Validation working: returns 404 for invalid post_id. Auth protection working."
+
+  - task: "Board Posts - Add Comment"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ POST /api/posts/{post_id}/comments working perfectly. Adds comment to a post. Accepts text (required, max 500 chars). Returns comment object with id, postId, authorId, authorUsername, authorDisplayName, authorPhotoUrl, authorVipTier, text, createdAt. Correctly increments commentsCount on the post. Validation working: rejects empty text (400), text exceeding 500 chars (400), invalid post_id (404). Auth protection working."
+
+  - task: "Board Posts - Get Comments"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ GET /api/posts/{post_id}/comments working perfectly. Returns array of comments for a post, sorted oldest first (chronological order). Supports limit parameter (default 50). Each comment includes all required fields with correct structure. Validation working: returns 404 for invalid post_id. Auth protection working."
+
+  - task: "Board Posts - Get Single Post"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ GET /api/posts/{post_id} working perfectly. Returns single post by ID with complete structure including likedByMe field for current user. Returns 404 for invalid post_id. Auth protection working."
+
 frontend:
   - task: "Frontend UI"
     implemented: true
@@ -424,7 +496,7 @@ frontend:
 metadata:
   created_by: "testing_agent"
   version: "1.0"
-  test_sequence: 2
+  test_sequence: 3
   run_ui: false
   last_updated: "2026-06-06"
 
@@ -445,3 +517,5 @@ agent_communication:
     message: "Added Feed System with 3 endpoints and activity creation hooks. Need comprehensive testing of feed visibility rules, pagination, unread count, and all activity types."
   - agent: "testing"
     message: "✅ FEED SYSTEM TESTING COMPLETE - 23/26 tests passed (88.5%). All core functionality working: GET /api/feed returns correct feed items with proper structure and visibility rules (users see own activities + friends' public activities), pagination with before parameter works, sorting newest first verified. GET /api/feed/unread-count correctly counts unread items excluding user's own actions. POST /api/feed/mark-seen resets unread count. Activity hooks verified: gift_sent/gift_received (both created with correct audiences), friend_request_received, friend_added (created for both users). Auth protection working on all endpoints. Test file: /app/test_feed_system.py. All critical feed functionality is production-ready."
+  - agent: "testing"
+    message: "✅ BOARD POSTS API TESTING COMPLETE - ALL 25 TESTS PASSED (100% success rate). All Board Posts endpoints fully functional: (1) POST /api/rooms/{room_id}/posts creates posts with text and optional images, validates text length and image size. (2) GET /api/rooms/{room_id}/posts retrieves posts with pagination support. (3) GET /api/posts/{post_id} returns single post. (4) POST /api/posts/{post_id}/like toggles like/unlike with correct count updates and likedByMe field per user. (5) POST /api/posts/{post_id}/comments adds comments with validation. (6) GET /api/posts/{post_id}/comments retrieves comments chronologically. All error cases tested: empty/long text validation (400), invalid IDs (404), unauthorized access (403). Comment count increments correctly on posts. Test file: /app/test_board_posts.py. Test credentials updated in /app/memory/test_credentials.md. Board Posts feature is production-ready."

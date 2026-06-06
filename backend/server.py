@@ -231,6 +231,41 @@ class PredefinedAvatar(BaseModel):
     avatarUrl: str
     category: str
 
+# ==================== BOARD POSTS MODELS ====================
+
+class BoardPostCreate(BaseModel):
+    text: str
+    imageBase64: Optional[str] = None
+
+class BoardCommentCreate(BaseModel):
+    text: str
+
+class BoardPostResponse(BaseModel):
+    id: str
+    roomId: str
+    authorId: str
+    authorUsername: str
+    authorDisplayName: str
+    authorPhotoUrl: Optional[str] = None
+    authorVipTier: Optional[str] = None
+    text: str
+    imageBase64: Optional[str] = None
+    likesCount: int = 0
+    commentsCount: int = 0
+    likedByMe: bool = False
+    createdAt: datetime
+
+class BoardCommentResponse(BaseModel):
+    id: str
+    postId: str
+    authorId: str
+    authorUsername: str
+    authorDisplayName: str
+    authorPhotoUrl: Optional[str] = None
+    authorVipTier: Optional[str] = None
+    text: str
+    createdAt: datetime
+
 def _build_user_profile(user: dict) -> UserProfile:
     return UserProfile(
         id=str(user["_id"]),
@@ -277,8 +312,11 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
     user = await db.users.find_one({"_id": ObjectId(user_id)})
     if user is None:
         raise HTTPException(status_code=401, detail="User not found")
+    # Serialize ObjectId fields
     user["_id"] = str(user["_id"])
-    return user
+    if user.get("currentRoomId") and ObjectId.is_valid(str(user.get("currentRoomId"))):
+        user["currentRoomId"] = str(user["currentRoomId"])
+    return dict(user)
 
 def calculate_level(xp: int) -> int:
     return xp // 100
@@ -1959,6 +1997,259 @@ async def list_game_types():
         {"id": key, **value}
         for key, value in GAME_TYPES.items()
     ]
+
+# ==================== BOARD POSTS ====================
+
+def _serialize_post(post: dict, current_user_id: str) -> dict:
+    """Serialize a board post for API response"""
+    likes = post.get("likes", [])
+    return {
+        "id": str(post["_id"]),
+        "roomId": post["roomId"],
+        "authorId": post["authorId"],
+        "authorUsername": post.get("authorUsername", ""),
+        "authorDisplayName": post.get("authorDisplayName", ""),
+        "authorPhotoUrl": post.get("authorPhotoUrl"),
+        "authorVipTier": post.get("authorVipTier"),
+        "text": post["text"],
+        "imageBase64": post.get("imageBase64"),
+        "likesCount": len(likes),
+        "commentsCount": post.get("commentsCount", 0),
+        "likedByMe": current_user_id in likes,
+        "createdAt": post["createdAt"].isoformat() if isinstance(post["createdAt"], datetime) else post["createdAt"]
+    }
+
+def _serialize_comment(comment: dict) -> dict:
+    """Serialize a board comment for API response"""
+    return {
+        "id": str(comment["_id"]),
+        "postId": comment["postId"],
+        "authorId": comment["authorId"],
+        "authorUsername": comment.get("authorUsername", ""),
+        "authorDisplayName": comment.get("authorDisplayName", ""),
+        "authorPhotoUrl": comment.get("authorPhotoUrl"),
+        "authorVipTier": comment.get("authorVipTier"),
+        "text": comment["text"],
+        "createdAt": comment["createdAt"].isoformat() if isinstance(comment["createdAt"], datetime) else comment["createdAt"]
+    }
+
+@api_router.get("/rooms/{room_id}/posts")
+async def get_room_posts(
+    room_id: str,
+    limit: int = 50,
+    before: Optional[str] = None,
+    current_user: dict = Depends(get_current_user)
+):
+    """Get all posts for a specific room (Board feature)"""
+    user_id = str(current_user["_id"])
+    
+    # Verify room exists
+    room = await db.rooms.find_one({"_id": ObjectId(room_id)})
+    if not room:
+        raise HTTPException(status_code=404, detail="Room not found")
+    
+    # Build query
+    query = {"roomId": room_id}
+    if before:
+        try:
+            before_post = await db.board_posts.find_one({"_id": ObjectId(before)})
+            if before_post:
+                query["createdAt"] = {"$lt": before_post["createdAt"]}
+        except:
+            pass
+    
+    # Fetch posts sorted by newest first
+    posts = await db.board_posts.find(query).sort("createdAt", -1).limit(limit).to_list(limit)
+    
+    return [_serialize_post(post, user_id) for post in posts]
+
+@api_router.post("/rooms/{room_id}/posts")
+async def create_room_post(
+    room_id: str,
+    post_data: BoardPostCreate,
+    current_user: dict = Depends(get_current_user)
+):
+    """Create a new post in a room's Board"""
+    user_id = str(current_user["_id"])
+    
+    # Verify room exists
+    room = await db.rooms.find_one({"_id": ObjectId(room_id)})
+    if not room:
+        raise HTTPException(status_code=404, detail="Room not found")
+    
+    # Validate text content
+    if not post_data.text or not post_data.text.strip():
+        raise HTTPException(status_code=400, detail="Post text is required")
+    
+    if len(post_data.text) > 2000:
+        raise HTTPException(status_code=400, detail="Post text cannot exceed 2000 characters")
+    
+    # Validate image size if provided (max 5MB base64)
+    if post_data.imageBase64 and len(post_data.imageBase64) > 7_000_000:
+        raise HTTPException(status_code=400, detail="Image too large (max 5MB)")
+    
+    # Create post
+    post = {
+        "roomId": room_id,
+        "authorId": user_id,
+        "authorUsername": current_user.get("username", ""),
+        "authorDisplayName": current_user.get("displayName", ""),
+        "authorPhotoUrl": current_user.get("photoUrl"),
+        "authorVipTier": current_user.get("vipTier"),
+        "text": post_data.text.strip(),
+        "imageBase64": post_data.imageBase64,
+        "likes": [],
+        "commentsCount": 0,
+        "createdAt": datetime.utcnow()
+    }
+    
+    result = await db.board_posts.insert_one(post)
+    post["_id"] = result.inserted_id
+    
+    return _serialize_post(post, user_id)
+
+@api_router.get("/posts/{post_id}")
+async def get_post(post_id: str, current_user: dict = Depends(get_current_user)):
+    """Get a single post by ID"""
+    user_id = str(current_user["_id"])
+    
+    post = await db.board_posts.find_one({"_id": ObjectId(post_id)})
+    if not post:
+        raise HTTPException(status_code=404, detail="Post not found")
+    
+    return _serialize_post(post, user_id)
+
+@api_router.delete("/posts/{post_id}")
+async def delete_post(post_id: str, current_user: dict = Depends(get_current_user)):
+    """Delete a post (only by author)"""
+    user_id = str(current_user["_id"])
+    
+    post = await db.board_posts.find_one({"_id": ObjectId(post_id)})
+    if not post:
+        raise HTTPException(status_code=404, detail="Post not found")
+    
+    if post["authorId"] != user_id:
+        raise HTTPException(status_code=403, detail="You can only delete your own posts")
+    
+    # Delete all comments for this post
+    await db.board_comments.delete_many({"postId": post_id})
+    
+    # Delete the post
+    await db.board_posts.delete_one({"_id": ObjectId(post_id)})
+    
+    return {"message": "Post deleted successfully"}
+
+@api_router.post("/posts/{post_id}/like")
+async def toggle_like_post(post_id: str, current_user: dict = Depends(get_current_user)):
+    """Toggle like on a post"""
+    user_id = str(current_user["_id"])
+    
+    post = await db.board_posts.find_one({"_id": ObjectId(post_id)})
+    if not post:
+        raise HTTPException(status_code=404, detail="Post not found")
+    
+    likes = post.get("likes", [])
+    if user_id in likes:
+        # Unlike
+        await db.board_posts.update_one(
+            {"_id": ObjectId(post_id)},
+            {"$pull": {"likes": user_id}}
+        )
+        liked = False
+    else:
+        # Like
+        await db.board_posts.update_one(
+            {"_id": ObjectId(post_id)},
+            {"$addToSet": {"likes": user_id}}
+        )
+        liked = True
+    
+    # Get updated post
+    updated_post = await db.board_posts.find_one({"_id": ObjectId(post_id)})
+    
+    return {
+        "liked": liked,
+        "likesCount": len(updated_post.get("likes", []))
+    }
+
+@api_router.get("/posts/{post_id}/comments")
+async def get_post_comments(
+    post_id: str,
+    limit: int = 50,
+    current_user: dict = Depends(get_current_user)
+):
+    """Get all comments for a post"""
+    post = await db.board_posts.find_one({"_id": ObjectId(post_id)})
+    if not post:
+        raise HTTPException(status_code=404, detail="Post not found")
+    
+    comments = await db.board_comments.find({"postId": post_id}).sort("createdAt", 1).limit(limit).to_list(limit)
+    
+    return [_serialize_comment(comment) for comment in comments]
+
+@api_router.post("/posts/{post_id}/comments")
+async def create_comment(
+    post_id: str,
+    comment_data: BoardCommentCreate,
+    current_user: dict = Depends(get_current_user)
+):
+    """Add a comment to a post"""
+    user_id = str(current_user["_id"])
+    
+    post = await db.board_posts.find_one({"_id": ObjectId(post_id)})
+    if not post:
+        raise HTTPException(status_code=404, detail="Post not found")
+    
+    if not comment_data.text or not comment_data.text.strip():
+        raise HTTPException(status_code=400, detail="Comment text is required")
+    
+    if len(comment_data.text) > 500:
+        raise HTTPException(status_code=400, detail="Comment cannot exceed 500 characters")
+    
+    comment = {
+        "postId": post_id,
+        "authorId": user_id,
+        "authorUsername": current_user.get("username", ""),
+        "authorDisplayName": current_user.get("displayName", ""),
+        "authorPhotoUrl": current_user.get("photoUrl"),
+        "authorVipTier": current_user.get("vipTier"),
+        "text": comment_data.text.strip(),
+        "createdAt": datetime.utcnow()
+    }
+    
+    result = await db.board_comments.insert_one(comment)
+    comment["_id"] = result.inserted_id
+    
+    # Increment comment count on post
+    await db.board_posts.update_one(
+        {"_id": ObjectId(post_id)},
+        {"$inc": {"commentsCount": 1}}
+    )
+    
+    return _serialize_comment(comment)
+
+@api_router.delete("/comments/{comment_id}")
+async def delete_comment(comment_id: str, current_user: dict = Depends(get_current_user)):
+    """Delete a comment (only by author)"""
+    user_id = str(current_user["_id"])
+    
+    comment = await db.board_comments.find_one({"_id": ObjectId(comment_id)})
+    if not comment:
+        raise HTTPException(status_code=404, detail="Comment not found")
+    
+    if comment["authorId"] != user_id:
+        raise HTTPException(status_code=403, detail="You can only delete your own comments")
+    
+    # Delete the comment
+    await db.board_comments.delete_one({"_id": ObjectId(comment_id)})
+    
+    # Decrement comment count on post
+    await db.board_posts.update_one(
+        {"_id": ObjectId(comment["postId"])},
+        {"$inc": {"commentsCount": -1}}
+    )
+    
+    return {"message": "Comment deleted successfully"}
 
 # ==================== VIP ====================
 

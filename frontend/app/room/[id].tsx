@@ -26,7 +26,7 @@ import PrivateMessagesModal from '@/src/components/PrivateMessagesModal';
 import JumpingHostIcon from '@/src/components/JumpingHostIcon';
 import { COLORS, SPACING } from '@/src/constants/theme';
 import { useProfilePopup } from '@/src/contexts/ProfilePopupContext';
-import FeedTab from '@/src/components/FeedTab';
+import BoardTab from '@/src/components/BoardTab';
 
 interface Message {
   id: string;
@@ -68,7 +68,7 @@ export default function RoomScreen() {
   const [memberSectionLayout, setMemberSectionLayout] = useState({ width: 0, height: 0 });
   const [messagesModalVisible, setMessagesModalVisible] = useState(false);
   const [dmInitialUserId, setDmInitialUserId] = useState<string | null>(null);
-  const [activeRoomTab, setActiveRoomTab] = useState<'feed' | 'chat'>('chat');
+  const [activeRoomTab, setActiveRoomTab] = useState<'board' | 'chat'>('chat');
   const [currentUserTarget, setCurrentUserTarget] = useState<{ x: number; y: number } | null>(null);
   const flatListRef = useRef<FlatList>(null);
   const gameRef = useRef<GamePanelHandle>(null);
@@ -300,21 +300,21 @@ export default function RoomScreen() {
         />
       )}
 
-      {/* Feed / Chat tab bar (room-scoped) */}
+      {/* Board / Chat tab bar (room-scoped) */}
       <View style={styles.roomTabs}>
         <TouchableOpacity
-          onPress={() => setActiveRoomTab('feed')}
-          style={[styles.roomTab, activeRoomTab === 'feed' && styles.roomTabActive]}
+          onPress={() => setActiveRoomTab('board')}
+          style={[styles.roomTab, activeRoomTab === 'board' && styles.roomTabActive]}
           activeOpacity={0.8}
-          testID="room-tab-feed"
+          testID="room-tab-board"
         >
           <Ionicons
-            name={activeRoomTab === 'feed' ? 'sparkles' : 'sparkles-outline'}
+            name={activeRoomTab === 'board' ? 'clipboard' : 'clipboard-outline'}
             size={16}
-            color={activeRoomTab === 'feed' ? COLORS.primary : COLORS.textSecondary}
+            color={activeRoomTab === 'board' ? COLORS.primary : COLORS.textSecondary}
           />
-          <Text style={[styles.roomTabText, activeRoomTab === 'feed' && styles.roomTabTextActive]}>
-            Feed
+          <Text style={[styles.roomTabText, activeRoomTab === 'board' && styles.roomTabTextActive]}>
+            Board
           </Text>
         </TouchableOpacity>
         <TouchableOpacity
@@ -334,9 +334,9 @@ export default function RoomScreen() {
         </TouchableOpacity>
       </View>
 
-      {activeRoomTab === 'feed' ? (
-        <View style={styles.feedWrap}>
-          <FeedTab active={activeRoomTab === 'feed'} />
+      {activeRoomTab === 'board' ? (
+        <View style={styles.boardWrap}>
+          <BoardTab roomId={id as string} active={activeRoomTab === 'board'} />
         </View>
       ) : (
         <KeyboardAvoidingView
@@ -439,7 +439,7 @@ const styles = StyleSheet.create({
   roomTabTextActive: {
     color: COLORS.primary,
   },
-  feedWrap: {
+  boardWrap: {
     flex: 1,
     marginTop: SPACING.sm,
   },
