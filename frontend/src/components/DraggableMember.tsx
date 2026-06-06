@@ -38,6 +38,7 @@ export default function DraggableMember({
   const initialY = row * (ITEM_SIZE + SPACING);
 
   const pan = useRef(new Animated.ValueXY({ x: initialX, y: initialY })).current;
+  const scale = useRef(new Animated.Value(1)).current;
   const offsetRef = useRef({ x: initialX, y: initialY });
   const [isDragging, setIsDragging] = useState(false);
 
@@ -48,7 +49,7 @@ export default function DraggableMember({
       onMoveShouldSetPanResponder: () => isCurrentUser,
       onPanResponderGrant: () => {
         setIsDragging(true);
-        // Take snapshot of current position
+        Animated.spring(scale, { toValue: 1.15, useNativeDriver: false, friction: 4 }).start();
         pan.setOffset({ x: offsetRef.current.x, y: offsetRef.current.y });
         pan.setValue({ x: 0, y: 0 });
       },
@@ -58,10 +59,9 @@ export default function DraggableMember({
       ),
       onPanResponderRelease: (_, gesture) => {
         setIsDragging(false);
-        // Compute new absolute position
+        Animated.spring(scale, { toValue: 1, useNativeDriver: false, friction: 4 }).start();
         let newX = offsetRef.current.x + gesture.dx;
         let newY = offsetRef.current.y + gesture.dy;
-        // Clamp to bounds
         newX = Math.max(0, Math.min(boundsWidth - ITEM_SIZE, newX));
         newY = Math.max(0, Math.min(boundsHeight - ITEM_SIZE, newY));
         offsetRef.current = { x: newX, y: newY };
@@ -82,7 +82,11 @@ export default function DraggableMember({
       style={[
         styles.container,
         {
-          transform: pan.getTranslateTransform(),
+          transform: [
+            { translateX: pan.x },
+            { translateY: pan.y },
+            { scale },
+          ],
           zIndex: isDragging ? 10 : 1,
         },
         isDragging && styles.dragging,
@@ -114,7 +118,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   dragging: {
-    transform: [{ scale: 1.1 }],
     elevation: 10,
     shadowColor: COLORS.primary,
     shadowOffset: { width: 0, height: 4 },
