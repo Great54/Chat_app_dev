@@ -63,9 +63,11 @@ export default function VipShopModal({ visible, onClose }: Props) {
   const loadTiers = async () => {
     try {
       const res = await api.get('/vip/tiers');
-      setTiers(res.data);
+      // Ensure tiers is always an array
+      setTiers(Array.isArray(res.data) ? res.data : []);
     } catch (e) {
       console.error('Failed to load VIP tiers');
+      setTiers([]);
     }
   };
 
@@ -216,7 +218,11 @@ export default function VipShopModal({ visible, onClose }: Props) {
           )}
 
           <ScrollView contentContainerStyle={styles.tiersContainer}>
-            {tiers.map(renderTier)}
+            {Array.isArray(tiers) && tiers.length > 0 ? (
+              tiers.map(renderTier)
+            ) : (
+              <ActivityIndicator color={COLORS.primary} style={{ marginTop: 20 }} />
+            )}
           </ScrollView>
         </View>
       </View>

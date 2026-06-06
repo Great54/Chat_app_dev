@@ -88,6 +88,7 @@ export default function BoardTab({ roomId, active }: BoardTabProps) {
     setLoading(true);
     try {
       const response = await api.get(`/rooms/${roomId}/posts`);
+      console.log('Loaded posts:', JSON.stringify(response.data, null, 2));
       setPosts(response.data);
     } catch (error) {
       console.error('Failed to load posts:', error);
@@ -218,7 +219,23 @@ export default function BoardTab({ roomId, active }: BoardTabProps) {
   };
 
   const formatTimeAgo = (dateString: string) => {
-    const date = new Date(dateString);
+    if (!dateString) return '';
+    
+    // Handle ISO date format from backend
+    let date: Date;
+    try {
+      // Try parsing as ISO string
+      date = new Date(dateString);
+      // If invalid, try with Z suffix
+      if (isNaN(date.getTime())) {
+        date = new Date(dateString + 'Z');
+      }
+    } catch {
+      return '';
+    }
+    
+    if (isNaN(date.getTime())) return '';
+    
     const now = new Date();
     const diff = now.getTime() - date.getTime();
     const minutes = Math.floor(diff / 60000);
@@ -285,7 +302,7 @@ export default function BoardTab({ roomId, active }: BoardTabProps) {
         </View>
 
         {/* Post content */}
-        <Text style={styles.postText}>{item.text}</Text>
+        <Text style={styles.postText}>{item.text || '(No text)'}</Text>
 
         {/* Post image */}
         {item.imageBase64 && (
@@ -619,6 +636,7 @@ const styles = StyleSheet.create({
   },
   authorInfo: {
     flex: 1,
+    minWidth: 0,
   },
   nameRow: {
     flexDirection: 'row',
