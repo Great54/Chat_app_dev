@@ -20,11 +20,20 @@ export default function Login() {
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
   const { login } = useAuth();
 
   const handleLogin = async () => {
-    if (!identifier || !password) {
-      Alert.alert('Error', 'Please fill in all fields');
+    // Clear previous error
+    setErrorMessage('');
+    
+    if (!identifier.trim()) {
+      setErrorMessage('Please enter your email or username');
+      return;
+    }
+    
+    if (!password) {
+      setErrorMessage('Please enter your password');
       return;
     }
 
@@ -32,7 +41,26 @@ export default function Login() {
     try {
       await login(identifier.trim(), password);
     } catch (error: any) {
-      Alert.alert('Login Failed', error.response?.data?.detail || 'Invalid credentials');
+      console.log('Login error:', error);
+      const detail = error.response?.data?.detail;
+      
+      // Provide more helpful error messages
+      if (error.response?.status === 401) {
+        setErrorMessage('Incorrect email/username or password. Please try again.');
+      } else if (error.response?.status === 422) {
+        setErrorMessage('Invalid input. Please check your email and password format.');
+      } else if (detail) {
+        setErrorMessage(detail);
+      } else if (error.message?.includes('Network')) {
+        setErrorMessage('Network error. Please check your connection.');
+      } else {
+        setErrorMessage('Login failed. Please try again.');
+      }
+      
+      // Also show alert for mobile users
+      if (Platform.OS !== 'web') {
+        Alert.alert('Login Failed', detail || 'Invalid credentials');
+      }
     } finally {
       setLoading(false);
     }
@@ -53,6 +81,14 @@ export default function Login() {
         </View>
 
         <View style={styles.form}>
+          {/* Error Message Display */}
+          {errorMessage ? (
+            <View style={styles.errorContainer}>
+              <Ionicons name="alert-circle" size={18} color={COLORS.error} />
+              <Text style={styles.errorText}>{errorMessage}</Text>
+            </View>
+          ) : null}
+
           <View style={styles.inputContainer}>
             <Ionicons name="person-circle-outline" size={20} color={COLORS.textSecondary} style={styles.inputIcon} />
             <TextInput
@@ -60,7 +96,10 @@ export default function Login() {
               placeholder="Email or Username"
               placeholderTextColor={COLORS.textSecondary}
               value={identifier}
-              onChangeText={setIdentifier}
+              onChangeText={(text) => {
+                setIdentifier(text);
+                if (errorMessage) setErrorMessage('');
+              }}
               autoCapitalize="none"
               autoCorrect={false}
               testID="login-identifier-input"
@@ -74,7 +113,10 @@ export default function Login() {
               placeholder="Password"
               placeholderTextColor={COLORS.textSecondary}
               value={password}
-              onChangeText={setPassword}
+              onChangeText={(text) => {
+                setPassword(text);
+                if (errorMessage) setErrorMessage('');
+              }}
               secureTextEntry
             />
           </View>
@@ -140,6 +182,23 @@ const styles = StyleSheet.create({
   },
   form: {
     width: '100%',
+  },
+  errorContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(239, 68, 68, 0.15)',
+    paddingVertical: SPACING.sm,
+    paddingHorizontal: SPACING.md,
+    borderRadius: 10,
+    marginBottom: SPACING.md,
+    borderWidth: 1,
+    borderColor: COLORS.error,
+  },
+  errorText: {
+    color: COLORS.error,
+    fontSize: 14,
+    marginLeft: SPACING.sm,
+    flex: 1,
   },
   inputContainer: {
     flexDirection: 'row',

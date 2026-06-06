@@ -439,8 +439,11 @@ async def login(user_data: UserLogin):
         ]
     })
 
-    if not user or not verify_password(user_data.password, user["password"]):
-        raise HTTPException(status_code=401, detail="Incorrect email/username or password")
+    if not user:
+        raise HTTPException(status_code=401, detail="No account found with this email/username. Please sign up first.")
+    
+    if not verify_password(user_data.password, user["password"]):
+        raise HTTPException(status_code=401, detail="Incorrect password. Please try again.")
     
     # Update online status
     await db.users.update_one(
