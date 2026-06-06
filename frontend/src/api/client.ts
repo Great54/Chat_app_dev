@@ -1,7 +1,10 @@
 import axios from 'axios';
 import { storage } from '@/src/utils/storage';
 
-const API_BASE_URL = process.env.EXPO_PUBLIC_BACKEND_URL;
+// When EXPO_PUBLIC_BACKEND_URL is unset, use a relative `/api` path so the
+// Kubernetes ingress (which routes `/api/*` to the FastAPI backend) handles it.
+const RAW_BASE = process.env.EXPO_PUBLIC_BACKEND_URL;
+const API_BASE_URL = RAW_BASE && RAW_BASE !== 'undefined' ? RAW_BASE : '';
 
 export const api = axios.create({
   baseURL: `${API_BASE_URL}/api`,

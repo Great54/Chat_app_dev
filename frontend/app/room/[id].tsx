@@ -107,9 +107,10 @@ export default function RoomScreen() {
         api.get(`/rooms/${id}/members`),
         api.get('/rooms'),
       ]);
-      setMessages(messagesResponse.data);
-      setMembers(membersResponse.data);
-      const currentRoom = roomsResponse.data.find((r: Room) => r.id === id);
+      setMessages(Array.isArray(messagesResponse.data) ? messagesResponse.data : []);
+      setMembers(Array.isArray(membersResponse.data) ? membersResponse.data : []);
+      const roomsData = Array.isArray(roomsResponse.data) ? roomsResponse.data : [];
+      const currentRoom = roomsData.find((r: Room) => r.id === id);
       setRoom(currentRoom);
     } catch (error) {
       console.error('Failed to refresh room:', error);
@@ -246,7 +247,7 @@ export default function RoomScreen() {
             onPress={handleGridTap}
             testID="profile-grid-backdrop"
           />
-          {members.map((member, idx) => (
+          {(Array.isArray(members) ? members : []).map((member, idx) => (
             <DraggableMember
               key={member.userId}
               member={member}
@@ -338,60 +339,60 @@ export default function RoomScreen() {
           <FeedTab active={activeRoomTab === 'feed'} />
         </View>
       ) : (
-      <KeyboardAvoidingView
-        style={styles.chatContainer}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
-      >
-        {/* Messages section - TOP (matte aesthetic) */}
-        <View style={styles.messagesWrap}>
-          <LinearGradient
-            colors={['#0e0a17', '#15101f', '#1a1226']}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={StyleSheet.absoluteFill}
-          />
-          <View style={styles.matteVeil} pointerEvents="none" />
-          <FlatList
-            ref={flatListRef}
-            data={messages}
-            keyExtractor={(item) => item.id}
-            renderItem={renderMessage}
-            contentContainerStyle={styles.messagesList}
-            style={styles.messagesContainer}
-            onContentSizeChange={() => flatListRef.current?.scrollToEnd()}
-            ListEmptyComponent={
-              <View style={styles.emptyMessages}>
-                <Ionicons name="chatbubbles-outline" size={36} color={COLORS.textSecondary} />
-                <Text style={styles.emptyText}>No messages yet. Start the conversation!</Text>
-              </View>
-            }
-          />
-        </View>
+        <KeyboardAvoidingView
+          style={styles.chatContainer}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
+        >
+          {/* Messages section - TOP (matte aesthetic) */}
+          <View style={styles.messagesWrap}>
+            <LinearGradient
+              colors={['#0e0a17', '#15101f', '#1a1226']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={StyleSheet.absoluteFill}
+            />
+            <View style={styles.matteVeil} pointerEvents="none" />
+            <FlatList
+              ref={flatListRef}
+              data={messages}
+              keyExtractor={(item) => item.id}
+              renderItem={renderMessage}
+              contentContainerStyle={styles.messagesList}
+              style={styles.messagesContainer}
+              onContentSizeChange={() => flatListRef.current?.scrollToEnd()}
+              ListEmptyComponent={
+                <View style={styles.emptyMessages}>
+                  <Ionicons name="chatbubbles-outline" size={36} color={COLORS.textSecondary} />
+                  <Text style={styles.emptyText}>No messages yet. Start the conversation!</Text>
+                </View>
+              }
+            />
+          </View>
 
-        {/* Profile section - BELOW messages (light room background image) */}
-        {renderProfileSection()}
+          {/* Profile section - BELOW messages (light room background image) */}
+          {renderProfileSection()}
 
-        {/* Input */}
-        <View style={styles.inputContainer}>
-          <TextInput
-            style={styles.input}
-            value={messageText}
-            onChangeText={setMessageText}
-            placeholder="Type a message..."
-            placeholderTextColor={COLORS.textSecondary}
-            multiline
-            maxLength={500}
-          />
-          <TouchableOpacity
-            style={[styles.sendButton, !messageText.trim() && styles.sendButtonDisabled]}
-            onPress={handleSendMessage}
-            disabled={!messageText.trim() || loading}
-          >
-            <Ionicons name="send" size={20} color={COLORS.text} />
-          </TouchableOpacity>
-        </View>
-      </KeyboardAvoidingView>
+          {/* Input */}
+          <View style={styles.inputContainer}>
+            <TextInput
+              style={styles.input}
+              value={messageText}
+              onChangeText={setMessageText}
+              placeholder="Type a message..."
+              placeholderTextColor={COLORS.textSecondary}
+              multiline
+              maxLength={500}
+            />
+            <TouchableOpacity
+              style={[styles.sendButton, !messageText.trim() && styles.sendButtonDisabled]}
+              onPress={handleSendMessage}
+              disabled={!messageText.trim() || loading}
+            >
+              <Ionicons name="send" size={20} color={COLORS.text} />
+            </TouchableOpacity>
+          </View>
+        </KeyboardAvoidingView>
       )}
 
       <PrivateMessagesModal 

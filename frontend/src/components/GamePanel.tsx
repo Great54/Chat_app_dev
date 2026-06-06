@@ -100,7 +100,7 @@ const GamePanel = forwardRef<GamePanelHandle, Props>(function GamePanel(
   const loadGames = async () => {
     try {
       const res = await api.get(`/rooms/${roomId}/games`);
-      const newGames: Game[] = res.data;
+      const newGames: Game[] = Array.isArray(res.data) ? res.data : [];
       
       // Detect newly completed/aborted games for showing results
       newGames.forEach((g) => {
@@ -120,15 +120,17 @@ const GamePanel = forwardRef<GamePanelHandle, Props>(function GamePanel(
       setGames(newGames);
     } catch (error) {
       console.error('Failed to load games:', error);
+      setGames([]);
     }
   };
 
   const loadGameTypes = async () => {
     try {
       const res = await api.get('/games/types/list');
-      setGameTypes(res.data);
+      setGameTypes(Array.isArray(res.data) ? res.data : []);
     } catch (error) {
       console.error('Failed to load game types:', error);
+      setGameTypes([]);
     }
   };
 

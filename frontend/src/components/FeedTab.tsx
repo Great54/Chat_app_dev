@@ -57,9 +57,8 @@ export default function FeedTab({ active }: { active: boolean }) {
     if (showSpinner) setLoading(true);
     try {
       const res = await api.get('/feed', { params: { limit: 40 } });
-      setItems(res.data || []);
+      setItems(Array.isArray(res.data) ? res.data : []);
       setError(null);
-      // Mark seen so the badge clears
       try { await api.post('/feed/mark-seen'); } catch { /* non-fatal */ }
     } catch (e: any) {
       setError(e?.response?.data?.detail || 'Could not load feed');
@@ -169,10 +168,13 @@ function FeedCard({
   }, [fadeAnim, transY, index]);
 
   const visual = getActivityVisual(item.type);
-  const subject = item.user;
+  // Defensive check: item.user could be {} (empty object) if user lookup failed
+  const fallbackUser: FeedActivityUser = { id: '', displayName: 'Unknown', username: '', photoUrl: undefined, vipTier: null };
+  const subject = (item.user && item.user.displayName) ? item.user : fallbackUser;
   const vipStyle = subject.vipTier ? VIP_STYLES[subject.vipTier] : null;
-  const subtitle = item.message;
-  const ts = formatRelativeTime(item.createdAt);
+  const subtitle = item.message || '';
+  // Ensure createdAt is valid before formatting
+  const ts = item.createdAt ? formatRelativeTime(item.createdAt) : 'just now';
   const meta = item.metadata || {};
 
   return (
