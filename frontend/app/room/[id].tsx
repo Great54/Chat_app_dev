@@ -69,7 +69,7 @@ export default function RoomScreen() {
   const [memberSectionLayout, setMemberSectionLayout] = useState({ width: 0, height: 0 });
   const [messagesModalVisible, setMessagesModalVisible] = useState(false);
   const [dmInitialUserId, setDmInitialUserId] = useState<string | null>(null);
-  const [activeRoomTab, setActiveRoomTab] = useState<'feed' | 'chat' | 'board'>('feed');
+  const [activeRoomTab, setActiveRoomTab] = useState<'feed' | 'chat' | 'board'>('chat');
   const [currentUserTarget, setCurrentUserTarget] = useState<{ x: number; y: number } | null>(null);
   const flatListRef = useRef<FlatList>(null);
   const gameRef = useRef<GamePanelHandle>(null);

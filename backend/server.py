@@ -1150,14 +1150,6 @@ async def join_room(room_id: str, current_user: dict = Depends(get_current_user)
         "username": current_user["username"]
     })
     
-    # Log activity to room feed
-    await create_room_activity(
-        room_id=room_id,
-        activity_type="user_joined",
-        actor_id=user_id,
-        metadata={"roomName": room["roomName"]}
-    )
-    
     return {"message": "Joined room successfully"}
 
 async def leave_room_helper(room_id: str, user_id: str):
