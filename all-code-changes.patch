@@ -1,0 +1,634 @@
+diff --git a/backend/server.py b/backend/server.py
+index e8b07e2..aa67f5f 100644
+--- a/backend/server.py
++++ b/backend/server.py
+@@ -91,7 +91,7 @@ class UserRegister(BaseModel):
+     displayName: str
+ 
+ class UserLogin(BaseModel):
+-    email: EmailStr
++    identifier: str  # email OR username
+     password: str
+ 
+ class Token(BaseModel):
+@@ -326,10 +326,18 @@ async def register(user_data: UserRegister):
+ 
+ @api_router.post("/auth/login", response_model=Token)
+ async def login(user_data: UserLogin):
+-    user = await db.users.find_one({"email": user_data.email})
+-    
++    identifier = user_data.identifier.strip()
++    # Look up user by email OR username (case-insensitive email)
++    user = await db.users.find_one({
++        "$or": [
++            {"email": identifier.lower()},
++            {"email": identifier},
++            {"username": identifier},
++        ]
++    })
++
+     if not user or not verify_password(user_data.password, user["password"]):
+-        raise HTTPException(status_code=401, detail="Incorrect email or password")
++        raise HTTPException(status_code=401, detail="Incorrect email/username or password")
+     
+     # Update online status
+     await db.users.update_one(
+@@ -382,10 +390,13 @@ async def get_user(user_id: str):
+ 
+ @api_router.get("/avatars/predefined")
+ async def get_predefined_avatars():
+-    """Get predefined avatars - returns sample base64 placeholder"""
+-    # In production, these would be actual base64 images stored in DB
++    """Get predefined avatars - returns sample placeholder list"""
+     avatars = [
+-        {"id": f"avatar_{i}", "category": "default", "avatarUrl": f"data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0a[...]
++        {
++            "id": f"avatar_{i}",
++            "category": "default",
++            "avatarUrl": f"https://api.dicebear.com/7.x/avataaars/svg?seed=avatar_{i}",
++        }
+         for i in range(1, 9)
+     ]
+     return avatars
+diff --git a/frontend/app/(auth)/login.tsx b/frontend/app/(auth)/login.tsx
+index f6a38cf..aebf56e 100644
+--- a/frontend/app/(auth)/login.tsx
++++ b/frontend/app/(auth)/login.tsx
+@@ -17,20 +17,20 @@ import { useAuth } from '@/src/contexts/AuthContext';
+ import { COLORS, SPACING } from '@/src/constants/theme';
+ 
+ export default function Login() {
+-  const [email, setEmail] = useState('');
++  const [identifier, setIdentifier] = useState('');
+   const [password, setPassword] = useState('');
+   const [loading, setLoading] = useState(false);
+   const { login } = useAuth();
+ 
+   const handleLogin = async () => {
+-    if (!email || !password) {
++    if (!identifier || !password) {
+       Alert.alert('Error', 'Please fill in all fields');
+       return;
+     }
+ 
+     setLoading(true);
+     try {
+-      await login(email, password);
++      await login(identifier.trim(), password);
+     } catch (error: any) {
+       Alert.alert('Login Failed', error.response?.data?.detail || 'Invalid credentials');
+     } finally {
+@@ -54,15 +54,16 @@ export default function Login() {
+ 
+         <View style={styles.form}>
+           <View style={styles.inputContainer}>
+-            <Ionicons name="mail-outline" size={20} color={COLORS.textSecondary} style={styles.inputIcon} />
++            <Ionicons name="person-circle-outline" size={20} color={COLORS.textSecondary} style={styles.inputIcon} />
+             <TextInput
+               style={styles.input}
+-              placeholder="Email"
++              placeholder="Email or Username"
+               placeholderTextColor={COLORS.textSecondary}
+-              value={email}
+-              onChangeText={setEmail}
++              value={identifier}
++              onChangeText={setIdentifier}
+               autoCapitalize="none"
+-              keyboardType="email-address"
++              autoCorrect={false}
++              testID="login-identifier-input"
+             />
+           </View>
+ 
+diff --git a/frontend/app/room/[id].tsx b/frontend/app/room/[id].tsx
+index f69a69d..cc18f2b 100644
+--- a/frontend/app/room/[id].tsx
++++ b/frontend/app/room/[id].tsx
+@@ -9,9 +9,9 @@ import {
+   KeyboardAvoidingView,
+   Platform,
+   Alert,
+-  PanResponder,
+-  Animated,
++  Pressable,
+   LayoutChangeEvent,
++  GestureResponderEvent,
+ } from 'react-native';
+ import { Image } from 'expo-image';
+ import { useLocalSearchParams, router } from 'expo-router';
+@@ -61,6 +61,8 @@ export default function RoomScreen() {
+   const [loading, setLoading] = useState(false);
+   const [memberSectionLayout, setMemberSectionLayout] = useState({ width: 0, height: 0 });
+   const [messagesModalVisible, setMessagesModalVisible] = useState(false);
++  const [dmInitialUserId, setDmInitialUserId] = useState<string | null>(null);
++  const [currentUserTarget, setCurrentUserTarget] = useState<{ x: number; y: number } | null>(null);
+   const flatListRef = useRef<FlatList>(null);
+ 
+   useEffect(() => {
+@@ -172,6 +174,31 @@ export default function RoomScreen() {
+     setMemberSectionLayout({ width, height });
+   };
+ 
++  // Tap empty space → smoothly move current user's avatar to that point
++  const handleGridTap = (e: GestureResponderEvent) => {
++    const native: any = e.nativeEvent;
++    let x = native.locationX;
++    let y = native.locationY;
++    // Web fallback: react-native-web passes synthetic events whose nativeEvent is the MouseEvent
++    if (typeof x !== 'number' || isNaN(x)) {
++      x = native.offsetX ?? native.layerX ?? 0;
++      y = native.offsetY ?? native.layerY ?? 0;
++    }
++    setCurrentUserTarget({ x: x - 24, y: y - 24 });
++  };
++
++  // Tap on another user's avatar → open private chat with them
++  const handleAvatarPress = (member: Member) => {
++    if (member.userId === user?.id) return;
++    setDmInitialUserId(member.userId);
++    setMessagesModalVisible(true);
++  };
++
++  const handleCloseDmModal = () => {
++    setMessagesModalVisible(false);
++    setDmInitialUserId(null);
++  };
++
+   const renderProfileSection = () => {
+     return (
+       <View style={styles.profileSection} onLayout={onMemberSectionLayout}>
+@@ -180,9 +207,15 @@ export default function RoomScreen() {
+           <Text style={styles.profileSectionTitle}>
+             In the room ({members.length}/{room?.maxCapacity || 36})
+           </Text>
+-          <Text style={styles.profileSectionHint}>Hold & drag your avatar</Text>
++          <Text style={styles.profileSectionHint}>Tap empty space to move • Tap avatar to chat</Text>
+         </View>
+-        <View style={styles.profileGrid}>
++        <View style={styles.profileGrid} testID="profile-grid-tap-area">
++          {/* Backdrop captures clicks on empty space. Avatars render above and consume taps on themselves. */}
++          <Pressable
++            style={StyleSheet.absoluteFill}
++            onPress={handleGridTap}
++            testID="profile-grid-backdrop"
++          />
+           {members.map((member, idx) => (
+             <DraggableMember
+               key={member.userId}
+@@ -192,6 +225,8 @@ export default function RoomScreen() {
+               boundsHeight={memberSectionLayout.height - 40}
+               initialIndex={idx}
+               totalMembers={members.length}
++              targetPosition={member.userId === user?.id ? currentUserTarget : null}
++              onAvatarPress={handleAvatarPress}
+             />
+           ))}
+         </View>
+@@ -205,25 +240,24 @@ export default function RoomScreen() {
+         <TouchableOpacity onPress={handleBack} style={styles.backButton}>
+           <Ionicons name="arrow-back" size={24} color={COLORS.text} />
+         </TouchableOpacity>
+-        {room?.roomBanner && (
+-          <Image source={{ uri: room.roomBanner }} style={styles.headerBanner} />
+-        )}
+-        <View style={styles.headerInfo}>
+-          <Text style={styles.headerTitle}>{room?.roomName}</Text>
++        <View style={[styles.headerInfo, { pointerEvents: 'none' }]}>
++          <Text style={styles.headerTitle} numberOfLines={1}>{room?.roomName}</Text>
+           <Text style={styles.headerSubtitle}>
+             {room?.currentUserCount || 0}/{room?.maxCapacity || 36} members
+           </Text>
+         </View>
+-        <TouchableOpacity 
+-          style={styles.messagesButton}
+-          onPress={() => setMessagesModalVisible(true)}
+-          testID="direct-messages-btn"
+-        >
+-          <Ionicons name="chatbox" size={22} color={COLORS.text} />
+-        </TouchableOpacity>
+-        <TouchableOpacity onPress={loadRoomData}>
+-          <Ionicons name="refresh" size={22} color={COLORS.text} />
+-        </TouchableOpacity>
++        <View style={styles.headerRight}>
++          <TouchableOpacity
++            style={styles.messagesButton}
++            onPress={() => { setDmInitialUserId(null); setMessagesModalVisible(true); }}
++            testID="direct-messages-btn"
++          >
++            <Ionicons name="chatbox" size={22} color={COLORS.text} />
++          </TouchableOpacity>
++          <TouchableOpacity onPress={loadRoomData} style={styles.headerIconBtn}>
++            <Ionicons name="refresh" size={22} color={COLORS.text} />
++          </TouchableOpacity>
++        </View>
+       </View>
+ 
+       {user && (
+@@ -283,7 +317,8 @@ export default function RoomScreen() {
+ 
+       <PrivateMessagesModal 
+         visible={messagesModalVisible}
+-        onClose={() => setMessagesModalVisible(false)}
++        onClose={handleCloseDmModal}
++        initialUserId={dmInitialUserId}
+       />
+     </SafeAreaView>
+   );
+@@ -297,13 +332,26 @@ const styles = StyleSheet.create({
+   header: {
+     flexDirection: 'row',
+     alignItems: 'center',
+-    padding: SPACING.md,
++    justifyContent: 'space-between',
++    paddingHorizontal: SPACING.md,
++    paddingVertical: SPACING.sm,
+     borderBottomWidth: 1,
+     borderBottomColor: COLORS.border,
+-    gap: SPACING.sm,
++    position: 'relative',
++    minHeight: 56,
+   },
+   backButton: {
+     padding: 4,
++    zIndex: 2,
++  },
++  headerRight: {
++    flexDirection: 'row',
++    alignItems: 'center',
++    gap: SPACING.xs,
++    zIndex: 2,
++  },
++  headerIconBtn: {
++    padding: 4,
+   },
+   headerBanner: {
+     width: 36,
+@@ -311,16 +359,25 @@ const styles = StyleSheet.create({
+     borderRadius: 8,
+   },
+   headerInfo: {
+-    flex: 1,
++    position: 'absolute',
++    left: 0,
++    right: 0,
++    top: 0,
++    bottom: 0,
++    alignItems: 'center',
++    justifyContent: 'center',
+   },
+   headerTitle: {
+     fontSize: 18,
+     fontWeight: '700',
+     color: COLORS.text,
++    textAlign: 'center',
+   },
+   headerSubtitle: {
+     fontSize: 12,
+     color: COLORS.textSecondary,
++    textAlign: 'center',
++    marginTop: 2,
+   },
+   messagesButton: {
+     padding: 8,
+@@ -390,7 +447,7 @@ const styles = StyleSheet.create({
+     textAlign: 'center',
+   },
+   profileSection: {
+-    height: 130,
++    flex: 1,
+     backgroundColor: COLORS.cardBg,
+     borderTopWidth: 1,
+     borderBottomWidth: 1,
+diff --git a/frontend/src/components/DraggableMember.tsx b/frontend/src/components/DraggableMember.tsx
+index 26f7d8c..29f1fd7 100644
+--- a/frontend/src/components/DraggableMember.tsx
++++ b/frontend/src/components/DraggableMember.tsx
+@@ -1,5 +1,5 @@
+ import React, { useRef, useState, useEffect } from 'react';
+-import { View, Text, StyleSheet, PanResponder, Animated } from 'react-native';
++import { View, Text, StyleSheet, PanResponder, Animated, TouchableOpacity } from 'react-native';
+ import { Image } from 'expo-image';
+ import { Ionicons } from '@expo/vector-icons';
+ import { COLORS } from '@/src/constants/theme';
+@@ -20,6 +20,10 @@ interface Props {
+   boundsHeight: number;
+   initialIndex: number;
+   totalMembers: number;
++  // External target: when set, current user's avatar smoothly animates to this position
++  targetPosition?: { x: number; y: number } | null;
++  // Tap handler (used to start a private chat with another user)
++  onAvatarPress?: (member: Member) => void;
+ }
+ 
+ const VIP_STYLES: Record<string, any> = {
+@@ -46,23 +50,25 @@ export default function DraggableMember({
+   boundsHeight,
+   initialIndex,
+   totalMembers,
++  targetPosition,
++  onAvatarPress,
+ }: Props) {
+-  // Calculate dynamic sizing based on room occupancy
++  // Dynamic sizing: shrink avatars as the room fills up
+   const calculateAvatarSize = () => {
+-    // Base size: 48px for 1-10 people, scale down as more join
+-    if (totalMembers <= 10) return 48;
++    if (totalMembers <= 6) return 56;
++    if (totalMembers <= 12) return 48;
+     if (totalMembers <= 20) return 42;
+-    if (totalMembers <= 30) return 36;
+-    return 32; // Min size for full rooms
++    if (totalMembers <= 28) return 36;
++    return 30; // Min size for full rooms (up to 36)
+   };
+ 
+   const ITEM_SIZE = calculateAvatarSize();
+-  const ITEMS_PER_ROW = Math.floor(boundsWidth / (ITEM_SIZE + 8));
++  const ITEMS_PER_ROW = Math.max(1, Math.floor(boundsWidth / (ITEM_SIZE + 8)));
+   const SPACING = 4;
+ 
+   // Compute initial grid position
+-  const row = Math.floor(initialIndex / Math.max(ITEMS_PER_ROW, 1));
+-  const col = initialIndex % Math.max(ITEMS_PER_ROW, 1);
++  const row = Math.floor(initialIndex / ITEMS_PER_ROW);
++  const col = initialIndex % ITEMS_PER_ROW;
+   const initialX = col * (ITEM_SIZE + SPACING);
+   const initialY = row * (ITEM_SIZE + SPACING);
+ 
+@@ -71,11 +77,34 @@ export default function DraggableMember({
+   const offsetRef = useRef({ x: initialX, y: initialY });
+   const [isDragging, setIsDragging] = useState(false);
+ 
+-  // Only current user's avatar is draggable
++  const clampPosition = (x: number, y: number) => {
++    const maxX = Math.max(0, boundsWidth - ITEM_SIZE);
++    const maxY = Math.max(0, boundsHeight - ITEM_SIZE);
++    return {
++      x: Math.max(0, Math.min(maxX, x)),
++      y: Math.max(0, Math.min(maxY, y)),
++    };
++  };
++
++  // Smooth animation to an externally-set target (tap-to-move)
++  useEffect(() => {
++    if (!isCurrentUser || !targetPosition) return;
++    const clamped = clampPosition(targetPosition.x, targetPosition.y);
++    offsetRef.current = clamped;
++    Animated.spring(pan, {
++      toValue: clamped,
++      useNativeDriver: false,
++      friction: 7,
++      tension: 50,
++    }).start();
++  }, [targetPosition?.x, targetPosition?.y, isCurrentUser]);
++
++  // Drag for current user only
+   const panResponder = useRef(
+     PanResponder.create({
+       onStartShouldSetPanResponder: () => isCurrentUser,
+-      onMoveShouldSetPanResponder: () => isCurrentUser,
++      onMoveShouldSetPanResponder: (_, g) =>
++        isCurrentUser && (Math.abs(g.dx) > 2 || Math.abs(g.dy) > 2),
+       onPanResponderGrant: () => {
+         setIsDragging(true);
+         Animated.spring(scale, {
+@@ -98,17 +127,15 @@ export default function DraggableMember({
+           friction: 4,
+         }).start();
+ 
+-        // Smooth animation to final position
+-        let newX = offsetRef.current.x + gesture.dx;
+-        let newY = offsetRef.current.y + gesture.dy;
+-        newX = Math.max(0, Math.min(boundsWidth - ITEM_SIZE, newX));
+-        newY = Math.max(0, Math.min(boundsHeight - ITEM_SIZE, newY));
+-        offsetRef.current = { x: newX, y: newY };
++        const clamped = clampPosition(
++          offsetRef.current.x + gesture.dx,
++          offsetRef.current.y + gesture.dy
++        );
++        offsetRef.current = clamped;
+         pan.flattenOffset();
+ 
+-        // Smooth spring animation for drop
+         Animated.spring(pan, {
+-          toValue: { x: newX, y: newY },
++          toValue: clamped,
+           useNativeDriver: false,
+           friction: 6,
+           tension: 60,
+@@ -120,14 +147,57 @@ export default function DraggableMember({
+   const vipStyle = member.vipTier ? VIP_STYLES[member.vipTier] : null;
+   const effectiveScale = vipStyle ? vipStyle.avatarScale : 1;
+ 
++  const avatarVisual = (
++    <View
++      style={[
++        styles.avatar,
++        { width: ITEM_SIZE - 8, height: ITEM_SIZE - 8 },
++        vipStyle && { borderColor: vipStyle.borderColor, borderWidth: 3 },
++        isCurrentUser && styles.currentUserRing,
++      ]}
++    >
++      {member.profilePhoto ? (
++        <Image
++          source={{ uri: member.profilePhoto }}
++          style={{
++            width: ITEM_SIZE - 14,
++            height: ITEM_SIZE - 14,
++            borderRadius: (ITEM_SIZE - 14) / 2,
++          }}
++        />
++      ) : (
++        <Ionicons
++          name="person"
++          size={ITEM_SIZE / 2.4}
++          color={vipStyle?.crownColor || COLORS.primary}
++        />
++      )}
++      {member.onlineStatus && <View style={styles.onlineDot} />}
++      {vipStyle && (
++        <View
++          style={[
++            styles.vipBadge,
++            { backgroundColor: vipStyle.crownColor },
++          ]}
++        >
++          <Ionicons
++            name={vipStyle.badgeIcon}
++            size={8}
++            color={COLORS.background}
++          />
++        </View>
++      )}
++    </View>
++  );
++
+   return (
+     <Animated.View
+-      {...panResponder.panHandlers}
++      {...(isCurrentUser ? panResponder.panHandlers : {})}
+       style={[
+         styles.container,
+         {
+           width: ITEM_SIZE,
+-          height: ITEM_SIZE,
++          height: ITEM_SIZE + (vipStyle ? 14 : 0),
+           transform: [
+             { translateX: pan.x },
+             { translateY: pan.y },
+@@ -138,52 +208,23 @@ export default function DraggableMember({
+               ),
+             },
+           ],
+-          zIndex: isDragging ? 10 : vipStyle ? 5 : 1,
++          zIndex: isDragging ? 10 : isCurrentUser ? 6 : vipStyle ? 5 : 1,
+         },
+         isDragging && styles.dragging,
+-        isCurrentUser && styles.currentUser,
+       ]}
+       testID={`member-${member.userId}`}
+     >
+-      <View
+-        style={[
+-          styles.avatar,
+-          { width: ITEM_SIZE - 8, height: ITEM_SIZE - 8 },
+-          vipStyle && { borderColor: vipStyle.borderColor, borderWidth: 3 },
+-        ]}
+-      >
+-        {member.profilePhoto ? (
+-          <Image
+-            source={{ uri: member.profilePhoto }}
+-            style={{
+-              width: ITEM_SIZE - 14,
+-              height: ITEM_SIZE - 14,
+-              borderRadius: (ITEM_SIZE - 14) / 2,
+-            }}
+-          />
+-        ) : (
+-          <Ionicons
+-            name="person"
+-            size={ITEM_SIZE / 2.4}
+-            color={vipStyle?.crownColor || COLORS.primary}
+-          />
+-        )}
+-        {member.onlineStatus && <View style={styles.onlineDot} />}
+-        {vipStyle && (
+-          <View
+-            style={[
+-              styles.vipBadge,
+-              { backgroundColor: vipStyle.crownColor },
+-            ]}
+-          >
+-            <Ionicons
+-              name={vipStyle.badgeIcon}
+-              size={8}
+-              color={COLORS.background}
+-            />
+-          </View>
+-        )}
+-      </View>
++      {isCurrentUser ? (
++        avatarVisual
++      ) : (
++        <TouchableOpacity
++          activeOpacity={0.7}
++          onPress={() => onAvatarPress?.(member)}
++          testID={`avatar-tap-${member.userId}`}
++        >
++          {avatarVisual}
++        </TouchableOpacity>
++      )}
+       {vipStyle ? (
+         <Text
+           style={[
+@@ -212,8 +253,9 @@ const styles = StyleSheet.create({
+     shadowOpacity: 0.5,
+     shadowRadius: 8,
+   },
+-  currentUser: {
+-    // Distinct visual cue for own avatar (draggable)
++  currentUserRing: {
++    borderColor: COLORS.accent,
++    borderWidth: 2.5,
+   },
+   avatar: {
+     borderRadius: 999,
+diff --git a/frontend/src/components/PrivateMessagesModal.tsx b/frontend/src/components/PrivateMessagesModal.tsx
+index 900f40a..ab82437 100644
+--- a/frontend/src/components/PrivateMessagesModal.tsx
++++ b/frontend/src/components/PrivateMessagesModal.tsx
+@@ -43,9 +43,10 @@ interface Conversation {
+ interface Props {
+   visible: boolean;
+   onClose: () => void;
++  initialUserId?: string | null;
+ }
+ 
+-export default function PrivateMessagesModal({ visible, onClose }: Props) {
++export default function PrivateMessagesModal({ visible, onClose, initialUserId }: Props) {
+   const { user } = useAuth();
+   const [conversations, setConversations] = useState<Conversation[]>([]);
+   const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(null);
+@@ -61,9 +62,38 @@ export default function PrivateMessagesModal({ visible, onClose }: Props) {
+       // Refresh conversations every 3 seconds
+       const interval = setInterval(loadConversations, 3000);
+       return () => clearInterval(interval);
++    } else {
++      // Reset selection when modal is closed
++      setSelectedConversation(null);
+     }
+   }, [visible]);
+ 
++  // When opened with a specific user, auto-select that conversation
++  useEffect(() => {
++    if (visible && initialUserId) {
++      openConversationWith(initialUserId);
++    }
++  }, [visible, initialUserId]);
++
++  const openConversationWith = async (userId: string) => {
++    try {
++      const response = await api.get(`/users/${userId}`);
++      const u = response.data;
++      setSelectedConversation({
++        userId: u.id || userId,
++        username: u.username,
++        displayName: u.displayName,
++        photoUrl: u.photoUrl,
++        lastMessage: '',
++        lastMessageTime: new Date().toISOString(),
++        unreadCount: 0,
++        onlineStatus: u.onlineStatus ?? false,
++      });
++    } catch (error) {
++      console.error('Failed to load user:', error);
++    }
++  };
++
+   useEffect(() => {
+     if (selectedConversation) {
+       loadMessages(selectedConversation.userId);
+diff --git a/frontend/src/contexts/AuthContext.tsx b/frontend/src/contexts/AuthContext.tsx
+index 678ade9..35df838 100644
+--- a/frontend/src/contexts/AuthContext.tsx
++++ b/frontend/src/contexts/AuthContext.tsx
+@@ -21,7 +21,7 @@ interface User {
+ interface AuthContextType {
+   user: User | null;
+   loading: boolean;
+-  login: (email: string, password: string) => Promise<void>;
++  login: (identifier: string, password: string) => Promise<void>;
+   register: (email: string, password: string, username: string, displayName: string) => Promise<void>;
+   logout: () => Promise<void>;
+   refreshUser: () => Promise<void>;
+@@ -51,8 +51,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
+     }
+   };
+ 
+-  const login = async (email: string, password: string) => {
+-    const response = await api.post('/auth/login', { email, password });
++  const login = async (identifier: string, password: string) => {
++    const response = await api.post('/auth/login', { identifier, password });
+     await storage.setItem('auth_token', response.data.access_token);
+     const userResponse = await api.get('/auth/me');
+     setUser(userResponse.data);
