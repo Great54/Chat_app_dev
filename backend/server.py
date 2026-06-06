@@ -123,6 +123,20 @@ class UpdateProfile(BaseModel):
 class VipPurchase(BaseModel):
     tier: str  # "pro" or "elite"
 
+class DirectMessage(BaseModel):
+    receiverId: str
+    messageText: str
+
+class DirectMessageResponse(BaseModel):
+    id: str
+    senderId: str
+    senderName: str
+    senderPhoto: Optional[str] = None
+    receiverId: str
+    messageText: str
+    createdAt: datetime
+    readStatus: bool = False
+
 VIP_TIERS_CONFIG = {
     "pro": {
         "id": "pro",
@@ -371,7 +385,7 @@ async def get_predefined_avatars():
     """Get predefined avatars - returns sample base64 placeholder"""
     # In production, these would be actual base64 images stored in DB
     avatars = [
-        {"id": f"avatar_{i}", "category": "default", "avatarUrl": f"data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgZmlsbD0iI3t7Y29sb3J9fSIvPjx0ZXh0IHg9IjUwJSIgeT0iNTAlIiBmb250LXNpemU9IjgwIiBmaWxsPSJ3aGl0ZSIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZHk9Ii4zZW0iPnt7bnVtYmVyfX08L3RleHQ+PC9zdmc+"} 
+        {"id": f"avatar_{i}", "category": "default", "avatarUrl": f"data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0a[...]
         for i in range(1, 9)
     ]
     return avatars
@@ -564,6 +578,157 @@ async def send_message(room_id: str, message_data: MessageCreate, current_user: 
     })
     
     return message_obj
+
+# ==================== PRIVATE MESSAGING ROUTES ====================
+
+@api_router.post("/messages/direct/send")
+async def send_direct_message(message_data: DirectMessage, current_user: dict = Depends(get_current_user)):
+    """Send a private message to another user"""
+    sender_id = str(current_user["_id"])
+    receiver_id = message_data.receiverId
+    
+    # Verify receiver exists
+    receiver = await db.users.find_one({"_id": ObjectId(receiver_id)})
+    if not receiver:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    # Prevent sending message to self
+    if sender_id == receiver_id:
+        raise HTTPException(status_code=400, detail="Cannot send message to yourself")
+    
+    # Create direct message
+    dm_doc = {
+        "senderId": sender_id,
+        "senderName": current_user["displayName"],
+        "senderPhoto": current_user.get("photoUrl"),
+        "receiverId": receiver_id,
+        "messageText": message_data.messageText,
+        "createdAt": datetime.utcnow(),
+        "readStatus": False
+    }
+    
+    result = await db.direct_messages.insert_one(dm_doc)
+    
+    # Create notification for receiver
+    await db.notifications.insert_one({
+        "userId": receiver_id,
+        "title": "New Message",
+        "body": f"{current_user['displayName']} sent you a message",
+        "type": "direct_message",
+        "relatedUserId": sender_id,
+        "createdAt": datetime.utcnow(),
+        "readStatus": False
+    })
+    
+    return DirectMessageResponse(
+        id=str(result.inserted_id),
+        senderId=sender_id,
+        senderName=current_user["displayName"],
+        senderPhoto=current_user.get("photoUrl"),
+        receiverId=receiver_id,
+        messageText=message_data.messageText,
+        createdAt=dm_doc["createdAt"],
+        readStatus=False
+    )
+
+@api_router.get("/messages/direct/{user_id}")
+async def get_direct_messages(user_id: str, current_user: dict = Depends(get_current_user), limit: int = 50):
+    """Get conversation with a specific user"""
+    current_user_id = str(current_user["_id"])
+    
+    # Get all messages between the two users
+    messages = await db.direct_messages.find({
+        "$or": [
+            {"senderId": current_user_id, "receiverId": user_id},
+            {"senderId": user_id, "receiverId": current_user_id}
+        ]
+    }).sort("createdAt", -1).limit(limit).to_list(limit)
+    
+    messages.reverse()
+    
+    # Mark messages as read if they're directed to current user
+    await db.direct_messages.update_many(
+        {"senderId": user_id, "receiverId": current_user_id, "readStatus": False},
+        {"$set": {"readStatus": True}}
+    )
+    
+    return [
+        DirectMessageResponse(
+            id=str(msg["_id"]),
+            senderId=msg["senderId"],
+            senderName=msg["senderName"],
+            senderPhoto=msg.get("senderPhoto"),
+            receiverId=msg["receiverId"],
+            messageText=msg["messageText"],
+            createdAt=msg["createdAt"],
+            readStatus=msg.get("readStatus", False)
+        ) for msg in messages
+    ]
+
+@api_router.get("/messages/direct/conversations/list")
+async def get_conversations(current_user: dict = Depends(get_current_user)):
+    """Get list of all conversations (most recent first) with unread counts"""
+    current_user_id = str(current_user["_id"])
+    
+    # Get unique users we've messaged
+    pipeline = [
+        {
+            "$match": {
+                "$or": [
+                    {"senderId": current_user_id},
+                    {"receiverId": current_user_id}
+                ]
+            }
+        },
+        {
+            "$group": {
+                "_id": {
+                    "$cond": [
+                        {"$eq": ["$senderId", current_user_id]},
+                        "$receiverId",
+                        "$senderId"
+                    ]
+                },
+                "lastMessage": {"$max": "$createdAt"},
+                "lastMessageText": {"$last": "$messageText"},
+                "unreadCount": {
+                    "$sum": {
+                        "$cond": [
+                            {
+                                "$and": [
+                                    {"$eq": ["$receiverId", current_user_id]},
+                                    {"$eq": ["$readStatus", False]}
+                                ]
+                            },
+                            1,
+                            0
+                        ]
+                    }
+                }
+            }
+        },
+        {"$sort": {"lastMessage": -1}}
+    ]
+    
+    conversations = await db.direct_messages.aggregate(pipeline).to_list(None)
+    
+    # Enrich with user details
+    enriched = []
+    for conv in conversations:
+        user = await db.users.find_one({"_id": ObjectId(conv["_id"])})
+        if user:
+            enriched.append({
+                "userId": str(user["_id"]),
+                "username": user["username"],
+                "displayName": user["displayName"],
+                "photoUrl": user.get("photoUrl"),
+                "lastMessage": conv.get("lastMessageText", ""),
+                "lastMessageTime": conv.get("lastMessage"),
+                "unreadCount": conv.get("unreadCount", 0),
+                "onlineStatus": user.get("onlineStatus", False)
+            })
+    
+    return enriched
 
 # ==================== WEBSOCKET ====================
 
