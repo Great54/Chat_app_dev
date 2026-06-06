@@ -20,9 +20,10 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import api from '@/src/api/client';
 import { useAuth } from '@/src/contexts/AuthContext';
-import GamePanel from '@/src/components/GamePanel';
+import GamePanel, { GamePanelHandle } from '@/src/components/GamePanel';
 import DraggableMember from '@/src/components/DraggableMember';
 import PrivateMessagesModal from '@/src/components/PrivateMessagesModal';
+import JumpingHostIcon from '@/src/components/JumpingHostIcon';
 import { COLORS, SPACING } from '@/src/constants/theme';
 
 interface Message {
@@ -66,6 +67,7 @@ export default function RoomScreen() {
   const [dmInitialUserId, setDmInitialUserId] = useState<string | null>(null);
   const [currentUserTarget, setCurrentUserTarget] = useState<{ x: number; y: number } | null>(null);
   const flatListRef = useRef<FlatList>(null);
+  const gameRef = useRef<GamePanelHandle>(null);
 
   useEffect(() => {
     loadRoomData();
@@ -213,14 +215,16 @@ export default function RoomScreen() {
           />
         ) : null}
         <LinearGradient
-          colors={['rgba(255,255,255,0.75)', 'rgba(255,255,255,0.65)', 'rgba(255,255,255,0.78)']}
+          colors={['rgba(255,255,255,0.20)', 'rgba(255,255,255,0.10)', 'rgba(255,255,255,0.22)']}
           style={StyleSheet.absoluteFill}
         />
         <View style={styles.profileSectionHeader}>
-          <Ionicons name="people" size={14} color="#1f2937" />
-          <Text style={styles.profileSectionTitle}>
-            In the room ({members.length}/{room?.maxCapacity || 36})
-          </Text>
+          <View style={styles.profileSectionHeaderPill}>
+            <Ionicons name="people" size={12} color="#fff" />
+            <Text style={styles.profileSectionTitle}>
+              In the room ({members.length}/{room?.maxCapacity || 36})
+            </Text>
+          </View>
           <Text style={styles.profileSectionHint}>Tap empty space to move • Tap avatar to chat</Text>
         </View>
         <View style={styles.profileGrid} testID="profile-grid-tap-area">
@@ -261,6 +265,7 @@ export default function RoomScreen() {
           </Text>
         </View>
         <View style={styles.headerRight}>
+          <JumpingHostIcon onPress={() => gameRef.current?.openHost()} />
           <TouchableOpacity
             style={styles.messagesButton}
             onPress={() => { setDmInitialUserId(null); setMessagesModalVisible(true); }}
@@ -268,18 +273,17 @@ export default function RoomScreen() {
           >
             <Ionicons name="chatbox" size={22} color={COLORS.text} />
           </TouchableOpacity>
-          <TouchableOpacity onPress={loadRoomData} style={styles.headerIconBtn}>
-            <Ionicons name="refresh" size={22} color={COLORS.text} />
-          </TouchableOpacity>
         </View>
       </View>
 
       {user && (
         <GamePanel
+          ref={gameRef}
           roomId={id as string}
           currentUserId={user.id}
           userCoins={user.coins}
           onGameUpdate={refreshUser}
+          compact
         />
       )}
 
@@ -497,22 +501,36 @@ const styles = StyleSheet.create({
   profileSectionHeader: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
     gap: 4,
     marginBottom: 6,
     zIndex: 1,
   },
+  profileSectionHeaderPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 10,
+  },
   profileSectionTitle: {
     fontSize: 11,
     fontWeight: '800',
-    color: '#1f2937',
+    color: '#ffffff',
     textTransform: 'uppercase',
-    flex: 1,
     letterSpacing: 0.4,
   },
   profileSectionHint: {
     fontSize: 9,
-    color: '#374151',
+    color: '#ffffff',
     fontStyle: 'italic',
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 8,
+    overflow: 'hidden',
   },
   profileGrid: {
     flex: 1,

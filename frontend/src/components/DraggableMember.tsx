@@ -162,7 +162,7 @@ export default function DraggableMember({
           style={{
             width: ITEM_SIZE - 14,
             height: ITEM_SIZE - 14,
-            borderRadius: (ITEM_SIZE - 14) / 2,
+            borderRadius: 8,
           }}
         />
       ) : (
@@ -258,7 +258,7 @@ const styles = StyleSheet.create({
     borderWidth: 2.5,
   },
   avatar: {
-    borderRadius: 999,
+    borderRadius: 10,
     backgroundColor: COLORS.background,
     alignItems: 'center',
     justifyContent: 'center',
@@ -269,8 +269,8 @@ const styles = StyleSheet.create({
   },
   onlineDot: {
     position: 'absolute',
-    bottom: 0,
-    right: 0,
+    bottom: -2,
+    right: -2,
     width: 10,
     height: 10,
     borderRadius: 5,

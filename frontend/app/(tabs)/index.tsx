@@ -151,32 +151,21 @@ export default function RoomsScreen() {
 
           <View style={styles.headerRight}>
             {user && (
-              <View style={styles.statItem}>
-                <Ionicons name="wallet" size={16} color={COLORS.coin} />
-                <Text style={styles.statText}>{user.coins}</Text>
+              <View style={styles.coinsGroup}>
+                <View style={styles.statItem}>
+                  <Ionicons name="wallet" size={16} color={COLORS.coin} />
+                  <Text style={styles.statText}>{user.coins}</Text>
+                </View>
+                <TouchableOpacity
+                  style={styles.topUpButton}
+                  onPress={() => setVipModalOpen(true)}
+                  testID="top-up-coins-button"
+                >
+                  <Ionicons name="add" size={16} color="#1a1a1a" />
+                  <Text style={styles.topUpText}>Top up</Text>
+                </TouchableOpacity>
               </View>
             )}
-            <TouchableOpacity
-              style={[
-                styles.starButton,
-                viewMode === 'favorites' && styles.starButtonActive,
-              ]}
-              onPress={() =>
-                setViewMode((m) => (m === 'favorites' ? 'all' : 'favorites'))
-              }
-              testID="liked-rooms-star"
-            >
-              <Ionicons
-                name={viewMode === 'favorites' ? 'star' : 'star-outline'}
-                size={22}
-                color={viewMode === 'favorites' ? COLORS.coin : COLORS.text}
-              />
-              {favoriteIds.length > 0 && (
-                <View style={styles.starBadge}>
-                  <Text style={styles.starBadgeText}>{favoriteIds.length}</Text>
-                </View>
-              )}
-            </TouchableOpacity>
           </View>
         </View>
 
@@ -326,36 +315,23 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
   },
-  starButton: {
-    backgroundColor: COLORS.cardBg,
-    width: 40,
-    height: 36,
-    borderRadius: 8,
+  coinsGroup: {
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    position: 'relative',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.06)',
+    gap: 6,
   },
-  starButtonActive: {
-    borderColor: COLORS.coin,
-    backgroundColor: COLORS.coin + '20',
-  },
-  starBadge: {
-    position: 'absolute',
-    top: -4,
-    right: -4,
+  topUpButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
     backgroundColor: COLORS.coin,
-    borderRadius: 10,
-    minWidth: 18,
-    height: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
   },
-  starBadgeText: {
+  topUpText: {
     color: '#1a1a1a',
-    fontSize: 10,
+    fontSize: 12,
     fontWeight: '800',
   },
   segmentRow: {

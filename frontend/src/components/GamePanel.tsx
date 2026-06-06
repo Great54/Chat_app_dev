@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, forwardRef, useImperativeHandle, useRef } from 'react';
 import {
   View,
   Text,
@@ -8,6 +8,8 @@ import {
   ActivityIndicator,
   Alert,
   Platform,
+  Animated,
+  Easing,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import api from '@/src/api/client';
@@ -54,6 +56,11 @@ interface Props {
   currentUserId: string;
   userCoins: number;
   onGameUpdate: () => void;
+  compact?: boolean;
+}
+
+export interface GamePanelHandle {
+  openHost: () => void;
 }
 
 const showAlert = (title: string, message: string) => {
@@ -64,7 +71,10 @@ const showAlert = (title: string, message: string) => {
   }
 };
 
-export default function GamePanel({ roomId, currentUserId, userCoins, onGameUpdate }: Props) {
+const GamePanel = forwardRef<GamePanelHandle, Props>(function GamePanel(
+  { roomId, currentUserId, userCoins, onGameUpdate, compact = false },
+  ref,
+) {
   const [games, setGames] = useState<Game[]>([]);
   const [gameTypes, setGameTypes] = useState<GameType[]>([]);
   const [hostModalOpen, setHostModalOpen] = useState(false);
@@ -72,6 +82,10 @@ export default function GamePanel({ roomId, currentUserId, userCoins, onGameUpda
   const [tick, setTick] = useState(0);
   const [resultsShown, setResultsShown] = useState<Set<string>>(new Set());
   const [resultModalGame, setResultModalGame] = useState<Game | null>(null);
+
+  useImperativeHandle(ref, () => ({
+    openHost: () => setHostModalOpen(true),
+  }));
 
   useEffect(() => {
     loadGames();
@@ -150,10 +164,11 @@ export default function GamePanel({ roomId, currentUserId, userCoins, onGameUpda
 
   return (
     <>
-      <View style={styles.container}>
-        {activeGames.map((game) => {
-          const isJoined = game.players.some((p) => p.userId === currentUserId);
-          const isFull = game.players.length >= game.maxPlayers;
+      {(!compact || hasActiveGame) && (
+        <View style={styles.container}>
+          {activeGames.map((game) => {
+            const isJoined = game.players.some((p) => p.userId === currentUserId);
+            const isFull = game.players.length >= game.maxPlayers;
           
           return (
             <View key={game.id} style={styles.gameBanner} testID={`game-${game.id}`}>
@@ -209,7 +224,7 @@ export default function GamePanel({ roomId, currentUserId, userCoins, onGameUpda
           );
         })}
 
-        {!hasActiveGame && (
+        {!hasActiveGame && !compact && (
           <TouchableOpacity
             style={styles.hostButton}
             onPress={() => setHostModalOpen(true)}
@@ -220,7 +235,8 @@ export default function GamePanel({ roomId, currentUserId, userCoins, onGameUpda
             <Text style={styles.hostButtonText}>Host a Game</Text>
           </TouchableOpacity>
         )}
-      </View>
+        </View>
+      )}
 
       {/* Game Type Selection Modal */}
       <Modal
@@ -360,7 +376,9 @@ export default function GamePanel({ roomId, currentUserId, userCoins, onGameUpda
       </Modal>
     </>
   );
-}
+});
+
+export default GamePanel;
 
 const styles = StyleSheet.create({
   container: {
