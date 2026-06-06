@@ -107,8 +107,8 @@ class UserProfile(BaseModel):
     bannerUrl: Optional[str] = None
     bio: Optional[str] = ""
     coins: int = 0
-    xp: int = 0
-    level: int = 0
+    vipTier: Optional[str] = None  # None | "pro" | "elite"
+    vouchers: int = 0
     currentRoomId: Optional[str] = None
     onlineStatus: bool = True
     lastSeen: datetime
@@ -119,6 +119,43 @@ class UpdateProfile(BaseModel):
     photoUrl: Optional[str] = None
     bannerUrl: Optional[str] = None
     bio: Optional[str] = None
+
+class VipPurchase(BaseModel):
+    tier: str  # "pro" or "elite"
+
+VIP_TIERS_CONFIG = {
+    "pro": {
+        "id": "pro",
+        "name": "VIP Pro",
+        "price": 1000,
+        "bonusCoins": 500,
+        "voucherDiscount": 10,
+        "vouchers": 3,
+        "perks": [
+            "+500 bonus coins instantly",
+            "3 shopping vouchers (10% off)",
+            "Golden username badge",
+            "Enlarged profile avatar",
+            "VIP crown on profile",
+        ],
+    },
+    "elite": {
+        "id": "elite",
+        "name": "VIP Elite",
+        "price": 2500,
+        "bonusCoins": 1500,
+        "voucherDiscount": 25,
+        "vouchers": 8,
+        "perks": [
+            "+1500 bonus coins instantly",
+            "8 premium vouchers (25% off)",
+            "Rainbow gradient username",
+            "XL avatar with diamond border",
+            "Priority game host slots",
+            "Exclusive Elite-only emotes",
+        ],
+    },
+}
 
 class RoomCreate(BaseModel):
     roomName: str
@@ -157,6 +194,24 @@ class PredefinedAvatar(BaseModel):
     id: str
     avatarUrl: str
     category: str
+
+def _build_user_profile(user: dict) -> UserProfile:
+    return UserProfile(
+        id=str(user["_id"]),
+        email=user["email"],
+        username=user["username"],
+        displayName=user["displayName"],
+        photoUrl=user.get("photoUrl"),
+        bannerUrl=user.get("bannerUrl"),
+        bio=user.get("bio", ""),
+        coins=user.get("coins", 0),
+        vipTier=user.get("vipTier"),
+        vouchers=user.get("vouchers", 0),
+        currentRoomId=user.get("currentRoomId"),
+        onlineStatus=user.get("onlineStatus", True),
+        lastSeen=user.get("lastSeen", datetime.utcnow()),
+        createdAt=user.get("createdAt", datetime.utcnow())
+    )
 
 # ==================== HELPER FUNCTIONS ====================
 
@@ -279,22 +334,7 @@ async def login(user_data: UserLogin):
 
 @api_router.get("/auth/me", response_model=UserProfile)
 async def get_me(current_user: dict = Depends(get_current_user)):
-    return UserProfile(
-        id=str(current_user["_id"]),
-        email=current_user["email"],
-        username=current_user["username"],
-        displayName=current_user["displayName"],
-        photoUrl=current_user.get("photoUrl"),
-        bannerUrl=current_user.get("bannerUrl"),
-        bio=current_user.get("bio", ""),
-        coins=current_user.get("coins", 0),
-        xp=current_user.get("xp", 0),
-        level=current_user.get("level", 0),
-        currentRoomId=current_user.get("currentRoomId"),
-        onlineStatus=current_user.get("onlineStatus", True),
-        lastSeen=current_user.get("lastSeen", datetime.utcnow()),
-        createdAt=current_user.get("createdAt", datetime.utcnow())
-    )
+    return _build_user_profile(current_user)
 
 # ==================== USER ROUTES ====================
 
@@ -317,45 +357,14 @@ async def update_profile(update_data: UpdateProfile, current_user: dict = Depend
         )
     
     updated_user = await db.users.find_one({"_id": current_user["_id"]})
-    return UserProfile(
-        id=str(updated_user["_id"]),
-        email=updated_user["email"],
-        username=updated_user["username"],
-        displayName=updated_user["displayName"],
-        photoUrl=updated_user.get("photoUrl"),
-        bannerUrl=updated_user.get("bannerUrl"),
-        bio=updated_user.get("bio", ""),
-        coins=updated_user.get("coins", 0),
-        xp=updated_user.get("xp", 0),
-        level=updated_user.get("level", 0),
-        currentRoomId=updated_user.get("currentRoomId"),
-        onlineStatus=updated_user.get("onlineStatus", True),
-        lastSeen=updated_user.get("lastSeen", datetime.utcnow()),
-        createdAt=updated_user.get("createdAt", datetime.utcnow())
-    )
+    return _build_user_profile(updated_user)
 
 @api_router.get("/users/{user_id}", response_model=UserProfile)
 async def get_user(user_id: str):
     user = await db.users.find_one({"_id": ObjectId(user_id)})
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-    
-    return UserProfile(
-        id=str(user["_id"]),
-        email=user["email"],
-        username=user["username"],
-        displayName=user["displayName"],
-        photoUrl=user.get("photoUrl"),
-        bannerUrl=user.get("bannerUrl"),
-        bio=user.get("bio", ""),
-        coins=user.get("coins", 0),
-        xp=user.get("xp", 0),
-        level=user.get("level", 0),
-        currentRoomId=user.get("currentRoomId"),
-        onlineStatus=user.get("onlineStatus", True),
-        lastSeen=user.get("lastSeen", datetime.utcnow()),
-        createdAt=user.get("createdAt", datetime.utcnow())
-    )
+    return _build_user_profile(user)
 
 @api_router.get("/avatars/predefined")
 async def get_predefined_avatars():
@@ -478,15 +487,18 @@ async def leave_room(room_id: str, current_user: dict = Depends(get_current_user
 @api_router.get("/rooms/{room_id}/members")
 async def get_room_members(room_id: str):
     members = await db.room_members.find({"roomId": room_id}).to_list(36)
-    return [
-        {
+    # Enrich with current vipTier from users collection
+    enriched = []
+    for member in members:
+        user_doc = await db.users.find_one({"_id": ObjectId(member["userId"])})
+        enriched.append({
             "userId": member["userId"],
             "username": member["username"],
-            "profilePhoto": member.get("profilePhoto"),
-            "level": member.get("level", 0),
+            "profilePhoto": user_doc.get("photoUrl") if user_doc else member.get("profilePhoto"),
+            "vipTier": user_doc.get("vipTier") if user_doc else None,
             "onlineStatus": member.get("onlineStatus", True)
-        } for member in members
-    ]
+        })
+    return enriched
 
 # ==================== MESSAGE ROUTES ====================
 
@@ -528,9 +540,6 @@ async def send_message(room_id: str, message_data: MessageCreate, current_user: 
     }
     
     result = await db.messages.insert_one(message_doc)
-    
-    # Add XP for messaging
-    await add_xp(user_id, 1)
     
     # Check if user should get coin reward (every 10 messages)
     message_count = await db.messages.count_documents({"senderId": user_id})
@@ -1061,7 +1070,6 @@ async def _resolve_game(game: dict) -> dict:
     
     # Award pot to winner
     await add_coins(winner["userId"], game["pot"], "game_win", f"Won {GAME_TYPES[game_type]['name']} game")
-    await add_xp(winner["userId"], 10)  # Bonus XP for winning
     
     # Notify winner
     await db.notifications.insert_one({
@@ -1270,11 +1278,101 @@ async def list_game_types():
         for key, value in GAME_TYPES.items()
     ]
 
+# ==================== VIP ====================
+
+@api_router.get("/vip/tiers")
+async def get_vip_tiers():
+    """List available VIP tiers"""
+    return list(VIP_TIERS_CONFIG.values())
+
+@api_router.post("/vip/purchase")
+async def purchase_vip(req: VipPurchase, current_user: dict = Depends(get_current_user)):
+    """Buy a VIP tier with coins"""
+    user_id = str(current_user["_id"])
+    
+    if req.tier not in VIP_TIERS_CONFIG:
+        raise HTTPException(status_code=400, detail="Invalid VIP tier")
+    
+    tier_config = VIP_TIERS_CONFIG[req.tier]
+    current_tier = current_user.get("vipTier")
+    
+    # Compute effective price (Pro upgrading to Elite pays difference)
+    effective_price = tier_config["price"]
+    if current_tier == "pro" and req.tier == "elite":
+        effective_price = tier_config["price"] - VIP_TIERS_CONFIG["pro"]["price"]
+    elif current_tier == req.tier:
+        raise HTTPException(status_code=400, detail=f"You already have {tier_config['name']}")
+    elif current_tier == "elite" and req.tier == "pro":
+        raise HTTPException(status_code=400, detail="Cannot downgrade from Elite to Pro")
+    
+    if current_user.get("coins", 0) < effective_price:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Need {effective_price} coins (you have {current_user.get('coins', 0)})"
+        )
+    
+    # Deduct price
+    await add_coins(user_id, -effective_price, "vip_purchase", f"Purchased {tier_config['name']}")
+    # Award bonus coins
+    await add_coins(user_id, tier_config["bonusCoins"], "vip_bonus", f"{tier_config['name']} signup bonus")
+    
+    # Apply VIP tier + vouchers
+    await db.users.update_one(
+        {"_id": current_user["_id"]},
+        {"$set": {"vipTier": req.tier}, "$inc": {"vouchers": tier_config["vouchers"]}}
+    )
+    
+    # Notification
+    await db.notifications.insert_one({
+        "userId": user_id,
+        "title": f"👑 Welcome to {tier_config['name']}!",
+        "body": f"You received {tier_config['bonusCoins']} bonus coins and {tier_config['vouchers']} vouchers.",
+        "type": "achievement",
+        "createdAt": datetime.utcnow(),
+        "readStatus": False
+    })
+    
+    updated = await db.users.find_one({"_id": current_user["_id"]})
+    return _build_user_profile(updated)
+
+@api_router.get("/vip/vouchers")
+async def get_vouchers(current_user: dict = Depends(get_current_user)):
+    """Get available shopping vouchers based on user's VIP tier"""
+    tier = current_user.get("vipTier")
+    voucher_count = current_user.get("vouchers", 0)
+    
+    if not tier:
+        return {"vouchers": [], "available": 0, "vipTier": None}
+    
+    discount = VIP_TIERS_CONFIG[tier]["voucherDiscount"]
+    
+    sample_vouchers = [
+        {"brand": "Amazon", "discount": f"{discount}% OFF", "icon": "cart"},
+        {"brand": "Starbucks", "discount": f"{discount}% OFF", "icon": "cafe"},
+        {"brand": "Netflix", "discount": f"{discount}% OFF", "icon": "film"},
+        {"brand": "Spotify", "discount": f"{discount}% OFF", "icon": "musical-notes"},
+        {"brand": "Uber Eats", "discount": f"{discount}% OFF", "icon": "fast-food"},
+        {"brand": "Nike", "discount": f"{discount}% OFF", "icon": "fitness"},
+    ]
+    
+    return {
+        "vouchers": sample_vouchers,
+        "available": voucher_count,
+        "vipTier": tier,
+        "discount": discount,
+    }
+
 # ==================== LEADERBOARD ====================
 
-@api_router.get("/leaderboard/xp")
-async def get_xp_leaderboard(limit: int = 50):
-    users = await db.users.find().sort("xp", -1).limit(limit).to_list(limit)
+@api_router.get("/leaderboard/vip")
+async def get_vip_leaderboard(limit: int = 50):
+    """Top VIP users — Elite first, then Pro"""
+    users = await db.users.find(
+        {"vipTier": {"$in": ["pro", "elite"]}}
+    ).to_list(limit)
+    # Sort: Elite first then Pro, then by coins desc
+    tier_rank = {"elite": 0, "pro": 1}
+    users.sort(key=lambda u: (tier_rank.get(u.get("vipTier"), 99), -u.get("coins", 0)))
     return [
         {
             "rank": idx + 1,
@@ -1282,10 +1380,15 @@ async def get_xp_leaderboard(limit: int = 50):
             "username": user["username"],
             "displayName": user["displayName"],
             "photoUrl": user.get("photoUrl"),
-            "xp": user.get("xp", 0),
-            "level": user.get("level", 0)
-        } for idx, user in enumerate(users)
+            "vipTier": user.get("vipTier"),
+            "coins": user.get("coins", 0),
+        } for idx, user in enumerate(users[:limit])
     ]
+
+@api_router.get("/leaderboard/xp")
+async def get_xp_leaderboard_deprecated(limit: int = 50):
+    """Deprecated — XP system removed. Returns VIP leaderboard for backward compat."""
+    return await get_vip_leaderboard(limit=limit)
 
 @api_router.get("/leaderboard/coins")
 async def get_coins_leaderboard(limit: int = 50):

@@ -12,8 +12,10 @@ import { router, useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import RoomCard from '@/src/components/RoomCard';
+import VipShopModal from '@/src/components/VipShopModal';
 import api from '@/src/api/client';
 import { useAuth } from '@/src/contexts/AuthContext';
+import { VIP_STYLES } from '@/src/utils/vip';
 import { COLORS, SPACING } from '@/src/constants/theme';
 
 interface Room {
@@ -29,6 +31,7 @@ export default function RoomsScreen() {
   const [rooms, setRooms] = useState<Room[]>([]);
   const [loading, setLoading] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
+  const [vipModalOpen, setVipModalOpen] = useState(false);
   const { user, refreshUser } = useAuth();
 
   useEffect(() => {
@@ -86,21 +89,35 @@ export default function RoomsScreen() {
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
         <View style={styles.headerContent}>
+          <TouchableOpacity
+            style={[
+              styles.vipCrownBtn,
+              user?.vipTier && { backgroundColor: VIP_STYLES[user.vipTier].crownColor + '30', borderColor: VIP_STYLES[user.vipTier].crownColor },
+            ]}
+            onPress={() => setVipModalOpen(true)}
+            testID="vip-crown-button"
+          >
+            <Ionicons
+              name={user?.vipTier === 'elite' ? 'diamond' : user?.vipTier === 'pro' ? 'star' : 'diamond-outline'}
+              size={20}
+              color={user?.vipTier ? VIP_STYLES[user.vipTier].crownColor : COLORS.coin}
+            />
+            {user?.vipTier && (
+              <Text style={[styles.vipLabel, { color: VIP_STYLES[user.vipTier].crownColor }]}>
+                {user.vipTier === 'elite' ? 'ELITE' : 'PRO'}
+              </Text>
+            )}
+          </TouchableOpacity>
+          
           <View style={styles.headerLeft}>
             <Text style={styles.headerTitle}>GenC Vibez</Text>
             <Text style={styles.headerSubtitle}>Choose your vibe</Text>
           </View>
           <View style={styles.headerRight}>
             {user && (
-              <View style={styles.stats}>
-                <View style={styles.statItem}>
-                  <Ionicons name="wallet" size={16} color={COLORS.coin} />
-                  <Text style={styles.statText}>{user.coins}</Text>
-                </View>
-                <View style={styles.statItem}>
-                  <Ionicons name="trending-up" size={16} color={COLORS.xp} />
-                  <Text style={styles.statText}>Lv {user.level}</Text>
-                </View>
+              <View style={styles.statItem}>
+                <Ionicons name="wallet" size={16} color={COLORS.coin} />
+                <Text style={styles.statText}>{user.coins}</Text>
               </View>
             )}
             <TouchableOpacity
@@ -120,6 +137,8 @@ export default function RoomsScreen() {
           </View>
         </View>
       </View>
+
+      <VipShopModal visible={vipModalOpen} onClose={() => setVipModalOpen(false)} />
 
       <FlatList
         data={rooms}
@@ -162,6 +181,22 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    gap: 8,
+  },
+  vipCrownBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    backgroundColor: COLORS.cardBg,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    borderRadius: 10,
+    borderWidth: 1.5,
+    borderColor: COLORS.coin,
+  },
+  vipLabel: {
+    fontSize: 10,
+    fontWeight: '800',
   },
   headerLeft: {
     flex: 1,

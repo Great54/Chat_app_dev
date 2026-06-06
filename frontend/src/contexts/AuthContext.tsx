@@ -9,10 +9,11 @@ interface User {
   username: string;
   displayName: string;
   photoUrl?: string;
+  bannerUrl?: string;
   bio?: string;
   coins: number;
-  xp: number;
-  level: number;
+  vipTier?: 'pro' | 'elite' | null;
+  vouchers?: number;
   currentRoomId?: string;
   onlineStatus: boolean;
 }

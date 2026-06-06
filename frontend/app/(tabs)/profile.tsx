@@ -16,6 +16,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { useAuth } from '@/src/contexts/AuthContext';
+import { VIP_STYLES } from '@/src/utils/vip';
+import VipShopModal from '@/src/components/VipShopModal';
 import api from '@/src/api/client';
 import { COLORS, SPACING } from '@/src/constants/theme';
 
@@ -25,6 +27,8 @@ export default function ProfileScreen() {
   const [displayName, setDisplayName] = useState(user?.displayName || '');
   const [bio, setBio] = useState(user?.bio || '');
   const [loading, setLoading] = useState(false);
+  const [vipModalOpen, setVipModalOpen] = useState(false);
+  const vipStyle = user?.vipTier ? VIP_STYLES[user.vipTier] : null;
 
   useEffect(() => {
     if (editing && user) {
@@ -127,40 +131,90 @@ export default function ProfileScreen() {
         <View style={styles.avatarSection}>
           <TouchableOpacity
             onPress={() => pickImage('photoUrl')}
-            style={styles.avatarContainer}
+            style={[
+              styles.avatarContainer,
+              vipStyle && { transform: [{ scale: vipStyle.avatarScale }] },
+            ]}
             testID="edit-avatar-btn"
           >
             {user.photoUrl ? (
-              <Image source={{ uri: user.photoUrl }} style={styles.avatarImg} />
+              <Image
+                source={{ uri: user.photoUrl }}
+                style={[
+                  styles.avatarImg,
+                  vipStyle && { borderColor: vipStyle.borderColor, borderWidth: 4 },
+                ]}
+              />
             ) : (
-              <View style={styles.avatarPlaceholder}>
+              <View
+                style={[
+                  styles.avatarPlaceholder,
+                  vipStyle && { borderColor: vipStyle.borderColor, borderWidth: 4 },
+                ]}
+              >
                 <Ionicons name="person" size={56} color={COLORS.textSecondary} />
+              </View>
+            )}
+            {vipStyle && (
+              <View style={[styles.vipCrownOnAvatar, { backgroundColor: vipStyle.crownColor }]}>
+                <Ionicons name={vipStyle.badgeIcon} size={14} color={COLORS.background} />
               </View>
             )}
             <View style={styles.cameraIcon}>
               <Ionicons name="camera" size={14} color={COLORS.text} />
             </View>
           </TouchableOpacity>
-          <Text style={styles.displayName}>{user.displayName}</Text>
+          <Text
+            style={[
+              styles.displayName,
+              vipStyle && { color: vipStyle.nameColor, fontWeight: '800' },
+            ]}
+          >
+            {user.displayName}
+            {vipStyle && (
+              <Text style={{ color: vipStyle.nameColor }}> {vipStyle.badgeIcon === 'diamond' ? '💎' : '⭐'}</Text>
+            )}
+          </Text>
           <Text style={styles.username}>@{user.username}</Text>
+          {vipStyle && (
+            <View style={[styles.vipTagPill, { borderColor: vipStyle.crownColor }]}>
+              <Ionicons name={vipStyle.badgeIcon} size={12} color={vipStyle.crownColor} />
+              <Text style={[styles.vipTagText, { color: vipStyle.crownColor }]}>
+                {vipStyle.name}
+              </Text>
+            </View>
+          )}
         </View>
 
-        {/* Stats Row */}
+        {/* Stats Row - no XP/Level, replaced with VIP */}
         <View style={styles.statsRow}>
           <View style={styles.statBox}>
             <Ionicons name="wallet" size={22} color={COLORS.coin} />
             <Text style={styles.statValue}>{user.coins}</Text>
             <Text style={styles.statLabel}>Coins</Text>
           </View>
+          <TouchableOpacity
+            style={[
+              styles.statBox,
+              vipStyle && { borderWidth: 1.5, borderColor: vipStyle.crownColor },
+            ]}
+            onPress={() => setVipModalOpen(true)}
+            testID="profile-vip-stat"
+          >
+            <Ionicons
+              name={user.vipTier === 'elite' ? 'diamond' : user.vipTier === 'pro' ? 'star' : 'diamond-outline'}
+              size={22}
+              color={vipStyle ? vipStyle.crownColor : COLORS.coin}
+            />
+            <Text style={[styles.statValue, vipStyle && { color: vipStyle.crownColor }]}>
+              {user.vipTier ? (user.vipTier === 'elite' ? 'ELITE' : 'PRO') : 'Get VIP'}
+            </Text>
+            <Text style={styles.statLabel}>VIP Status</Text>
+          </TouchableOpacity>
           <View style={styles.statBox}>
-            <Ionicons name="trending-up" size={22} color={COLORS.xp} />
-            <Text style={styles.statValue}>{user.xp}</Text>
-            <Text style={styles.statLabel}>XP</Text>
-          </View>
-          <View style={styles.statBox}>
-            <Ionicons name="star" size={22} color={COLORS.primary} />
-            <Text style={styles.statValue}>Lv {user.level}</Text>
-            <Text style={styles.statLabel}>Level</Text>
+            <Ionicons name="gift" size={22} color={COLORS.accent} />
+            <Text style={styles.statValue}>{user.vouchers || 0}</Text>
+            <Text style={styles.statLabel}>Vouchers</Text>
           </View>
         </View>
 
@@ -230,6 +284,8 @@ export default function ProfileScreen() {
           <Text style={styles.logoutText}>Logout</Text>
         </TouchableOpacity>
       </ScrollView>
+
+      <VipShopModal visible={vipModalOpen} onClose={() => setVipModalOpen(false)} />
     </SafeAreaView>
   );
 }
@@ -328,6 +384,33 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     borderWidth: 2,
     borderColor: COLORS.background,
+  },
+  vipCrownOnAvatar: {
+    position: 'absolute',
+    top: -2,
+    right: -2,
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: COLORS.background,
+  },
+  vipTagPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    borderWidth: 1.5,
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+    borderRadius: 12,
+    marginTop: 6,
+  },
+  vipTagText: {
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 0.5,
   },
   displayName: {
     fontSize: 22,

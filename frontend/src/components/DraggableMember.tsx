@@ -76,6 +76,9 @@ export default function DraggableMember({
     })
   ).current;
 
+  const vipStyle = member.vipTier ? VIP_STYLES[member.vipTier] : null;
+  const effectiveScale = vipStyle ? vipStyle.avatarScale : 1;
+
   return (
     <Animated.View
       {...panResponder.panHandlers}
@@ -85,26 +88,38 @@ export default function DraggableMember({
           transform: [
             { translateX: pan.x },
             { translateY: pan.y },
-            { scale },
+            { scale: Animated.multiply(scale, new Animated.Value(effectiveScale)) },
           ],
-          zIndex: isDragging ? 10 : 1,
+          zIndex: isDragging ? 10 : vipStyle ? 5 : 1,
         },
         isDragging && styles.dragging,
         isCurrentUser && styles.currentUser,
       ]}
       testID={`member-${member.userId}`}
     >
-      <View style={styles.avatar}>
+      <View
+        style={[
+          styles.avatar,
+          vipStyle && { borderColor: vipStyle.borderColor, borderWidth: 3 },
+        ]}
+      >
         {member.profilePhoto ? (
           <Image source={{ uri: member.profilePhoto }} style={styles.avatarImg} />
         ) : (
-          <Ionicons name="person" size={20} color={COLORS.primary} />
+          <Ionicons name="person" size={20} color={vipStyle?.crownColor || COLORS.primary} />
         )}
         {member.onlineStatus && <View style={styles.onlineDot} />}
+        {vipStyle && (
+          <View style={[styles.vipBadge, { backgroundColor: vipStyle.crownColor }]}>
+            <Ionicons name={vipStyle.badgeIcon} size={8} color={COLORS.background} />
+          </View>
+        )}
       </View>
-      <Text style={styles.level} numberOfLines={1}>
-        Lv{member.level}
-      </Text>
+      {vipStyle ? (
+        <Text style={[styles.vipLabel, { color: vipStyle.crownColor }]} numberOfLines={1}>
+          {member.vipTier === 'elite' ? 'ELITE' : 'PRO'}
+        </Text>
+      ) : null}
     </Animated.View>
   );
 }
@@ -160,5 +175,23 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: COLORS.textSecondary,
     marginTop: 2,
+  },
+  vipLabel: {
+    fontSize: 8,
+    fontWeight: '800',
+    marginTop: 2,
+    letterSpacing: 0.5,
+  },
+  vipBadge: {
+    position: 'absolute',
+    top: -3,
+    right: -3,
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1.5,
+    borderColor: COLORS.cardBg,
   },
 });
