@@ -27,6 +27,7 @@ import JumpingHostIcon from '@/src/components/JumpingHostIcon';
 import { COLORS, SPACING } from '@/src/constants/theme';
 import { useProfilePopup } from '@/src/contexts/ProfilePopupContext';
 import BoardTab from '@/src/components/BoardTab';
+import FeedTab from '@/src/components/FeedTab';
 
 interface Message {
   id: string;
@@ -351,14 +352,7 @@ export default function RoomScreen() {
 
       {activeRoomTab === 'feed' ? (
         <View style={styles.feedWrap}>
-          {/* Feed Tab - Placeholder for now */}
-          <View style={styles.feedPlaceholder}>
-            <Ionicons name="newspaper-outline" size={48} color={COLORS.textSecondary} />
-            <Text style={styles.feedPlaceholderTitle}>Feed</Text>
-            <Text style={styles.feedPlaceholderText}>
-              Room feed content coming soon...
-            </Text>
-          </View>
+          <FeedTab roomId={id as string} active={activeRoomTab === 'feed'} />
         </View>
       ) : activeRoomTab === 'board' ? (
         <View style={styles.boardWrap}>
@@ -472,24 +466,6 @@ const styles = StyleSheet.create({
   feedWrap: {
     flex: 1,
     marginTop: SPACING.sm,
-  },
-  feedPlaceholder: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: SPACING.xl,
-  },
-  feedPlaceholderTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: COLORS.text,
-    marginTop: SPACING.md,
-    marginBottom: SPACING.sm,
-  },
-  feedPlaceholderText: {
-    fontSize: 14,
-    color: COLORS.textSecondary,
-    textAlign: 'center',
   },
   header: {
     flexDirection: 'row',

@@ -106,6 +106,21 @@ class ResetPasswordRequest(BaseModel):
     token: str
     new_password: str
 
+class RoomActivity(BaseModel):
+    """Model for room activity feed items"""
+    id: str
+    roomId: str
+    activityType: str  # "post_created", "post_liked", "user_joined", "vip_purchased", "vip_gifted"
+    actorId: str
+    actorName: str
+    actorPhoto: Optional[str] = None
+    actorVipTier: Optional[str] = None
+    targetId: Optional[str] = None  # For likes: post ID, for gifts: recipient user ID
+    targetName: Optional[str] = None  # For gifts: recipient name
+    targetPhoto: Optional[str] = None
+    metadata: Optional[dict] = None  # Additional data like post text preview, vip tier
+    createdAt: datetime
+
 class UserProfile(BaseModel):
     id: str
     email: str
@@ -353,6 +368,48 @@ async def add_xp(user_id: str, amount: int):
         {"_id": ObjectId(user_id)},
         {"$set": {"xp": new_xp, "level": new_level}}
     )
+
+async def create_room_activity(
+    room_id: str,
+    activity_type: str,
+    actor_id: str,
+    target_id: Optional[str] = None,
+    target_name: Optional[str] = None,
+    target_photo: Optional[str] = None,
+    metadata: Optional[dict] = None
+):
+    """Create a room activity for the feed.
+    
+    Activity types:
+    - post_created: User created a new post
+    - post_liked: User liked a post
+    - user_joined: User joined the room
+    - vip_purchased: User purchased VIP
+    - vip_gifted: User gifted VIP to another user
+    - friend_added: User added someone as friend
+    """
+    try:
+        actor = await db.users.find_one({"_id": ObjectId(actor_id)})
+        if not actor:
+            return
+        
+        activity = {
+            "roomId": room_id,
+            "activityType": activity_type,
+            "actorId": actor_id,
+            "actorName": actor.get("displayName", "Unknown"),
+            "actorPhoto": actor.get("photoUrl"),
+            "actorVipTier": actor.get("vipTier"),
+            "targetId": target_id,
+            "targetName": target_name,
+            "targetPhoto": target_photo,
+            "metadata": metadata or {},
+            "createdAt": datetime.utcnow()
+        }
+        
+        await db.room_activities.insert_one(activity)
+    except Exception as e:
+        logger.error(f"Failed to create room activity: {e}")
 
 async def _create_activity(
     user_id: str,
@@ -845,6 +902,23 @@ async def send_gift(payload: GiftSendPayload, current_user: dict = Depends(get_c
         audience="self",
     )
 
+    # Also log to room feed if sender is in a room
+    current_room_id = current_user.get("currentRoomId")
+    if current_room_id:
+        await create_room_activity(
+            room_id=current_room_id,
+            activity_type="vip_gifted",
+            actor_id=me_id,
+            target_id=payload.receiverId,
+            target_name=receiver.get("displayName"),
+            target_photo=receiver.get("photoUrl"),
+            metadata={
+                "giftId": gift["id"],
+                "giftName": gift["name"],
+                "giftIcon": gift["icon"]
+            }
+        )
+
     return {
         "message": f"Sent {gift['name']} to {receiver['displayName']}",
         "gift": gift,
@@ -1076,6 +1150,14 @@ async def join_room(room_id: str, current_user: dict = Depends(get_current_user)
         "username": current_user["username"]
     })
     
+    # Log activity to room feed
+    await create_room_activity(
+        room_id=room_id,
+        activity_type="user_joined",
+        actor_id=user_id,
+        metadata={"roomName": room["roomName"]}
+    )
+    
     return {"message": "Joined room successfully"}
 
 async def leave_room_helper(room_id: str, user_id: str):
@@ -1124,6 +1206,31 @@ async def get_room_members(room_id: str):
             "onlineStatus": member.get("onlineStatus", True)
         })
     return enriched
+
+@api_router.get("/rooms/{room_id}/activities")
+async def get_room_activities(room_id: str, limit: int = 50, skip: int = 0):
+    """Get activity feed for a room"""
+    activities = await db.room_activities.find(
+        {"roomId": room_id}
+    ).sort("createdAt", -1).skip(skip).limit(limit).to_list(limit)
+    
+    return [
+        {
+            "id": str(activity["_id"]),
+            "roomId": activity["roomId"],
+            "activityType": activity["activityType"],
+            "actorId": activity["actorId"],
+            "actorName": activity["actorName"],
+            "actorPhoto": activity.get("actorPhoto"),
+            "actorVipTier": activity.get("actorVipTier"),
+            "targetId": activity.get("targetId"),
+            "targetName": activity.get("targetName"),
+            "targetPhoto": activity.get("targetPhoto"),
+            "metadata": activity.get("metadata", {}),
+            "createdAt": activity["createdAt"],
+        }
+        for activity in activities
+    ]
 
 # ==================== MESSAGE ROUTES ====================
 
@@ -2212,6 +2319,15 @@ async def create_room_post(
     result = await db.board_posts.insert_one(post)
     post["_id"] = result.inserted_id
     
+    # Log activity to room feed
+    await create_room_activity(
+        room_id=room_id,
+        activity_type="post_created",
+        actor_id=user_id,
+        target_id=str(result.inserted_id),
+        metadata={"postText": post_data.text.strip()[:100]}  # First 100 chars as preview
+    )
+    
     return _serialize_post(post, user_id)
 
 @api_router.get("/posts/{post_id}")
@@ -2269,6 +2385,16 @@ async def toggle_like_post(post_id: str, current_user: dict = Depends(get_curren
             {"$addToSet": {"likes": user_id}}
         )
         liked = True
+        
+        # Log like activity to room feed (only for likes, not unlikes)
+        await create_room_activity(
+            room_id=post["roomId"],
+            activity_type="post_liked",
+            actor_id=user_id,
+            target_id=post_id,
+            target_name=post.get("authorUsername"),
+            metadata={"postText": post.get("text", "")[:50]}
+        )
     
     # Get updated post
     updated_post = await db.board_posts.find_one({"_id": ObjectId(post_id)})
@@ -2426,6 +2552,19 @@ async def purchase_vip(req: VipPurchase, current_user: dict = Depends(get_curren
         },
         audience="friends",
     )
+
+    # Also log to room feed if user is in a room
+    current_room_id = current_user.get("currentRoomId")
+    if current_room_id:
+        await create_room_activity(
+            room_id=current_room_id,
+            activity_type="vip_purchased",
+            actor_id=user_id,
+            metadata={
+                "tier": req.tier,
+                "tierName": tier_config["name"]
+            }
+        )
 
     updated = await db.users.find_one({"_id": current_user["_id"]})
     return _build_user_profile(updated)

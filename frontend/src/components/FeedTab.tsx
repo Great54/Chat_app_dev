@@ -1,455 +1,342 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   FlatList,
-  TouchableOpacity,
-  ActivityIndicator,
   RefreshControl,
-  Animated,
+  Image,
+  ActivityIndicator,
 } from 'react-native';
-import { Image } from 'expo-image';
-import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
-import api from '@/src/api/client';
 import { COLORS, SPACING } from '@/src/constants/theme';
-import { VIP_STYLES } from '@/src/utils/vip';
-import { getActivityVisual, formatRelativeTime } from '@/src/utils/activity';
-import { useProfilePopup } from '@/src/contexts/ProfilePopupContext';
+import { VIP_TIERS } from '@/src/utils/vip';
+import api from '@/src/api/client';
+import { formatDistanceToNow } from 'date-fns';
 
-interface FeedActivityUser {
+interface RoomActivity {
   id: string;
-  username: string;
-  displayName: string;
-  photoUrl?: string;
-  vipTier?: 'pro' | 'elite' | null;
-}
-
-interface FeedActivity {
-  id: string;
-  type: string;
-  message: string;
-  metadata: Record<string, any>;
-  audience: 'self' | 'friends';
+  roomId: string;
+  activityType: string;
+  actorId: string;
+  actorName: string;
+  actorPhoto?: string;
+  actorVipTier?: string;
+  targetId?: string;
+  targetName?: string;
+  targetPhoto?: string;
+  metadata?: {
+    postText?: string;
+    roomName?: string;
+    tier?: string;
+    tierName?: string;
+    giftId?: string;
+    giftName?: string;
+    giftIcon?: string;
+  };
   createdAt: string;
-  user: FeedActivityUser;
-  actor: {
-    id: string;
-    displayName: string;
-    photoUrl?: string;
-    vipTier?: 'pro' | 'elite' | null;
-  } | null;
-  isOwn: boolean;
 }
 
-const POLL_INTERVAL = 15000;
+interface FeedTabProps {
+  roomId: string;
+  active: boolean;
+}
 
-export default function FeedTab({ active }: { active: boolean }) {
-  const { openProfile } = useProfilePopup();
-  const [items, setItems] = useState<FeedActivity[]>([]);
+export default function FeedTab({ roomId, active }: FeedTabProps) {
+  const [activities, setActivities] = useState<RoomActivity[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const loadFeed = useCallback(async (showSpinner = false) => {
-    if (showSpinner) setLoading(true);
+  const fetchActivities = useCallback(async () => {
     try {
-      const res = await api.get('/feed', { params: { limit: 40 } });
-      setItems(Array.isArray(res.data) ? res.data : []);
-      setError(null);
-      try { await api.post('/feed/mark-seen'); } catch { /* non-fatal */ }
-    } catch (e: any) {
-      setError(e?.response?.data?.detail || 'Could not load feed');
+      const response = await api.get(`/rooms/${roomId}/activities?limit=50`);
+      setActivities(response.data);
+    } catch (error) {
+      console.log('Error fetching activities:', error);
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [roomId]);
 
-  // Initial load + polling when active
   useEffect(() => {
-    if (!active) return;
-    loadFeed(items.length === 0);
-    pollRef.current = setInterval(() => loadFeed(false), POLL_INTERVAL);
-    return () => {
-      if (pollRef.current) clearInterval(pollRef.current);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [active]);
+    if (active) {
+      fetchActivities();
+    }
+  }, [active, fetchActivities]);
 
   const onRefresh = useCallback(() => {
     setRefreshing(true);
-    loadFeed(false);
-  }, [loadFeed]);
+    fetchActivities();
+  }, [fetchActivities]);
+
+  const getActivityIcon = (type: string) => {
+    switch (type) {
+      case 'post_created':
+        return { name: 'create-outline', color: COLORS.primary };
+      case 'post_liked':
+        return { name: 'heart', color: '#EF4444' };
+      case 'user_joined':
+        return { name: 'enter-outline', color: '#10B981' };
+      case 'vip_purchased':
+        return { name: 'diamond', color: '#F59E0B' };
+      case 'vip_gifted':
+        return { name: 'gift', color: '#EC4899' };
+      case 'friend_added':
+        return { name: 'people', color: '#3B82F6' };
+      default:
+        return { name: 'ellipse', color: COLORS.textSecondary };
+    }
+  };
+
+  const getActivityMessage = (activity: RoomActivity) => {
+    switch (activity.activityType) {
+      case 'post_created':
+        return 'created a new post';
+      case 'post_liked':
+        return `liked ${activity.targetName ? `${activity.targetName}'s` : 'a'} post`;
+      case 'user_joined':
+        return 'joined the room';
+      case 'vip_purchased':
+        return `became a ${activity.metadata?.tierName || 'VIP'} member`;
+      case 'vip_gifted':
+        return `sent a gift to ${activity.targetName || 'someone'}`;
+      case 'friend_added':
+        return `added ${activity.targetName || 'someone'} as a friend`;
+      default:
+        return 'did something';
+    }
+  };
+
+  const getVipStyle = (tier?: string) => {
+    if (!tier) return null;
+    const vipConfig = VIP_TIERS[tier as keyof typeof VIP_TIERS];
+    if (!vipConfig) return null;
+    return {
+      color: vipConfig.color,
+      fontWeight: '700' as const,
+    };
+  };
+
+  const renderActivity = ({ item }: { item: RoomActivity }) => {
+    const icon = getActivityIcon(item.activityType);
+    const message = getActivityMessage(item);
+    const vipStyle = getVipStyle(item.actorVipTier);
+    const timeAgo = formatDistanceToNow(new Date(item.createdAt), { addSuffix: true });
+
+    return (
+      <View style={styles.activityItem}>
+        <View style={styles.activityLeft}>
+          {item.actorPhoto ? (
+            <Image source={{ uri: item.actorPhoto }} style={styles.avatar} />
+          ) : (
+            <View style={[styles.avatar, styles.avatarPlaceholder]}>
+              <Ionicons name="person" size={20} color={COLORS.textSecondary} />
+            </View>
+          )}
+          <View style={[styles.iconBadge, { backgroundColor: icon.color + '20' }]}>
+            <Ionicons name={icon.name as any} size={12} color={icon.color} />
+          </View>
+        </View>
+
+        <View style={styles.activityContent}>
+          <Text style={styles.activityText}>
+            <Text style={[styles.actorName, vipStyle]}>{item.actorName}</Text>
+            {' '}{message}
+          </Text>
+          
+          {/* Show preview text for posts */}
+          {item.activityType === 'post_created' && item.metadata?.postText && (
+            <Text style={styles.previewText} numberOfLines={2}>
+              "{item.metadata.postText}"
+            </Text>
+          )}
+
+          {/* Show gift icon for gifts */}
+          {item.activityType === 'vip_gifted' && item.metadata?.giftIcon && (
+            <View style={styles.giftPreview}>
+              <Text style={styles.giftIcon}>{item.metadata.giftIcon}</Text>
+              <Text style={styles.giftName}>{item.metadata.giftName}</Text>
+            </View>
+          )}
+
+          {/* Show target user for gifts */}
+          {item.activityType === 'vip_gifted' && item.targetPhoto && (
+            <View style={styles.targetUser}>
+              <Image source={{ uri: item.targetPhoto }} style={styles.targetAvatar} />
+              <Text style={styles.targetName}>{item.targetName}</Text>
+            </View>
+          )}
+
+          <Text style={styles.timestamp}>{timeAgo}</Text>
+        </View>
+      </View>
+    );
+  };
+
+  const renderEmpty = () => (
+    <View style={styles.emptyContainer}>
+      <Ionicons name="newspaper-outline" size={48} color={COLORS.textSecondary} />
+      <Text style={styles.emptyTitle}>No Activity Yet</Text>
+      <Text style={styles.emptyText}>
+        Activities like posts, likes, joins, and gifts will appear here.
+      </Text>
+    </View>
+  );
 
   if (loading) {
     return (
-      <View style={styles.center}>
-        <ActivityIndicator color={COLORS.primary} />
-      </View>
-    );
-  }
-
-  if (error) {
-    return (
-      <View style={styles.center}>
-        <Ionicons name="cloud-offline-outline" size={42} color={COLORS.textSecondary} />
-        <Text style={styles.emptyTitle}>{error}</Text>
-        <TouchableOpacity onPress={() => loadFeed(true)} style={styles.retryBtn}>
-          <Text style={styles.retryText}>Retry</Text>
-        </TouchableOpacity>
-      </View>
-    );
-  }
-
-  if (items.length === 0) {
-    return (
-      <View style={styles.center}>
-        <Ionicons name="sparkles-outline" size={48} color={COLORS.textSecondary} />
-        <Text style={styles.emptyTitle}>Your feed is quiet</Text>
-        <Text style={styles.emptyText}>
-          Friend activities, gifts, and VIP upgrades will appear here.
-        </Text>
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color={COLORS.primary} />
       </View>
     );
   }
 
   return (
-    <FlatList
-      data={items}
-      keyExtractor={(it) => it.id}
-      contentContainerStyle={styles.list}
-      showsVerticalScrollIndicator={false}
-      renderItem={({ item, index }) => (
-        <FeedCard item={item} index={index} onTapUser={openProfile} />
-      )}
-      refreshControl={
-        <RefreshControl
-          refreshing={refreshing}
-          onRefresh={onRefresh}
-          tintColor={COLORS.primary}
-        />
-      }
-    />
-  );
-}
-
-// --- Card ---
-function FeedCard({
-  item,
-  index,
-  onTapUser,
-}: {
-  item: FeedActivity;
-  index: number;
-  onTapUser: (id: string) => void;
-}) {
-  const fadeAnim = useRef(new Animated.Value(0)).current;
-  const transY = useRef(new Animated.Value(12)).current;
-
-  useEffect(() => {
-    Animated.parallel([
-      Animated.timing(fadeAnim, {
-        toValue: 1,
-        duration: 300,
-        delay: index * 40,
-        useNativeDriver: true,
-      }),
-      Animated.spring(transY, {
-        toValue: 0,
-        delay: index * 40,
-        useNativeDriver: true,
-        friction: 8,
-        tension: 60,
-      }),
-    ]).start();
-  }, [fadeAnim, transY, index]);
-
-  const visual = getActivityVisual(item.type);
-  // Defensive check: item.user could be {} (empty object) if user lookup failed
-  const fallbackUser: FeedActivityUser = { id: '', displayName: 'Unknown', username: '', photoUrl: undefined, vipTier: null };
-  const subject = (item.user && item.user.displayName) ? item.user : fallbackUser;
-  const vipStyle = subject.vipTier ? VIP_STYLES[subject.vipTier] : null;
-  const subtitle = item.message || '';
-  // Ensure createdAt is valid before formatting
-  const ts = item.createdAt ? formatRelativeTime(item.createdAt) : 'just now';
-  const meta = item.metadata || {};
-
-  return (
-    <Animated.View style={{ opacity: fadeAnim, transform: [{ translateY: transY }] }}>
-      <View style={styles.card}>
-        {/* Left rail with type icon */}
-        <LinearGradient
-          colors={visual.gradient}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={styles.typeBadge}
-        >
-          <Ionicons name={visual.icon} size={18} color={COLORS.text} />
-        </LinearGradient>
-
-        {/* Body */}
-        <View style={styles.body}>
-          <View style={styles.headerRow}>
-            <TouchableOpacity
-              onPress={() => onTapUser(subject.id)}
-              activeOpacity={0.7}
-              style={styles.avatarWrap}
-              testID={`feed-avatar-${item.id}`}
-            >
-              <View
-                style={[
-                  styles.avatar,
-                  vipStyle && { borderColor: vipStyle.borderColor, borderWidth: 2 },
-                ]}
-              >
-                {subject.photoUrl ? (
-                  <Image source={{ uri: subject.photoUrl }} style={styles.avatarImg} />
-                ) : (
-                  <Ionicons name="person" size={16} color={COLORS.textSecondary} />
-                )}
-              </View>
-            </TouchableOpacity>
-            <View style={{ flex: 1 }}>
-              <View style={styles.titleLine}>
-                <TouchableOpacity onPress={() => onTapUser(subject.id)} activeOpacity={0.7}>
-                  <Text
-                    style={[
-                      styles.displayName,
-                      vipStyle && { color: vipStyle.nameColor },
-                    ]}
-                    numberOfLines={1}
-                  >
-                    {item.isOwn ? 'You' : subject.displayName}
-                  </Text>
-                </TouchableOpacity>
-                {vipStyle && (
-                  <View style={[styles.vipPill, { backgroundColor: vipStyle.crownColor }]}>
-                    <Ionicons name={vipStyle.badgeIcon} size={9} color={COLORS.background} />
-                    <Text style={styles.vipPillText}>{subject.vipTier?.toUpperCase()}</Text>
-                  </View>
-                )}
-              </View>
-              <Text style={styles.subtitle} numberOfLines={3}>
-                {item.isOwn
-                  ? subtitle.charAt(0).toUpperCase() + subtitle.slice(1)
-                  : subtitle}
-              </Text>
-              {/* Metadata pill / preview */}
-              {meta.giftIcon && meta.giftName && (
-                <View style={styles.metaPill}>
-                  <View
-                    style={[
-                      styles.metaIconBox,
-                      { backgroundColor: (meta.giftColor || visual.color) + '33' },
-                    ]}
-                  >
-                    <Ionicons
-                      name={meta.giftIcon}
-                      size={14}
-                      color={meta.giftColor || visual.color}
-                    />
-                  </View>
-                  <Text style={styles.metaText}>{meta.giftName}</Text>
-                  {typeof meta.price === 'number' && (
-                    <View style={styles.priceTag}>
-                      <Ionicons name="logo-bitcoin" size={10} color={COLORS.coin} />
-                      <Text style={styles.priceText}>{meta.price}</Text>
-                    </View>
-                  )}
-                </View>
-              )}
-              {meta.tierName && (
-                <View style={styles.metaPill}>
-                  <View
-                    style={[
-                      styles.metaIconBox,
-                      { backgroundColor: visual.color + '33' },
-                    ]}
-                  >
-                    <Ionicons name={visual.icon} size={14} color={visual.color} />
-                  </View>
-                  <Text style={styles.metaText}>{meta.tierName}</Text>
-                </View>
-              )}
-              {meta.friendName && (
-                <View style={styles.metaPill}>
-                  <View
-                    style={[
-                      styles.metaIconBox,
-                      { backgroundColor: visual.color + '33' },
-                    ]}
-                  >
-                    <Ionicons name="people" size={14} color={visual.color} />
-                  </View>
-                  <Text style={styles.metaText}>{meta.friendName}</Text>
-                </View>
-              )}
-            </View>
-            <Text style={styles.ts}>{ts}</Text>
-          </View>
-        </View>
-      </View>
-    </Animated.View>
+    <View style={styles.container}>
+      <FlatList
+        data={activities}
+        renderItem={renderActivity}
+        keyExtractor={(item) => item.id}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={COLORS.primary}
+            colors={[COLORS.primary]}
+          />
+        }
+        ListEmptyComponent={renderEmpty}
+        contentContainerStyle={activities.length === 0 ? styles.emptyList : styles.listContent}
+        showsVerticalScrollIndicator={false}
+      />
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  list: {
-    paddingVertical: SPACING.sm,
-    paddingHorizontal: SPACING.md,
-    gap: SPACING.sm,
-  },
-  card: {
-    flexDirection: 'row',
-    backgroundColor: '#15101f',
-    borderRadius: 14,
-    padding: SPACING.sm,
-    borderWidth: 1,
-    borderColor: '#2a2240',
-    gap: SPACING.sm,
-  },
-  typeBadge: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 2,
-  },
-  body: {
+  container: {
     flex: 1,
+    backgroundColor: COLORS.background,
   },
-  headerRow: {
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  listContent: {
+    paddingHorizontal: SPACING.md,
+    paddingTop: SPACING.sm,
+    paddingBottom: SPACING.xl,
+  },
+  emptyList: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  activityItem: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: SPACING.sm,
+    paddingVertical: SPACING.md,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
   },
-  avatarWrap: {
-    width: 36,
-    height: 36,
+  activityLeft: {
+    position: 'relative',
+    marginRight: SPACING.md,
   },
   avatar: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+  },
+  avatarPlaceholder: {
     backgroundColor: COLORS.cardBg,
-    alignItems: 'center',
     justifyContent: 'center',
-    overflow: 'hidden',
-  },
-  avatarImg: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-  },
-  titleLine: {
-    flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    flexWrap: 'wrap',
   },
-  displayName: {
-    color: COLORS.text,
-    fontSize: 14,
-    fontWeight: '700',
-  },
-  vipPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 2,
-    paddingHorizontal: 5,
-    paddingVertical: 1,
-    borderRadius: 6,
-  },
-  vipPillText: {
-    color: COLORS.background,
-    fontSize: 8,
-    fontWeight: '900',
-    letterSpacing: 0.5,
-  },
-  subtitle: {
-    color: COLORS.text,
-    opacity: 0.85,
-    fontSize: 13,
-    marginTop: 2,
-    lineHeight: 18,
-  },
-  ts: {
-    color: COLORS.textSecondary,
-    fontSize: 11,
-    marginLeft: 4,
-  },
-  metaPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginTop: 8,
-    paddingVertical: 4,
-    paddingHorizontal: 6,
-    backgroundColor: '#1a1226',
+  iconBadge: {
+    position: 'absolute',
+    bottom: -2,
+    right: -2,
+    width: 20,
+    height: 20,
     borderRadius: 10,
-    alignSelf: 'flex-start',
-    borderWidth: 1,
-    borderColor: '#2a2240',
-  },
-  metaIconBox: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
+    justifyContent: 'center',
     alignItems: 'center',
+    borderWidth: 2,
+    borderColor: COLORS.background,
+  },
+  activityContent: {
+    flex: 1,
     justifyContent: 'center',
   },
-  metaText: {
+  activityText: {
+    fontSize: 14,
     color: COLORS.text,
-    fontSize: 12,
-    fontWeight: '600',
+    lineHeight: 20,
   },
-  priceTag: {
+  actorName: {
+    fontWeight: '600',
+    color: COLORS.text,
+  },
+  previewText: {
+    fontSize: 13,
+    color: COLORS.textSecondary,
+    fontStyle: 'italic',
+    marginTop: SPACING.xs,
+    paddingLeft: SPACING.sm,
+    borderLeftWidth: 2,
+    borderLeftColor: COLORS.border,
+  },
+  giftPreview: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 2,
-    paddingHorizontal: 5,
-    paddingVertical: 1,
-    backgroundColor: '#2a2010',
-    borderRadius: 6,
-    marginLeft: 4,
+    marginTop: SPACING.xs,
   },
-  priceText: {
-    color: COLORS.coin,
-    fontSize: 11,
-    fontWeight: '700',
+  giftIcon: {
+    fontSize: 18,
+    marginRight: SPACING.xs,
   },
-  center: {
-    flex: 1,
+  giftName: {
+    fontSize: 13,
+    color: COLORS.textSecondary,
+  },
+  targetUser: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: SPACING.xs,
+  },
+  targetAvatar: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    marginRight: SPACING.xs,
+  },
+  targetName: {
+    fontSize: 13,
+    color: COLORS.textSecondary,
+  },
+  timestamp: {
+    fontSize: 12,
+    color: COLORS.textSecondary,
+    marginTop: SPACING.xs,
+  },
+  emptyContainer: {
     alignItems: 'center',
     justifyContent: 'center',
     padding: SPACING.xl,
   },
   emptyTitle: {
+    fontSize: 18,
+    fontWeight: '600',
     color: COLORS.text,
-    fontSize: 16,
-    fontWeight: '700',
-    marginTop: SPACING.sm,
+    marginTop: SPACING.md,
+    marginBottom: SPACING.sm,
   },
   emptyText: {
+    fontSize: 14,
     color: COLORS.textSecondary,
-    fontSize: 13,
     textAlign: 'center',
-    marginTop: 4,
-    paddingHorizontal: SPACING.lg,
-  },
-  retryBtn: {
-    marginTop: SPACING.md,
-    paddingHorizontal: SPACING.lg,
-    paddingVertical: 8,
-    borderRadius: 10,
-    backgroundColor: COLORS.primary,
-  },
-  retryText: {
-    color: COLORS.text,
-    fontWeight: '700',
+    lineHeight: 20,
   },
 });
