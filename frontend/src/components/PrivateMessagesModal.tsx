@@ -43,9 +43,10 @@ interface Conversation {
 interface Props {
   visible: boolean;
   onClose: () => void;
+  initialUserId?: string | null;
 }
 
-export default function PrivateMessagesModal({ visible, onClose }: Props) {
+export default function PrivateMessagesModal({ visible, onClose, initialUserId }: Props) {
   const { user } = useAuth();
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(null);
@@ -61,8 +62,37 @@ export default function PrivateMessagesModal({ visible, onClose }: Props) {
       // Refresh conversations every 3 seconds
       const interval = setInterval(loadConversations, 3000);
       return () => clearInterval(interval);
+    } else {
+      // Reset selection when modal is closed
+      setSelectedConversation(null);
     }
   }, [visible]);
+
+  // When opened with a specific user, auto-select that conversation
+  useEffect(() => {
+    if (visible && initialUserId) {
+      openConversationWith(initialUserId);
+    }
+  }, [visible, initialUserId]);
+
+  const openConversationWith = async (userId: string) => {
+    try {
+      const response = await api.get(`/users/${userId}`);
+      const u = response.data;
+      setSelectedConversation({
+        userId: u.id || userId,
+        username: u.username,
+        displayName: u.displayName,
+        photoUrl: u.photoUrl,
+        lastMessage: '',
+        lastMessageTime: new Date().toISOString(),
+        unreadCount: 0,
+        onlineStatus: u.onlineStatus ?? false,
+      });
+    } catch (error) {
+      console.error('Failed to load user:', error);
+    }
+  };
 
   useEffect(() => {
     if (selectedConversation) {

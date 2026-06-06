@@ -9,9 +9,9 @@ import {
   KeyboardAvoidingView,
   Platform,
   Alert,
-  PanResponder,
-  Animated,
+  Pressable,
   LayoutChangeEvent,
+  GestureResponderEvent,
 } from 'react-native';
 import { Image } from 'expo-image';
 import { useLocalSearchParams, router } from 'expo-router';
@@ -61,6 +61,8 @@ export default function RoomScreen() {
   const [loading, setLoading] = useState(false);
   const [memberSectionLayout, setMemberSectionLayout] = useState({ width: 0, height: 0 });
   const [messagesModalVisible, setMessagesModalVisible] = useState(false);
+  const [dmInitialUserId, setDmInitialUserId] = useState<string | null>(null);
+  const [currentUserTarget, setCurrentUserTarget] = useState<{ x: number; y: number } | null>(null);
   const flatListRef = useRef<FlatList>(null);
 
   useEffect(() => {
@@ -172,6 +174,25 @@ export default function RoomScreen() {
     setMemberSectionLayout({ width, height });
   };
 
+  // Tap empty space → smoothly move current user's avatar to that point
+  const handleProfileGridPress = (e: GestureResponderEvent) => {
+    const { locationX, locationY } = e.nativeEvent;
+    // Center the avatar around the tap location; clamping is handled inside DraggableMember
+    setCurrentUserTarget({ x: locationX - 24, y: locationY - 24 });
+  };
+
+  // Tap on another user's avatar → open private chat with them
+  const handleAvatarPress = (member: Member) => {
+    if (member.userId === user?.id) return;
+    setDmInitialUserId(member.userId);
+    setMessagesModalVisible(true);
+  };
+
+  const handleCloseDmModal = () => {
+    setMessagesModalVisible(false);
+    setDmInitialUserId(null);
+  };
+
   const renderProfileSection = () => {
     return (
       <View style={styles.profileSection} onLayout={onMemberSectionLayout}>
@@ -180,9 +201,13 @@ export default function RoomScreen() {
           <Text style={styles.profileSectionTitle}>
             In the room ({members.length}/{room?.maxCapacity || 36})
           </Text>
-          <Text style={styles.profileSectionHint}>Hold & drag your avatar</Text>
+          <Text style={styles.profileSectionHint}>Tap empty space to move • Tap avatar to chat</Text>
         </View>
-        <View style={styles.profileGrid}>
+        <Pressable
+          style={styles.profileGrid}
+          onPress={handleProfileGridPress}
+          testID="profile-grid-tap-area"
+        >
           {members.map((member, idx) => (
             <DraggableMember
               key={member.userId}
@@ -192,9 +217,11 @@ export default function RoomScreen() {
               boundsHeight={memberSectionLayout.height - 40}
               initialIndex={idx}
               totalMembers={members.length}
+              targetPosition={member.userId === user?.id ? currentUserTarget : null}
+              onAvatarPress={handleAvatarPress}
             />
           ))}
-        </View>
+        </Pressable>
       </View>
     );
   };
@@ -216,7 +243,7 @@ export default function RoomScreen() {
         </View>
         <TouchableOpacity 
           style={styles.messagesButton}
-          onPress={() => setMessagesModalVisible(true)}
+          onPress={() => { setDmInitialUserId(null); setMessagesModalVisible(true); }}
           testID="direct-messages-btn"
         >
           <Ionicons name="chatbox" size={22} color={COLORS.text} />
@@ -283,7 +310,8 @@ export default function RoomScreen() {
 
       <PrivateMessagesModal 
         visible={messagesModalVisible}
-        onClose={() => setMessagesModalVisible(false)}
+        onClose={handleCloseDmModal}
+        initialUserId={dmInitialUserId}
       />
     </SafeAreaView>
   );

@@ -91,7 +91,7 @@ class UserRegister(BaseModel):
     displayName: str
 
 class UserLogin(BaseModel):
-    email: EmailStr
+    identifier: str  # email OR username
     password: str
 
 class Token(BaseModel):
@@ -326,10 +326,18 @@ async def register(user_data: UserRegister):
 
 @api_router.post("/auth/login", response_model=Token)
 async def login(user_data: UserLogin):
-    user = await db.users.find_one({"email": user_data.email})
-    
+    identifier = user_data.identifier.strip()
+    # Look up user by email OR username (case-insensitive email)
+    user = await db.users.find_one({
+        "$or": [
+            {"email": identifier.lower()},
+            {"email": identifier},
+            {"username": identifier},
+        ]
+    })
+
     if not user or not verify_password(user_data.password, user["password"]):
-        raise HTTPException(status_code=401, detail="Incorrect email or password")
+        raise HTTPException(status_code=401, detail="Incorrect email/username or password")
     
     # Update online status
     await db.users.update_one(
@@ -382,10 +390,13 @@ async def get_user(user_id: str):
 
 @api_router.get("/avatars/predefined")
 async def get_predefined_avatars():
-    """Get predefined avatars - returns sample base64 placeholder"""
-    # In production, these would be actual base64 images stored in DB
+    """Get predefined avatars - returns sample placeholder list"""
     avatars = [
-        {"id": f"avatar_{i}", "category": "default", "avatarUrl": f"data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0a[...]
+        {
+            "id": f"avatar_{i}",
+            "category": "default",
+            "avatarUrl": f"https://api.dicebear.com/7.x/avataaars/svg?seed=avatar_{i}",
+        }
         for i in range(1, 9)
     ]
     return avatars

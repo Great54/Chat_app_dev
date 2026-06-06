@@ -1,5 +1,5 @@
 import React, { useRef, useState, useEffect } from 'react';
-import { View, Text, StyleSheet, PanResponder, Animated } from 'react-native';
+import { View, Text, StyleSheet, PanResponder, Animated, TouchableOpacity } from 'react-native';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '@/src/constants/theme';
@@ -20,6 +20,10 @@ interface Props {
   boundsHeight: number;
   initialIndex: number;
   totalMembers: number;
+  // External target: when set, current user's avatar smoothly animates to this position
+  targetPosition?: { x: number; y: number } | null;
+  // Tap handler (used to start a private chat with another user)
+  onAvatarPress?: (member: Member) => void;
 }
 
 const VIP_STYLES: Record<string, any> = {
@@ -46,23 +50,25 @@ export default function DraggableMember({
   boundsHeight,
   initialIndex,
   totalMembers,
+  targetPosition,
+  onAvatarPress,
 }: Props) {
-  // Calculate dynamic sizing based on room occupancy
+  // Dynamic sizing: shrink avatars as the room fills up
   const calculateAvatarSize = () => {
-    // Base size: 48px for 1-10 people, scale down as more join
-    if (totalMembers <= 10) return 48;
+    if (totalMembers <= 6) return 56;
+    if (totalMembers <= 12) return 48;
     if (totalMembers <= 20) return 42;
-    if (totalMembers <= 30) return 36;
-    return 32; // Min size for full rooms
+    if (totalMembers <= 28) return 36;
+    return 30; // Min size for full rooms (up to 36)
   };
 
   const ITEM_SIZE = calculateAvatarSize();
-  const ITEMS_PER_ROW = Math.floor(boundsWidth / (ITEM_SIZE + 8));
+  const ITEMS_PER_ROW = Math.max(1, Math.floor(boundsWidth / (ITEM_SIZE + 8)));
   const SPACING = 4;
 
   // Compute initial grid position
-  const row = Math.floor(initialIndex / Math.max(ITEMS_PER_ROW, 1));
-  const col = initialIndex % Math.max(ITEMS_PER_ROW, 1);
+  const row = Math.floor(initialIndex / ITEMS_PER_ROW);
+  const col = initialIndex % ITEMS_PER_ROW;
   const initialX = col * (ITEM_SIZE + SPACING);
   const initialY = row * (ITEM_SIZE + SPACING);
 
@@ -71,11 +77,34 @@ export default function DraggableMember({
   const offsetRef = useRef({ x: initialX, y: initialY });
   const [isDragging, setIsDragging] = useState(false);
 
-  // Only current user's avatar is draggable
+  const clampPosition = (x: number, y: number) => {
+    const maxX = Math.max(0, boundsWidth - ITEM_SIZE);
+    const maxY = Math.max(0, boundsHeight - ITEM_SIZE);
+    return {
+      x: Math.max(0, Math.min(maxX, x)),
+      y: Math.max(0, Math.min(maxY, y)),
+    };
+  };
+
+  // Smooth animation to an externally-set target (tap-to-move)
+  useEffect(() => {
+    if (!isCurrentUser || !targetPosition) return;
+    const clamped = clampPosition(targetPosition.x, targetPosition.y);
+    offsetRef.current = clamped;
+    Animated.spring(pan, {
+      toValue: clamped,
+      useNativeDriver: false,
+      friction: 7,
+      tension: 50,
+    }).start();
+  }, [targetPosition?.x, targetPosition?.y, isCurrentUser]);
+
+  // Drag for current user only
   const panResponder = useRef(
     PanResponder.create({
       onStartShouldSetPanResponder: () => isCurrentUser,
-      onMoveShouldSetPanResponder: () => isCurrentUser,
+      onMoveShouldSetPanResponder: (_, g) =>
+        isCurrentUser && (Math.abs(g.dx) > 2 || Math.abs(g.dy) > 2),
       onPanResponderGrant: () => {
         setIsDragging(true);
         Animated.spring(scale, {
@@ -98,17 +127,15 @@ export default function DraggableMember({
           friction: 4,
         }).start();
 
-        // Smooth animation to final position
-        let newX = offsetRef.current.x + gesture.dx;
-        let newY = offsetRef.current.y + gesture.dy;
-        newX = Math.max(0, Math.min(boundsWidth - ITEM_SIZE, newX));
-        newY = Math.max(0, Math.min(boundsHeight - ITEM_SIZE, newY));
-        offsetRef.current = { x: newX, y: newY };
+        const clamped = clampPosition(
+          offsetRef.current.x + gesture.dx,
+          offsetRef.current.y + gesture.dy
+        );
+        offsetRef.current = clamped;
         pan.flattenOffset();
 
-        // Smooth spring animation for drop
         Animated.spring(pan, {
-          toValue: { x: newX, y: newY },
+          toValue: clamped,
           useNativeDriver: false,
           friction: 6,
           tension: 60,
@@ -120,14 +147,57 @@ export default function DraggableMember({
   const vipStyle = member.vipTier ? VIP_STYLES[member.vipTier] : null;
   const effectiveScale = vipStyle ? vipStyle.avatarScale : 1;
 
+  const avatarVisual = (
+    <View
+      style={[
+        styles.avatar,
+        { width: ITEM_SIZE - 8, height: ITEM_SIZE - 8 },
+        vipStyle && { borderColor: vipStyle.borderColor, borderWidth: 3 },
+        isCurrentUser && styles.currentUserRing,
+      ]}
+    >
+      {member.profilePhoto ? (
+        <Image
+          source={{ uri: member.profilePhoto }}
+          style={{
+            width: ITEM_SIZE - 14,
+            height: ITEM_SIZE - 14,
+            borderRadius: (ITEM_SIZE - 14) / 2,
+          }}
+        />
+      ) : (
+        <Ionicons
+          name="person"
+          size={ITEM_SIZE / 2.4}
+          color={vipStyle?.crownColor || COLORS.primary}
+        />
+      )}
+      {member.onlineStatus && <View style={styles.onlineDot} />}
+      {vipStyle && (
+        <View
+          style={[
+            styles.vipBadge,
+            { backgroundColor: vipStyle.crownColor },
+          ]}
+        >
+          <Ionicons
+            name={vipStyle.badgeIcon}
+            size={8}
+            color={COLORS.background}
+          />
+        </View>
+      )}
+    </View>
+  );
+
   return (
     <Animated.View
-      {...panResponder.panHandlers}
+      {...(isCurrentUser ? panResponder.panHandlers : {})}
       style={[
         styles.container,
         {
           width: ITEM_SIZE,
-          height: ITEM_SIZE,
+          height: ITEM_SIZE + (vipStyle ? 14 : 0),
           transform: [
             { translateX: pan.x },
             { translateY: pan.y },
@@ -138,52 +208,23 @@ export default function DraggableMember({
               ),
             },
           ],
-          zIndex: isDragging ? 10 : vipStyle ? 5 : 1,
+          zIndex: isDragging ? 10 : isCurrentUser ? 6 : vipStyle ? 5 : 1,
         },
         isDragging && styles.dragging,
-        isCurrentUser && styles.currentUser,
       ]}
       testID={`member-${member.userId}`}
     >
-      <View
-        style={[
-          styles.avatar,
-          { width: ITEM_SIZE - 8, height: ITEM_SIZE - 8 },
-          vipStyle && { borderColor: vipStyle.borderColor, borderWidth: 3 },
-        ]}
-      >
-        {member.profilePhoto ? (
-          <Image
-            source={{ uri: member.profilePhoto }}
-            style={{
-              width: ITEM_SIZE - 14,
-              height: ITEM_SIZE - 14,
-              borderRadius: (ITEM_SIZE - 14) / 2,
-            }}
-          />
-        ) : (
-          <Ionicons
-            name="person"
-            size={ITEM_SIZE / 2.4}
-            color={vipStyle?.crownColor || COLORS.primary}
-          />
-        )}
-        {member.onlineStatus && <View style={styles.onlineDot} />}
-        {vipStyle && (
-          <View
-            style={[
-              styles.vipBadge,
-              { backgroundColor: vipStyle.crownColor },
-            ]}
-          >
-            <Ionicons
-              name={vipStyle.badgeIcon}
-              size={8}
-              color={COLORS.background}
-            />
-          </View>
-        )}
-      </View>
+      {isCurrentUser ? (
+        avatarVisual
+      ) : (
+        <TouchableOpacity
+          activeOpacity={0.7}
+          onPress={() => onAvatarPress?.(member)}
+          testID={`avatar-tap-${member.userId}`}
+        >
+          {avatarVisual}
+        </TouchableOpacity>
+      )}
       {vipStyle ? (
         <Text
           style={[
@@ -212,8 +253,9 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.5,
     shadowRadius: 8,
   },
-  currentUser: {
-    // Distinct visual cue for own avatar (draggable)
+  currentUserRing: {
+    borderColor: COLORS.accent,
+    borderWidth: 2.5,
   },
   avatar: {
     borderRadius: 999,
