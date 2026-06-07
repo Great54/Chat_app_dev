@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, Modal,
-  ScrollView, ActivityIndicator, Alert, Platform,
+  ScrollView, ActivityIndicator, Alert, Platform, TextInput,
 } from 'react-native';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
@@ -20,9 +20,11 @@ interface Tournament {
   size: number;
   entryFee: number;
   pot: number;
+  winnerShare?: number;
+  runnerShare?: number;
   players: { userId: string; displayName: string; photoUrl?: string }[];
   bracket: any[];
-  winners: { userId: string; displayName: string; placement: number }[];
+  winners: { userId: string; displayName: string; placement: number; coinsWon?: number }[];
   createdBy: string;
   createdByName: string;
   createdAt?: string;
@@ -36,6 +38,9 @@ interface GameType {
   icon?: string;
   tagline?: string;
 }
+
+const TOURNAMENT_SIZE_PRESETS = [2, 4, 8, 16, 32];
+const TOURNAMENT_FEE_PRESETS = [10, 25, 50, 100, 250, 500];
 
 interface Props {
   visible: boolean;
@@ -60,6 +65,10 @@ export default function TournamentModal({
   const [creating, setCreating] = useState(false);
   const [openTournament, setOpenTournament] = useState<Tournament | null>(null);
   const [showCreate, setShowCreate] = useState(false);
+  const [pickedGame, setPickedGame] = useState<GameType | null>(null);
+  const [createSize, setCreateSize] = useState('4');
+  const [createFee, setCreateFee] = useState('10');
+  const [createName, setCreateName] = useState('');
 
   const loadAll = useCallback(async () => {
     setLoading(true);
@@ -92,11 +101,33 @@ export default function TournamentModal({
     }
   }, [tournaments, openTournament]);
 
-  const handleCreate = async (gameType: string) => {
+  const handleCreate = async () => {
+    if (!pickedGame) return;
+    const sizeN = parseInt(createSize, 10) || 0;
+    const feeN = parseInt(createFee, 10) || 0;
+    if (sizeN < 2 || sizeN > 32) {
+      showAlert('Invalid size', 'Tournament size must be between 2 and 32 players');
+      return;
+    }
+    if (feeN < 1) {
+      showAlert('Invalid entry fee', 'Entry fee must be at least 1 coin');
+      return;
+    }
+    if (userCoins < feeN) {
+      showAlert('Not enough coins', `You need ${feeN} coins to host & enter`);
+      return;
+    }
     setCreating(true);
     try {
-      const res = await api.post(`/rooms/${roomId}/tournaments`, { gameType });
+      const res = await api.post(`/rooms/${roomId}/tournaments`, {
+        gameType: pickedGame.id,
+        size: sizeN,
+        entryFee: feeN,
+        name: createName.trim() || undefined,
+      });
       setShowCreate(false);
+      setPickedGame(null);
+      setCreateName('');
       await loadAll();
       onUserUpdate();
       setOpenTournament(res.data);
@@ -154,9 +185,9 @@ export default function TournamentModal({
 
         {/* Rewards banner */}
         <View style={styles.rewardsBanner}>
-          <View style={styles.rewardItem}><Text style={styles.rewardEmoji}>🥇</Text><Text style={styles.rewardText}>VIP Pro + 800🪙</Text></View>
-          <View style={styles.rewardItem}><Text style={styles.rewardEmoji}>🥈</Text><Text style={styles.rewardText}>400🪙</Text></View>
-          <View style={styles.rewardItem}><Text style={styles.rewardEmoji}>🥉</Text><Text style={styles.rewardText}>200🪙</Text></View>
+          <View style={styles.rewardItem}><Text style={styles.rewardEmoji}>🥇</Text><Text style={styles.rewardText}>50% pot + VIP Pro + 30pts</Text></View>
+          <View style={styles.rewardItem}><Text style={styles.rewardEmoji}>🥈</Text><Text style={styles.rewardText}>50% pot + 20pts</Text></View>
+          <View style={styles.rewardItem}><Text style={styles.rewardEmoji}>🥉</Text><Text style={styles.rewardText}>+10 pts</Text></View>
         </View>
 
         {loading && tournaments.length === 0 ? (
@@ -228,31 +259,136 @@ export default function TournamentModal({
         )}
 
         {/* Create modal */}
-        <Modal visible={showCreate} transparent animationType="fade" onRequestClose={() => setShowCreate(false)}>
-          <TouchableOpacity style={styles.overlay} activeOpacity={1} onPress={() => setShowCreate(false)}>
+        <Modal visible={showCreate} transparent animationType="fade" onRequestClose={() => { setShowCreate(false); setPickedGame(null); }}>
+          <TouchableOpacity style={styles.overlay} activeOpacity={1} onPress={() => { setShowCreate(false); setPickedGame(null); }}>
             <TouchableOpacity activeOpacity={1} style={styles.createCard}>
-              <View style={styles.createHeader}>
-                <Text style={styles.createTitle}>Schedule a Tournament</Text>
-                <TouchableOpacity onPress={() => setShowCreate(false)}><Ionicons name="close" size={22} color="#1f2937" /></TouchableOpacity>
-              </View>
-              <Text style={styles.createSub}>10🪙 to enter · 4 players · auto-starts when full</Text>
-              {gameTypes.map((g) => (
-                <TouchableOpacity
-                  key={g.id}
-                  style={styles.gameRow}
-                  onPress={() => handleCreate(g.id)}
-                  disabled={creating || userCoins < 10}
-                  testID={`create-tournament-${g.id}`}
-                >
-                  <Image source={{ uri: g.image }} style={styles.gameRowImg} contentFit="cover" />
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.gameRowName}>{g.name}</Text>
-                    <Text style={styles.gameRowDesc}>{g.tagline}</Text>
+              {!pickedGame ? (
+                <>
+                  <View style={styles.createHeader}>
+                    <Text style={styles.createTitle}>Pick a game</Text>
+                    <TouchableOpacity onPress={() => setShowCreate(false)}><Ionicons name="close" size={22} color="#1f2937" /></TouchableOpacity>
                   </View>
-                  <Ionicons name="chevron-forward" size={20} color="#7c3aed" />
-                </TouchableOpacity>
-              ))}
-              {creating && <ActivityIndicator color="#7c3aed" style={{ marginTop: 10 }} />}
+                  <Text style={styles.createSub}>Step 1 of 2 — choose your tournament game</Text>
+                  {gameTypes.map((g) => (
+                    <TouchableOpacity
+                      key={g.id}
+                      style={styles.gameRow}
+                      onPress={() => setPickedGame(g)}
+                      testID={`create-tournament-${g.id}`}
+                    >
+                      <Image source={{ uri: g.image }} style={styles.gameRowImg} contentFit="cover" />
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.gameRowName}>{g.name}</Text>
+                        <Text style={styles.gameRowDesc}>{g.tagline}</Text>
+                      </View>
+                      <Ionicons name="chevron-forward" size={20} color="#7c3aed" />
+                    </TouchableOpacity>
+                  ))}
+                </>
+              ) : (
+                <>
+                  <View style={styles.createHeader}>
+                    <TouchableOpacity onPress={() => setPickedGame(null)} testID="back-to-game-pick">
+                      <Ionicons name="chevron-back" size={22} color="#1f2937" />
+                    </TouchableOpacity>
+                    <Text style={styles.createTitle}>Set up</Text>
+                    <TouchableOpacity onPress={() => { setShowCreate(false); setPickedGame(null); }}><Ionicons name="close" size={22} color="#1f2937" /></TouchableOpacity>
+                  </View>
+                  <View style={styles.pickedHero}>
+                    <Image source={{ uri: pickedGame.image }} style={styles.pickedHeroImg} contentFit="cover" />
+                    <View style={styles.pickedHeroOverlay} />
+                    <Text style={styles.pickedHeroText}>{pickedGame.name}</Text>
+                  </View>
+
+                  <Text style={styles.fieldLabel}>Tournament name (optional)</Text>
+                  <TextInput
+                    value={createName}
+                    onChangeText={setCreateName}
+                    placeholder={`${pickedGame.name} Knockout`}
+                    placeholderTextColor="#9ca3af"
+                    style={styles.input}
+                    maxLength={50}
+                    testID="tournament-name-input"
+                  />
+
+                  <Text style={styles.fieldLabel}>Number of players (2–32)</Text>
+                  <TextInput
+                    value={createSize}
+                    onChangeText={(t) => setCreateSize(t.replace(/[^0-9]/g, ''))}
+                    keyboardType="number-pad"
+                    style={[styles.input, styles.numInput]}
+                    placeholder="4"
+                    placeholderTextColor="#9ca3af"
+                    testID="tournament-size-input"
+                  />
+                  <View style={styles.presetsRow}>
+                    {TOURNAMENT_SIZE_PRESETS.map((s) => (
+                      <TouchableOpacity
+                        key={s}
+                        style={[styles.preset, parseInt(createSize, 10) === s && styles.presetActive]}
+                        onPress={() => setCreateSize(String(s))}
+                        testID={`preset-size-${s}`}
+                      >
+                        <Text style={[styles.presetText, parseInt(createSize, 10) === s && styles.presetTextActive]}>{s}p</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+
+                  <Text style={styles.fieldLabel}>Entry fee per player (coins)</Text>
+                  <TextInput
+                    value={createFee}
+                    onChangeText={(t) => setCreateFee(t.replace(/[^0-9]/g, ''))}
+                    keyboardType="number-pad"
+                    style={[styles.input, styles.numInput]}
+                    placeholder="10"
+                    placeholderTextColor="#9ca3af"
+                    testID="tournament-fee-input"
+                  />
+                  <View style={styles.presetsRow}>
+                    {TOURNAMENT_FEE_PRESETS.map((f) => (
+                      <TouchableOpacity
+                        key={f}
+                        style={[styles.preset, parseInt(createFee, 10) === f && styles.presetActive]}
+                        onPress={() => setCreateFee(String(f))}
+                        testID={`preset-fee-${f}`}
+                      >
+                        <Text style={[styles.presetText, parseInt(createFee, 10) === f && styles.presetTextActive]}>{f}🪙</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+
+                  {(() => {
+                    const sz = parseInt(createSize, 10) || 0;
+                    const fee = parseInt(createFee, 10) || 0;
+                    const pot = sz * fee;
+                    const each = Math.floor(pot / 2);
+                    const remainder = pot - each;
+                    return (
+                      <View style={styles.previewBox}>
+                        <Text style={styles.previewTitle}>Reward preview</Text>
+                        <Text style={styles.previewLine}>Max pot · <Text style={styles.previewStrong}>{pot}🪙</Text> ({sz} × {fee})</Text>
+                        <Text style={styles.previewLine}>🏆 Winner · <Text style={styles.previewStrong}>{remainder}🪙 + VIP Pro 30 days + 30 pts</Text></Text>
+                        <Text style={styles.previewLine}>🥈 Runner-up · <Text style={styles.previewStrong}>{each}🪙 + 20 pts</Text></Text>
+                        <Text style={styles.previewSub}>Pot is split equally — pot dynamically recalculated if not all seats are filled.</Text>
+                      </View>
+                    );
+                  })()}
+
+                  <TouchableOpacity
+                    style={[styles.createSubmit, (creating || userCoins < (parseInt(createFee, 10) || 0)) && { opacity: 0.5 }]}
+                    onPress={handleCreate}
+                    disabled={creating || userCoins < (parseInt(createFee, 10) || 0)}
+                    testID="confirm-create-tournament"
+                  >
+                    {creating ? <ActivityIndicator color="#fff" /> : (
+                      <>
+                        <Ionicons name="trophy" size={18} color="#fff" />
+                        <Text style={styles.createSubmitText}>Create & enter ({createFee}🪙)</Text>
+                      </>
+                    )}
+                  </TouchableOpacity>
+                </>
+              )}
             </TouchableOpacity>
           </TouchableOpacity>
         </Modal>
@@ -314,10 +450,14 @@ function TournamentDetail({
         {tournament.status === 'completed' && tournament.winners.length > 0 && (
           <View style={detailStyles.podium}>
             <Text style={detailStyles.sectionLabel}>Final Standings</Text>
-            {tournament.winners.map((w) => {
+            {tournament.winners.map((w: any) => {
               const isMe = w.userId === currentUserId;
               const medal = w.placement === 1 ? '🥇' : w.placement === 2 ? '🥈' : '🥉';
-              const reward = w.placement === 1 ? 'VIP Pro + 800🪙 +30pts' : w.placement === 2 ? '400🪙 +20pts' : '200🪙 +10pts';
+              const reward = w.placement === 1
+                ? `+${w.coinsWon || tournament.winnerShare || 0}🪙 + VIP Pro + 30pts`
+                : w.placement === 2
+                ? `+${w.coinsWon || tournament.runnerShare || 0}🪙 + 20pts`
+                : '+10pts';
               return (
                 <View key={w.userId} style={[detailStyles.podiumRow, isMe && detailStyles.podiumRowMe]}>
                   <Text style={detailStyles.podiumMedal}>{medal}</Text>
@@ -461,6 +601,25 @@ const styles = StyleSheet.create({
   gameRowImg: { width: 56, height: 56, borderRadius: 10 },
   gameRowName: { fontSize: 15, fontWeight: '800', color: '#1f2937' },
   gameRowDesc: { fontSize: 11, color: '#6b7280', marginTop: 2 },
+  pickedHero: { height: 90, borderRadius: 12, overflow: 'hidden', marginBottom: SPACING.sm, marginTop: 4, position: 'relative' },
+  pickedHeroImg: { width: '100%', height: '100%' },
+  pickedHeroOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(15,11,25,0.45)' },
+  pickedHeroText: { position: 'absolute', left: 12, bottom: 10, color: '#fff', fontSize: 16, fontWeight: '800' },
+  fieldLabel: { fontSize: 11, color: '#6b7280', fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5, marginTop: SPACING.sm, marginBottom: 6 },
+  input: { backgroundColor: '#ffffff', borderWidth: 1.5, borderColor: '#e5e7eb', borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10, fontSize: 14, color: '#1f2937' },
+  numInput: { fontSize: 20, fontWeight: '800' },
+  presetsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 8 },
+  preset: { paddingHorizontal: 11, paddingVertical: 7, backgroundColor: '#f3f4f6', borderRadius: 999, borderWidth: 1, borderColor: '#e5e7eb' },
+  presetActive: { backgroundColor: '#7c3aed', borderColor: '#7c3aed' },
+  presetText: { fontSize: 12, color: '#374151', fontWeight: '700' },
+  presetTextActive: { color: '#fff' },
+  previewBox: { backgroundColor: '#fffbeb', borderColor: '#fde68a', borderWidth: 1, borderRadius: 12, padding: SPACING.sm, marginTop: SPACING.md },
+  previewTitle: { fontSize: 12, fontWeight: '800', color: '#92400e', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6 },
+  previewLine: { fontSize: 12, color: '#7c2d12', marginTop: 2 },
+  previewStrong: { fontWeight: '800', color: '#92400e' },
+  previewSub: { fontSize: 10, color: '#a16207', marginTop: 6, fontStyle: 'italic' },
+  createSubmit: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: '#7c3aed', paddingVertical: 14, borderRadius: 14, marginTop: SPACING.md },
+  createSubmitText: { color: '#fff', fontSize: 15, fontWeight: '800' },
 });
 
 const detailStyles = StyleSheet.create({

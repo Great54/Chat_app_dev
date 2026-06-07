@@ -11,6 +11,7 @@ import {
   Animated,
   Easing,
   ScrollView,
+  TextInput,
 } from 'react-native';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
@@ -98,6 +99,9 @@ const GamePanel = forwardRef<GamePanelHandle, Props>(function GamePanel(
   const [resultsShown, setResultsShown] = useState<Set<string>>(new Set());
   const [resultModalGame, setResultModalGame] = useState<Game | null>(null);
   const [playArenaGame, setPlayArenaGame] = useState<Game | null>(null);
+  const [configType, setConfigType] = useState<GameType | null>(null);
+  const [configFee, setConfigFee] = useState('10');
+  const [configMaxPlayers, setConfigMaxPlayers] = useState('6');
 
   useImperativeHandle(ref, () => ({
     openHost: () => setHostModalOpen(true),
@@ -154,12 +158,37 @@ const GamePanel = forwardRef<GamePanelHandle, Props>(function GamePanel(
     }
   };
 
-  const handleHost = async (gameTypeId: string) => {
+  const openConfigFor = (type: GameType) => {
+    setConfigType(type);
+    setConfigFee(String(type.entryFee || 10));
+    setConfigMaxPlayers(String(type.maxPlayers || 6));
+  };
+
+  const handleHostConfirm = async () => {
+    if (!configType) return;
+    const fee = parseInt(configFee, 10) || 0;
+    const maxP = parseInt(configMaxPlayers, 10) || 0;
+    if (fee < 1) {
+      showAlert('Invalid fee', 'Entry fee must be at least 1 coin');
+      return;
+    }
+    if (maxP < 2 || maxP > 32) {
+      showAlert('Invalid max', 'Max players must be between 2 and 32');
+      return;
+    }
+    if (userCoins < fee) {
+      showAlert('Not enough coins', `You need ${fee} coins to host`);
+      return;
+    }
     setLoading(true);
     try {
-      const res = await api.post(`/rooms/${roomId}/games`, { gameType: gameTypeId });
+      const res = await api.post(`/rooms/${roomId}/games`, {
+        gameType: configType.id,
+        entryFee: fee,
+        maxPlayers: maxP,
+      });
+      setConfigType(null);
       setHostModalOpen(false);
-      // Open arena immediately for the host
       if (res.data) {
         setPlayArenaGame(res.data);
       }
@@ -264,7 +293,7 @@ const GamePanel = forwardRef<GamePanelHandle, Props>(function GamePanel(
             </View>
 
             <Text style={styles.lightModalSubtitle}>
-              Spend 10🪙 to host · Winner & runner-up split the pot
+              Set your own entry fee · Pot is split equally between winner & runner-up
             </Text>
 
             <ScrollView style={{ maxHeight: 460 }} showsVerticalScrollIndicator={false}>
@@ -272,8 +301,7 @@ const GamePanel = forwardRef<GamePanelHandle, Props>(function GamePanel(
                 <TouchableOpacity
                   key={type.id}
                   style={styles.gameTypeCardLight}
-                  onPress={() => handleHost(type.id)}
-                  disabled={loading || userCoins < type.entryFee}
+                  onPress={() => openConfigFor(type)}
                   testID={`host-${type.id}`}
                   activeOpacity={0.85}
                 >
@@ -286,19 +314,19 @@ const GamePanel = forwardRef<GamePanelHandle, Props>(function GamePanel(
                   <View style={styles.gameTypeOverlay}>
                     <View style={styles.gameTypeBadge}>
                       <Ionicons name={(type.icon || 'game-controller') as any} size={16} color="#fff" />
-                      <Text style={styles.gameTypeBadgeText}>{type.entryFee}🪙</Text>
+                      <Text style={styles.gameTypeBadgeText}>from {type.entryFee}🪙</Text>
                     </View>
                   </View>
                   <View style={styles.gameTypeBody}>
                     <Text style={styles.gameTypeName}>{type.name}</Text>
                     <Text style={styles.gameTypeDesc}>
-                      {type.minPlayers}-{type.maxPlayers} players · {type.entryFee} coins entry
+                      {type.minPlayers}-{type.maxPlayers} players · custom entry fee
                     </Text>
                     {!!type.tagline && (
                       <Text style={styles.gameTypeRule}>{type.tagline}</Text>
                     )}
                     <View style={styles.hostCtaBtn}>
-                      <Text style={styles.hostCtaText}>Host now</Text>
+                      <Text style={styles.hostCtaText}>Configure & host</Text>
                       <Ionicons name="arrow-forward" size={14} color="#fff" />
                     </View>
                   </View>
@@ -312,6 +340,115 @@ const GamePanel = forwardRef<GamePanelHandle, Props>(function GamePanel(
                 color={COLORS.primary}
                 style={{ marginTop: SPACING.md }}
               />
+            )}
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
+
+      {/* Game Config Modal — set entry fee + max players */}
+      <Modal
+        visible={!!configType}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setConfigType(null)}
+      >
+        <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setConfigType(null)}>
+          <TouchableOpacity activeOpacity={1} style={styles.lightModalContent}>
+            {configType && (
+              <>
+                <View style={styles.lightModalHeader}>
+                  <TouchableOpacity onPress={() => setConfigType(null)} testID="config-back">
+                    <Ionicons name="chevron-back" size={22} color="#1f2937" />
+                  </TouchableOpacity>
+                  <Text style={[styles.lightModalTitle, { flex: 1, textAlign: 'center' }]}>{configType.name}</Text>
+                  <TouchableOpacity onPress={() => { setConfigType(null); setHostModalOpen(false); }} testID="config-close">
+                    <Ionicons name="close" size={22} color="#1f2937" />
+                  </TouchableOpacity>
+                </View>
+
+                <View style={styles.configHero}>
+                  <Image source={{ uri: configType.image }} style={styles.configHeroImg} contentFit="cover" />
+                  <View style={styles.configHeroVeil} />
+                  <Text style={styles.configHeroText}>{configType.tagline}</Text>
+                </View>
+
+                <Text style={styles.configLabel}>Entry fee per player (coins)</Text>
+                <TextInput
+                  value={configFee}
+                  onChangeText={(t) => setConfigFee(t.replace(/[^0-9]/g, ''))}
+                  keyboardType="number-pad"
+                  style={styles.configInput}
+                  placeholder="10"
+                  placeholderTextColor="#9ca3af"
+                  testID="game-fee-input"
+                />
+                <View style={styles.configPresets}>
+                  {[5, 10, 25, 50, 100, 250].map((p) => (
+                    <TouchableOpacity
+                      key={p}
+                      style={[styles.configPreset, parseInt(configFee, 10) === p && styles.configPresetActive]}
+                      onPress={() => setConfigFee(String(p))}
+                      testID={`game-fee-preset-${p}`}
+                    >
+                      <Text style={[styles.configPresetText, parseInt(configFee, 10) === p && styles.configPresetTextActive]}>{p}🪙</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+
+                <Text style={styles.configLabel}>Max players (2–32)</Text>
+                <TextInput
+                  value={configMaxPlayers}
+                  onChangeText={(t) => setConfigMaxPlayers(t.replace(/[^0-9]/g, ''))}
+                  keyboardType="number-pad"
+                  style={styles.configInput}
+                  placeholder="6"
+                  placeholderTextColor="#9ca3af"
+                  testID="game-max-players-input"
+                />
+                <View style={styles.configPresets}>
+                  {[2, 4, 6, 8, 16].map((p) => (
+                    <TouchableOpacity
+                      key={p}
+                      style={[styles.configPreset, parseInt(configMaxPlayers, 10) === p && styles.configPresetActive]}
+                      onPress={() => setConfigMaxPlayers(String(p))}
+                      testID={`game-max-preset-${p}`}
+                    >
+                      <Text style={[styles.configPresetText, parseInt(configMaxPlayers, 10) === p && styles.configPresetTextActive]}>{p}p</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+
+                {(() => {
+                  const fee = parseInt(configFee, 10) || 0;
+                  const maxP = parseInt(configMaxPlayers, 10) || 0;
+                  const maxPot = fee * maxP;
+                  const each = Math.floor(maxPot / 2);
+                  const remainder = maxPot - each;
+                  return (
+                    <View style={styles.configPreviewBox}>
+                      <Text style={styles.configPreviewTitle}>Max payout</Text>
+                      <Text style={styles.configPreviewLine}>Max pot · <Text style={styles.configPreviewStrong}>{maxPot}🪙</Text></Text>
+                      <Text style={styles.configPreviewLine}>🏆 Winner · <Text style={styles.configPreviewStrong}>{remainder}🪙 + 10 pts</Text></Text>
+                      <Text style={styles.configPreviewLine}>🥈 Runner-up · <Text style={styles.configPreviewStrong}>{each}🪙 + 5 pts</Text></Text>
+                      <Text style={styles.configPreviewSub}>Pot scales with actual joiners — split 50/50.</Text>
+                    </View>
+                  );
+                })()}
+
+                <TouchableOpacity
+                  style={[styles.hostConfirmBtn, (loading || userCoins < (parseInt(configFee, 10) || 0)) && { opacity: 0.5 }]}
+                  onPress={handleHostConfirm}
+                  disabled={loading || userCoins < (parseInt(configFee, 10) || 0)}
+                  testID="confirm-host-game"
+                >
+                  {loading ? <ActivityIndicator color="#fff" /> : (
+                    <>
+                      <Ionicons name={(configType.icon || 'game-controller') as any} size={18} color="#fff" />
+                      <Text style={styles.hostConfirmText}>Host now · pay {configFee}🪙</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+              </>
             )}
           </TouchableOpacity>
         </TouchableOpacity>
@@ -636,6 +773,26 @@ const styles = StyleSheet.create({
     borderRadius: 999, marginTop: 8,
   },
   hostCtaText: { color: '#fff', fontWeight: '800', fontSize: 12 },
+
+  // Config modal (entry fee / max players)
+  configHero: { height: 90, borderRadius: 12, overflow: 'hidden', marginTop: 4, marginBottom: SPACING.sm, position: 'relative' },
+  configHeroImg: { width: '100%', height: '100%' },
+  configHeroVeil: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(15,11,25,0.45)' },
+  configHeroText: { position: 'absolute', left: 12, right: 12, bottom: 10, color: '#fff', fontSize: 13, fontWeight: '700' },
+  configLabel: { fontSize: 11, color: '#6b7280', fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5, marginTop: SPACING.sm, marginBottom: 6 },
+  configInput: { backgroundColor: '#ffffff', borderWidth: 1.5, borderColor: '#e5e7eb', borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, fontSize: 20, fontWeight: '800', color: '#1f2937' },
+  configPresets: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 8 },
+  configPreset: { paddingHorizontal: 11, paddingVertical: 7, backgroundColor: '#f3f4f6', borderRadius: 999, borderWidth: 1, borderColor: '#e5e7eb' },
+  configPresetActive: { backgroundColor: '#7c3aed', borderColor: '#7c3aed' },
+  configPresetText: { fontSize: 12, color: '#374151', fontWeight: '700' },
+  configPresetTextActive: { color: '#fff' },
+  configPreviewBox: { backgroundColor: '#fffbeb', borderColor: '#fde68a', borderWidth: 1, borderRadius: 12, padding: SPACING.sm, marginTop: SPACING.md },
+  configPreviewTitle: { fontSize: 12, fontWeight: '800', color: '#92400e', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6 },
+  configPreviewLine: { fontSize: 12, color: '#7c2d12', marginTop: 2 },
+  configPreviewStrong: { fontWeight: '800', color: '#92400e' },
+  configPreviewSub: { fontSize: 10, color: '#a16207', marginTop: 6, fontStyle: 'italic' },
+  hostConfirmBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: '#7c3aed', paddingVertical: 14, borderRadius: 14, marginTop: SPACING.md },
+  hostConfirmText: { color: '#fff', fontSize: 15, fontWeight: '800' },
 
   // Result modal light theme
   resultModalLight: {

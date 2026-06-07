@@ -1933,6 +1933,8 @@ GAME_TYPES = {
 
 class HostGameRequest(BaseModel):
     gameType: str
+    entryFee: Optional[int] = None  # Custom entry fee; min 1, defaults to game type's default
+    maxPlayers: Optional[int] = None  # Custom max; min 2
 
 def _serialize_game(game: dict) -> dict:
     """Convert game session document to API response"""
@@ -2020,10 +2022,15 @@ async def _resolve_game(game: dict) -> dict:
     winner = ranked[0]
     runner_up = ranked[1] if len(ranked) > 1 else None
     
-    # Reward split: winner takes 70% of pot, runner-up takes 30%, rest eliminated
+    # Reward split: pot is divided equally between winner and runner-up.
+    # If pot is odd, winner gets the extra coin.
     pot = game["pot"]
-    winner_share = int(round(pot * 0.7))
-    runner_share = pot - winner_share if runner_up else 0
+    if runner_up:
+        runner_share = pot // 2
+        winner_share = pot - runner_share
+    else:
+        winner_share = pot
+        runner_share = 0
     
     # Mark placements on each player
     for idx, p in enumerate(ranked):
@@ -2122,14 +2129,25 @@ async def host_room_game(room_id: str, req: HostGameRequest, current_user: dict 
         raise HTTPException(status_code=400, detail="Invalid game type")
     
     game_config = GAME_TYPES[req.gameType]
-    
+    # Resolve custom entry fee + max players (with sane bounds)
+    entry_fee = req.entryFee if req.entryFee is not None else game_config["entryFee"]
+    if entry_fee < 1:
+        raise HTTPException(status_code=400, detail="Entry fee must be at least 1 coin")
+    if entry_fee > 100000:
+        raise HTTPException(status_code=400, detail="Entry fee too high (max 100000)")
+    max_players = req.maxPlayers if req.maxPlayers is not None else game_config["maxPlayers"]
+    if max_players < 2:
+        raise HTTPException(status_code=400, detail="Need at least 2 players")
+    if max_players > 32:
+        raise HTTPException(status_code=400, detail="Max players is 32")
+
     # Verify user is in this room
     if current_user.get("currentRoomId") != room_id:
         raise HTTPException(status_code=403, detail="You must be in the room to host a game")
     
     # Check user has entry fee
-    if current_user.get("coins", 0) < game_config["entryFee"]:
-        raise HTTPException(status_code=400, detail=f"Need at least {game_config['entryFee']} coins to host")
+    if current_user.get("coins", 0) < entry_fee:
+        raise HTTPException(status_code=400, detail=f"Need at least {entry_fee} coins to host")
     
     # Check if user already has an active game in this room
     existing = await db.game_sessions.find_one({
@@ -2143,7 +2161,7 @@ async def host_room_game(room_id: str, req: HostGameRequest, current_user: dict 
             raise HTTPException(status_code=400, detail="You already have an active game in this room")
     
     # Deduct entry fee from host
-    await add_coins(user_id, -game_config["entryFee"], "game", f"Hosted {game_config['name']} entry fee")
+    await add_coins(user_id, -entry_fee, "game", f"Hosted {game_config['name']} entry fee")
     
     # Create game session
     expires_at = datetime.utcnow() + timedelta(seconds=GAME_TIMER_SECONDS)
@@ -2160,9 +2178,9 @@ async def host_room_game(room_id: str, req: HostGameRequest, current_user: dict 
         }],
         "status": "waiting",
         "minPlayers": game_config["minPlayers"],
-        "maxPlayers": game_config["maxPlayers"],
-        "entryFee": game_config["entryFee"],
-        "pot": game_config["entryFee"],
+        "maxPlayers": max_players,
+        "entryFee": entry_fee,
+        "pot": entry_fee,
         "expiresAt": expires_at,
         "createdAt": datetime.utcnow(),
         "gameState": {}
@@ -2177,7 +2195,7 @@ async def host_room_game(room_id: str, req: HostGameRequest, current_user: dict 
         "senderId": "system",
         "senderName": "🎮 System",
         "senderPhoto": None,
-        "messageText": f"{current_user['displayName']} hosted a {game_config['name']} game! Join within 20s · {game_config['entryFee']} coins entry",
+        "messageText": f"{current_user['displayName']} hosted a {game_config['name']} game! Join within 20s · {entry_fee} coins entry",
         "createdAt": datetime.utcnow(),
         "reactions": [],
         "isSystem": True
@@ -2379,20 +2397,24 @@ async def send_coins(payload: SendCoinsPayload, current_user: dict = Depends(get
     }
 
 # ==================== TOURNAMENTS ====================
-# Knockout tournament: 4 players, 2 rounds (semi + final + 3rd-place).
-# Top 3 rewarded: 1st VIP Pro tier + 800 coins, 2nd 400 coins, 3rd 200 coins.
+# Knockout tournament with dynamic size (2-32) and dynamic entry fee.
+# Pot = entryFee * actual_players; pot is split EQUALLY between champion & runner-up.
+# Champion also receives VIP Pro (30 days) as a perk; +30 pts, runner-up +20 pts,
+# 3rd place +10 pts (no coin reward to keep the split clean).
 
-TOURNAMENT_SIZE = 4
-TOURNAMENT_ENTRY_FEE = 10
-TOURNAMENT_REWARDS = {
-    1: {"coins": 800, "points": 30, "vipTier": "pro", "vipDays": 30, "label": "Champion"},
-    2: {"coins": 400, "points": 20, "vipTier": None, "label": "Finalist"},
-    3: {"coins": 200, "points": 10, "vipTier": None, "label": "Third Place"},
-}
+TOURNAMENT_MIN_SIZE = 2
+TOURNAMENT_MAX_SIZE = 32
+TOURNAMENT_MIN_FEE = 1
+TOURNAMENT_MAX_FEE = 100000
+CHAMPION_VIP_TIER = "pro"
+CHAMPION_VIP_DAYS = 30
+TOURNAMENT_POINTS = {1: 30, 2: 20, 3: 10}
 
 class TournamentCreate(BaseModel):
     gameType: str
     name: Optional[str] = None
+    size: Optional[int] = 4
+    entryFee: Optional[int] = 10
 
 def _serialize_tournament(t: dict) -> dict:
     gt_cfg = GAME_TYPES.get(t["gameType"], {})
@@ -2408,6 +2430,8 @@ def _serialize_tournament(t: dict) -> dict:
         "size": t["size"],
         "entryFee": t["entryFee"],
         "pot": t.get("pot", 0),
+        "winnerShare": t.get("winnerShare"),
+        "runnerShare": t.get("runnerShare"),
         "players": t.get("players", []),
         "bracket": t.get("bracket", []),
         "winners": t.get("winners", []),
@@ -2430,14 +2454,20 @@ async def list_room_tournaments(room_id: str, current_user: dict = Depends(get_c
 async def create_tournament(room_id: str, payload: TournamentCreate, current_user: dict = Depends(get_current_user)):
     if payload.gameType not in GAME_TYPES:
         raise HTTPException(status_code=400, detail="Invalid game type")
+    size = payload.size or 4
+    fee = payload.entryFee or 10
+    if size < TOURNAMENT_MIN_SIZE or size > TOURNAMENT_MAX_SIZE:
+        raise HTTPException(status_code=400, detail=f"Size must be between {TOURNAMENT_MIN_SIZE} and {TOURNAMENT_MAX_SIZE}")
+    if fee < TOURNAMENT_MIN_FEE or fee > TOURNAMENT_MAX_FEE:
+        raise HTTPException(status_code=400, detail=f"Entry fee must be between {TOURNAMENT_MIN_FEE} and {TOURNAMENT_MAX_FEE} coins")
     if current_user.get("currentRoomId") != room_id:
         raise HTTPException(status_code=403, detail="Join the room first")
-    if current_user.get("coins", 0) < TOURNAMENT_ENTRY_FEE:
-        raise HTTPException(status_code=400, detail=f"Need {TOURNAMENT_ENTRY_FEE} coins to host & enter")
+    if current_user.get("coins", 0) < fee:
+        raise HTTPException(status_code=400, detail=f"Need {fee} coins to host & enter")
 
     me_id = str(current_user["_id"])
     # Deduct entry fee from creator (auto-joined as first player)
-    await add_coins(me_id, -TOURNAMENT_ENTRY_FEE, "tournament", "Tournament entry fee")
+    await add_coins(me_id, -fee, "tournament", "Tournament entry fee")
 
     gt_cfg = GAME_TYPES[payload.gameType]
     doc = {
@@ -2445,9 +2475,9 @@ async def create_tournament(room_id: str, payload: TournamentCreate, current_use
         "gameType": payload.gameType,
         "name": (payload.name or f"{gt_cfg['name']} Knockout"),
         "status": "lobby",
-        "size": TOURNAMENT_SIZE,
-        "entryFee": TOURNAMENT_ENTRY_FEE,
-        "pot": TOURNAMENT_ENTRY_FEE,
+        "size": size,
+        "entryFee": fee,
+        "pot": fee,
         "players": [{
             "userId": me_id,
             "username": current_user["username"],
@@ -2469,7 +2499,7 @@ async def create_tournament(room_id: str, payload: TournamentCreate, current_use
         "senderId": "system",
         "senderName": "🏆 Tournament",
         "senderPhoto": None,
-        "messageText": f"{current_user['displayName']} scheduled a {gt_cfg['name']} knockout! Tap the trophy to join · {TOURNAMENT_ENTRY_FEE} coins entry",
+        "messageText": f"{current_user['displayName']} scheduled a {gt_cfg['name']} knockout · {size} players · {fee}🪙 entry · Tap the trophy to join",
         "createdAt": datetime.utcnow(),
         "reactions": [],
         "isSystem": True,
@@ -2545,91 +2575,157 @@ def _play_match(p1: dict, p2: dict, game_type: str) -> tuple:
         return p1, p2, s1, s2
     return p2, p1, s2, s1
 
-async def _award_tournament_placement(user_id: str, placement: int, tournament_name: str):
-    cfg = TOURNAMENT_REWARDS.get(placement)
-    if not cfg:
-        return
-    await add_coins(user_id, cfg["coins"], "tournament_win", f"#{placement} in {tournament_name}")
-    inc_fields = {"pointsEarned": cfg["points"]}
+async def _award_tournament_placement(user_id: str, placement: int, coins: int, tournament_name: str):
+    """Award coins (from pot split) + points (+VIP for champion) for a placement."""
+    points = TOURNAMENT_POINTS.get(placement, 0)
+    if coins > 0:
+        await add_coins(user_id, coins, "tournament_win", f"#{placement} in {tournament_name}")
+    inc_fields: Dict[str, int] = {}
+    if points:
+        inc_fields["pointsEarned"] = points
     if placement == 1:
         inc_fields["tournamentsWon"] = 1
-    await db.users.update_one({"_id": ObjectId(user_id)}, {"$inc": inc_fields})
-    if cfg.get("vipTier"):
-        # Grant VIP tier (or upgrade) for vipDays days. We store expiresAt for reference.
-        expires_at = datetime.utcnow() + timedelta(days=cfg.get("vipDays", 30))
+    if inc_fields:
+        await db.users.update_one({"_id": ObjectId(user_id)}, {"$inc": inc_fields})
+    if placement == 1:
+        expires_at = datetime.utcnow() + timedelta(days=CHAMPION_VIP_DAYS)
         await db.users.update_one(
             {"_id": ObjectId(user_id)},
-            {"$set": {"vipTier": cfg["vipTier"], "vipExpiresAt": expires_at}},
+            {"$set": {"vipTier": CHAMPION_VIP_TIER, "vipExpiresAt": expires_at}},
         )
+    medal = {1: "🏆", 2: "🥈", 3: "🥉"}.get(placement, "🎖")
+    parts: List[str] = []
+    if coins > 0:
+        parts.append(f"+{coins} coins")
+    if points:
+        parts.append(f"+{points} points")
+    if placement == 1:
+        parts.append(f"VIP Pro unlocked ({CHAMPION_VIP_DAYS} days)")
+    body = " · ".join(parts) if parts else "Reward unlocked"
     await db.notifications.insert_one({
         "userId": user_id,
-        "title": f"🏆 {cfg['label']}",
-        "body": f"+{cfg['coins']} coins · +{cfg['points']} points in {tournament_name}" + (" · VIP Pro unlocked!" if cfg.get("vipTier") else ""),
+        "title": f"{medal} #{placement} in {tournament_name}",
+        "body": body,
         "type": "tournament",
         "createdAt": datetime.utcnow(),
         "readStatus": False,
     })
 
+def _round_name(remaining: int) -> str:
+    """remaining = players entering this round."""
+    if remaining == 2:
+        return "final"
+    if remaining <= 4:
+        return "semifinal"
+    if remaining <= 8:
+        return "quarterfinal"
+    if remaining <= 16:
+        return "round-of-16"
+    return f"round-of-{remaining}"
+
 async def _run_tournament(t: dict) -> dict:
-    """Simulate the bracket and award rewards. Supports 2/3/4 players."""
+    """Simulate the bracket for any size 2..N. Champion + runner-up split pot 50/50.
+    Pot is recomputed from actual joined players (since size may not be reached)."""
     players = list(t["players"])
     game_type = t["gameType"]
     tid = t["_id"]
     name = t.get("name", "Tournament")
+    entry_fee = t.get("entryFee", 10)
+    actual_pot = entry_fee * len(players)
     bracket: List[Dict[str, Any]] = []
-    winners_list: List[Dict[str, Any]] = []  # 1st, 2nd, 3rd
+
+    if len(players) < 2:
+        # Edge case: lone joiner — refund + abort
+        if players:
+            await add_coins(players[0]["userId"], entry_fee, "refund", f"{name} cancelled — not enough players")
+        await db.tournaments.update_one(
+            {"_id": tid},
+            {"$set": {"status": "completed", "winners": [], "bracket": [], "completedAt": datetime.utcnow(), "pot": 0}},
+        )
+        return await db.tournaments.find_one({"_id": tid})
 
     random.shuffle(players)
+    current_round = list(players)
+    third_candidates: List[Dict[str, Any]] = []  # losers of the semifinal round
 
-    if len(players) == 2:
-        w, loser, sw, sl = _play_match(players[0], players[1], game_type)
-        bracket.append({"round": "final", "matches": [
-            {"p1": players[0], "p2": players[1], "winner": w["userId"], "scoreP1": sw if w == players[0] else sl, "scoreP2": sw if w == players[1] else sl},
-        ]})
-        winners_list = [
-            {**w, "placement": 1},
-            {**loser, "placement": 2},
-        ]
-    elif len(players) == 3:
-        # P1 vs P2 → winner faces P3 (bye). 3rd = loser of round 1.
-        w1, l1, sw1, sl1 = _play_match(players[0], players[1], game_type)
-        bracket.append({"round": "semifinal", "matches": [
-            {"p1": players[0], "p2": players[1], "winner": w1["userId"], "scoreP1": sw1 if w1 == players[0] else sl1, "scoreP2": sw1 if w1 == players[1] else sl1},
-        ]})
-        wf, lf, swf, slf = _play_match(w1, players[2], game_type)
-        bracket.append({"round": "final", "matches": [
-            {"p1": w1, "p2": players[2], "winner": wf["userId"], "scoreP1": swf if wf == w1 else slf, "scoreP2": swf if wf == players[2] else slf},
-        ]})
-        winners_list = [
-            {**wf, "placement": 1},
-            {**lf, "placement": 2},
-            {**l1, "placement": 3},
-        ]
-    else:  # 4 players
-        # Semifinals
-        w1, l1, sw1, sl1 = _play_match(players[0], players[1], game_type)
-        w2, l2, sw2, sl2 = _play_match(players[2], players[3], game_type)
-        bracket.append({"round": "semifinal", "matches": [
-            {"p1": players[0], "p2": players[1], "winner": w1["userId"], "scoreP1": sw1 if w1 == players[0] else sl1, "scoreP2": sw1 if w1 == players[1] else sl1},
-            {"p1": players[2], "p2": players[3], "winner": w2["userId"], "scoreP1": sw2 if w2 == players[2] else sl2, "scoreP2": sw2 if w2 == players[3] else sl2},
-        ]})
-        # Final
-        wf, lf, swf, slf = _play_match(w1, w2, game_type)
-        # Third place
-        w3, l3, sw3, sl3 = _play_match(l1, l2, game_type)
-        bracket.append({"round": "final", "matches": [
-            {"p1": w1, "p2": w2, "winner": wf["userId"], "scoreP1": swf if wf == w1 else slf, "scoreP2": swf if wf == w2 else slf},
-            {"p1": l1, "p2": l2, "winner": w3["userId"], "scoreP1": sw3 if w3 == l1 else sl3, "scoreP2": sw3 if w3 == l2 else sl3, "thirdPlace": True},
-        ]})
-        winners_list = [
-            {**wf, "placement": 1},
-            {**lf, "placement": 2},
-            {**w3, "placement": 3},
-        ]
+    while len(current_round) > 1:
+        next_round: List[Dict[str, Any]] = []
+        matches: List[Dict[str, Any]] = []
+        i = 0
+        round_label = _round_name(len(current_round))
+        is_semis = len(current_round) <= 4 and len(current_round) > 2
 
-    # Award rewards
-    for entry in winners_list:
-        await _award_tournament_placement(entry["userId"], entry["placement"], name)
+        while i < len(current_round) - 1:
+            p1, p2 = current_round[i], current_round[i + 1]
+            winner, loser, sw, sl = _play_match(p1, p2, game_type)
+            matches.append({
+                "p1": p1,
+                "p2": p2,
+                "winner": winner["userId"],
+                "scoreP1": sw if winner == p1 else sl,
+                "scoreP2": sw if winner == p2 else sl,
+            })
+            next_round.append(winner)
+            if is_semis:
+                third_candidates.append(loser)
+            i += 2
+
+        # Bye for odd man out
+        if i < len(current_round):
+            bye = current_round[i]
+            matches.append({"p1": bye, "p2": None, "winner": bye["userId"], "scoreP1": 0, "scoreP2": 0, "bye": True})
+            next_round.append(bye)
+
+        bracket.append({"round": round_label, "matches": matches})
+        current_round = next_round
+
+    champion = current_round[0]
+    # Runner-up is the loser of the final (last round's last competitive match)
+    final_round = bracket[-1]
+    runner_up_id = None
+    for m in final_round["matches"]:
+        if not m.get("bye") and m["winner"] == champion["userId"]:
+            runner_up_id = m["p1"]["userId"] if m["winner"] == m["p2"]["userId"] else m["p2"]["userId"]
+            break
+    runner_up = next((p for p in players if p["userId"] == runner_up_id), None)
+
+    # Optional 3rd place playoff if we had exactly 2 semifinal losers
+    third_place: Optional[Dict[str, Any]] = None
+    if len(third_candidates) == 2:
+        w3, _l3, sw3, sl3 = _play_match(third_candidates[0], third_candidates[1], game_type)
+        bracket.append({
+            "round": "third-place",
+            "matches": [{
+                "p1": third_candidates[0],
+                "p2": third_candidates[1],
+                "winner": w3["userId"],
+                "scoreP1": sw3 if w3 == third_candidates[0] else sl3,
+                "scoreP2": sw3 if w3 == third_candidates[1] else sl3,
+                "thirdPlace": True,
+            }],
+        })
+        third_place = w3
+    elif len(third_candidates) == 1:
+        third_place = third_candidates[0]
+
+    # Split pot 50/50 (winner takes the leftover coin if odd)
+    runner_share = actual_pot // 2 if runner_up else 0
+    winner_share = actual_pot - runner_share
+
+    winners_list: List[Dict[str, Any]] = [
+        {**champion, "placement": 1, "coinsWon": winner_share, "pointsEarned": TOURNAMENT_POINTS[1]},
+    ]
+    if runner_up:
+        winners_list.append({**runner_up, "placement": 2, "coinsWon": runner_share, "pointsEarned": TOURNAMENT_POINTS[2]})
+    if third_place:
+        winners_list.append({**third_place, "placement": 3, "coinsWon": 0, "pointsEarned": TOURNAMENT_POINTS[3]})
+
+    # Award everyone
+    await _award_tournament_placement(champion["userId"], 1, winner_share, name)
+    if runner_up:
+        await _award_tournament_placement(runner_up["userId"], 2, runner_share, name)
+    if third_place:
+        await _award_tournament_placement(third_place["userId"], 3, 0, name)
 
     await db.tournaments.update_one(
         {"_id": tid},
@@ -2637,18 +2733,21 @@ async def _run_tournament(t: dict) -> dict:
             "status": "completed",
             "bracket": bracket,
             "winners": winners_list,
+            "pot": actual_pot,
+            "winnerShare": winner_share,
+            "runnerShare": runner_share,
             "completedAt": datetime.utcnow(),
         }},
     )
 
     # System message
-    champion_name = winners_list[0]["displayName"] if winners_list else "—"
+    rs_text = f" · 🥈 {runner_up['displayName']} +{runner_share}🪙" if runner_up else ""
     await db.messages.insert_one({
         "roomId": t["roomId"],
         "senderId": "system",
         "senderName": "🏆 Tournament",
         "senderPhoto": None,
-        "messageText": f"🏆 {champion_name} won the {name}! VIP Pro + 800 coins awarded.",
+        "messageText": f"🏆 {champion['displayName']} won {name} · +{winner_share}🪙 + VIP Pro{rs_text}",
         "createdAt": datetime.utcnow(),
         "reactions": [],
         "isSystem": True,

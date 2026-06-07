@@ -1,0 +1,35 @@
+{
+  "summary": "Iteration 6 backend tests for dynamic tournament size + dynamic entry fee + 50/50 pot split. Wrote 23 pytest cases covering: game host with custom fee/maxPlayers, host validation (fee/maxPlayers bounds, insufficient coins, defaults fallback), full 2-player game flow with 50-coin entry verifying 50/50 split, 3-player 25-coin odd pot (38/37), tournament create with dynamic size 8 & fee 25, tournament defaults (size=4, fee=10), tournament validation (size 1/33, fee 0/100001, non-room-member 403, insufficient coins), 8-player full bracket flow (quarterfinal/semifinal/final/third-place + pot=200 split 50/50 + 30/20/10 pts), champion VIP Pro check, 2-player tournament (final only, 2 winners), 16-player flow (round-of-16 + all later rounds), odd size 5 with byes, manual start with under-fill (pot=actual*fee), leaderboard reflects champion, regression /games/types/list, /leaderboard/coins-spent, /coins/send. 22/23 PASSED. 1 FAILED: tournament entryFee=0 returns 200 instead of 400 because backend uses `payload.entryFee or 10` which treats 0 as falsy and substitutes the default. Same falsy-default bug exists for `size=0` (would become 4) — not explicitly tested but verified by reading code.",
+  "backend_issues": {
+    "critical": [
+      {"endpoint": "POST /api/rooms/{id}/tournaments", "issue": "Validation bypass: `fee = payload.entryFee or 10` substitutes 10 when client sends entryFee=0, so the `fee < 1` check never fires and a 0-coin tournament gets created. Same falsy-default issue on `size = payload.size or 4` (size=0 silently becomes 4). Fix: use `fee = payload.entryFee if payload.entryFee is not None else 10` (mirrors host_room_game). Spec says `entryFee<1 returns 400`.", "priority": "HIGH"}
+    ],
+    "minor": []
+  },
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_dynamic_games_tournaments.py",
+    "/app/test_reports/pytest/iter6_results.xml"
+  ],
+  "action_items": [
+    "(HIGH) In server.py `create_tournament` (line ~2457-2458), replace `size = payload.size or 4` and `fee = payload.entryFee or 10` with `is not None` ternaries so explicit 0 values trigger 400 validation instead of being silently defaulted.",
+    "(INFO) Everything else verified: game host accepts entryFee+maxPlayers with proper bounds, pot 50/50 split (with winner taking extra coin on odd pot) works for both games and tournaments, _run_tournament builds correct bracket for size 2/4/5/8/16, champion gets VIP Pro, points awarded 30/20/10, leaderboard reflects placements. Regression endpoints (/games/types/list, /leaderboard/coins-spent, /coins/send) all OK."
+  ],
+  "critical_code_review_comments": [
+    "server.py still 3392 lines — split into routers.",
+    "create_tournament uses truthy-OR for defaulting (line 2457-2458), causing the bug above. The parallel host_room_game endpoint uses the correct `is not None` pattern — keep them consistent.",
+    "_run_tournament: random.shuffle on players then bye-assignment means the bye goes to a deterministic seed slot (last player after shuffle). For odd-size tournaments this slightly biases — acceptable but worth documenting.",
+    "Tournament winner_share = pot - pot//2 gives winner the extra coin on odd pot — same as games ✓.",
+    "Champion VIP grant overwrites any existing higher tier (e.g. an elite user winning a tournament gets downgraded to pro). Suggest: only set vipTier if current tier is None or 'pro' (don't downgrade 'elite')."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_dynamic_games_tournaments.py (NEW — 23 tests, uses direct mongo cleanup of room_members between tests)"
+  ],
+  "success_rate": {"backend": "95.6% (22/23)", "frontend": "skipped"},
+  "test_credentials": "On-the-fly users registered with pattern `<prefix><ts>@t.com` / pass1234. Each starts with 100 coins (registration bonus). Test fees kept small (5-50 coins) to fit within bonus.",
+  "seed_data_creation": "~40 throwaway users created across the 23 tests. /api/init/rooms invoked (idempotent). room_members for Games Hub (6a24ddb620bea231c011020e) is wiped before each test via direct mongo to avoid 'Room is full' errors.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Test file `/app/backend/tests/test_dynamic_games_tournaments.py` is self-cleaning (autouse fixture resets room_members between tests via MONGO_URL). Set EXPO_PUBLIC_BACKEND_URL + MONGO_URL + DB_NAME env vars before running. Full suite ~86s (one 22s sleep per game-flow test ×2). After main agent fixes the `or` → `is not None` defaulting in create_tournament, just rerun pytest and all 23 should pass.",
+  "rca_of_issue": "create_tournament uses Python's truthy-OR (`payload.entryFee or 10`) for default substitution. Pydantic delivers explicit `0` as int 0, which is falsy → gets replaced by 10 before the `< MIN_FEE` check. The fix is one-line: `fee = payload.entryFee if payload.entryFee is not None else 10` (same pattern already used correctly in HostGameRequest handling at line 2133). Same bug for `size` field. Negative values like -1 still get caught because they bypass `or` (truthy)."
+}
