@@ -169,3 +169,34 @@
 
 ### Smart enhancement idea
 > Add a one-line VIP unlock teaser under the unlock-VIP banner: **"Upgrade to unlock 6 more rare avatars 🐼✨"** with a tiny tile-strip preview of the previously removed 6 (kitten, penguin, bunny, fox, robot, koala). The art is already produced and bundled-but-unused; gating them behind VIP gives the tier instant tangible value at zero new asset cost.
+
+## Iteration 22 (Jun 2026) — Cancelled-game entry fees excluded from Coins Spent leaderboard
+
+### Root cause (already fixed)
+`GET /api/leaderboard/coins-spent` summed every negative `coin_transactions` row, including the `-entryFee` row for games that were later aborted and refunded. The positive refund credit is filtered out by `amount<0`, so cancelled fees were effectively double-counted on the leaderboard while being refunded in the user's wallet.
+
+### Fix — 5 layers
+1. `add_coins(user_id, amount, type, desc, game_id=None)` (server.py:557) — back-compat addition that, when provided, stores `gameId` on the coin_transactions row.
+2. Host + join paths now insert the game/tournament document FIRST, then call `add_coins` with the new id. Patched in:
+   - `server.py` `host_room_game` (~2691)
+   - `server.py` `join_game` (~2757)
+   - `routes/tournaments.py` `create_tournament` (~163), `join_tournament_by_code` (~237), `join_tournament` (~275)
+3. Abort branches flag the `-entryFee` row(s) as `refunded:true, refundedAt:now` BEFORE issuing the positive refund credit:
+   - `server.py` `_resolve_game` lone-host branch (~2502)
+   - `routes/tournaments.py` `_run_tournament` lone-joiner branch (~399)
+4. `routes/leaderboard.py` coins-spent pipeline adds `{refunded: {$ne: True}}` to the `$match` (excludes refunded rows; still includes legacy rows without the field).
+5. `server.py` `_backfill_refunded_aborts` startup hook — idempotently flags spend rows for historical aborted games/cancelled tournaments. Legacy rows without `gameId` are matched by `(userId, type, amount, createdAt±60s window)` fallback.
+
+### Verified (iteration_17 — 6/6 pytest PASS, 53s)
+- Lone-host card_higher (fee 50) → 20s abort → row flagged refunded, balance restored, leaderboard NOT incremented.
+- Successful 2-player game → both spends remain un-refunded, both users' coinsSpent increases.
+- Synthetic `refunded:true` injection → leaderboard correctly excludes.
+- Tournament size=2 lone-creator + restart → backfill flags refunded.
+- 2nd consecutive restart → idempotent (modified_count=0, no log).
+- Endpoint healthy, returns ints.
+
+### Known follow-up (low impact)
+- Tournament lone-joiner refund path is currently only reachable through the startup backfill (no public cancel endpoint). Consider a future `/api/tournaments/{tid}/cancel` or a TTL job.
+
+### Smart enhancement idea
+> Now that the leaderboard reflects only real spend, surface a **"Real Spender" weekly streak** medal under the coin counter for users whose net spend has been >0 for 4 consecutive weeks. Adds a status loop tied to actual engagement (not just refund-able busywork) and is a natural future VIP-Pro perk.
