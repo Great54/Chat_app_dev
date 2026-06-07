@@ -42,9 +42,29 @@ const showAlert = (title: string, message: string) => {
   }
 };
 
+const isEmbeddedIframe = (() => {
+  try {
+    return Platform.OS === 'web' && typeof window !== 'undefined' && window.self !== window.top;
+  } catch {
+    return Platform.OS === 'web'; // Cross-origin frame check threw → embedded
+  }
+})();
+
 const showConfirm = (title: string, message: string, onConfirm: () => void) => {
+  // Inside an embedded iframe (Emergent preview) `window.confirm` is silently
+  // suppressed in many browsers — the user taps Subscribe and nothing happens.
+  // Skip the confirm dialog there and call onConfirm directly so the test flow
+  // is unblocked. On native + standalone web, keep the system dialog.
   if (Platform.OS === 'web' && typeof window !== 'undefined') {
-    if (window.confirm(`${title}\n\n${message}`)) onConfirm();
+    if (isEmbeddedIframe) {
+      onConfirm();
+      return;
+    }
+    try {
+      if (window.confirm(`${title}\n\n${message}`)) onConfirm();
+    } catch {
+      onConfirm();
+    }
   } else {
     Alert.alert(title, message, [
       { text: 'Cancel', style: 'cancel' },

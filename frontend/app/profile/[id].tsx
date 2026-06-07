@@ -350,16 +350,11 @@ export default function ProfileViewScreen() {
                 </Animated.View>
               </TouchableOpacity>
 
-              <View style={[styles.statCircle, styles.statCircleFriends]} testID="profile-stat-ads">
+              <View style={[styles.statCircle, styles.statCircleFriends]} testID="profile-stat-friends">
                 <Text style={[styles.statCircleValue, { color: '#1e40af' }]}>{profile.friendCount}</Text>
-                <Text style={[styles.statCircleLabel, { color: '#1e40af' }]}>Ads</Text>
+                <Text style={[styles.statCircleLabel, { color: '#1e40af' }]}>Friends</Text>
               </View>
             </View>
-
-            {/* Bio BELOW stats (inline cursive) */}
-            <Text style={styles.bioBelow} numberOfLines={4} testID="profile-bio-inline">
-              {profile.bio || 'No bio yet.'}
-            </Text>
 
             {/* Quick action bar — Add Friend / Message / Gift / Send Coins
                 (All popup-only interactions have moved here, per the new design.) */}
@@ -413,6 +408,11 @@ export default function ProfileViewScreen() {
                 </TouchableOpacity>
               </View>
             )}
+
+            {/* Bio (cursive) — placed BELOW the quick-actions row per the design spec. */}
+            <Text style={styles.bioBelow} numberOfLines={4} testID="profile-bio-inline">
+              {profile.bio || 'No bio yet.'}
+            </Text>
           </View>
         </Animated.View>
       </ScrollView>
