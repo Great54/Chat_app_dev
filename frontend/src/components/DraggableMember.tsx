@@ -53,13 +53,14 @@ export default function DraggableMember({
   targetPosition,
   onAvatarPress,
 }: Props) {
-  // Dynamic sizing: shrink avatars as the room fills up
+  // Dynamic sizing: bigger when room is sparse, shrink as it fills up
   const calculateAvatarSize = () => {
-    if (totalMembers <= 6) return 56;
-    if (totalMembers <= 12) return 48;
-    if (totalMembers <= 20) return 42;
-    if (totalMembers <= 28) return 36;
-    return 30; // Min size for full rooms (up to 36)
+    if (totalMembers <= 6) return 80;
+    if (totalMembers <= 10) return 70;
+    if (totalMembers <= 16) return 56;
+    if (totalMembers <= 24) return 44;
+    if (totalMembers <= 32) return 36;
+    return 30; // Min size for full rooms
   };
 
   const ITEM_SIZE = calculateAvatarSize();
@@ -162,7 +163,7 @@ export default function DraggableMember({
           style={{
             width: ITEM_SIZE - 14,
             height: ITEM_SIZE - 14,
-            borderRadius: 8,
+            borderRadius: 0,
           }}
         />
       ) : (
@@ -258,7 +259,7 @@ const styles = StyleSheet.create({
     borderWidth: 2.5,
   },
   avatar: {
-    borderRadius: 10,
+    borderRadius: 0,
     backgroundColor: COLORS.background,
     alignItems: 'center',
     justifyContent: 'center',
