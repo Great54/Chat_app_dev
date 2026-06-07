@@ -96,12 +96,27 @@ const GamePanel = forwardRef<GamePanelHandle, Props>(function GamePanel(
   const [hostModalOpen, setHostModalOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [, setTick] = useState(0);
-  const [resultsShown, setResultsShown] = useState<Set<string>>(new Set());
   const [resultModalGame, setResultModalGame] = useState<Game | null>(null);
   const [playArenaGame, setPlayArenaGame] = useState<Game | null>(null);
   const [configType, setConfigType] = useState<GameType | null>(null);
   const [configFee, setConfigFee] = useState('10');
   const [configMaxPlayers, setConfigMaxPlayers] = useState('6');
+
+  // Refs (not state) to avoid stale-closure issues inside the polling interval.
+  // - resultsShownRef: ids of completed/aborted games whose result modal has
+  //   already been shown (or acknowledged via Done). Once a game id is in here
+  //   it MUST NEVER re-open the modal again, even if backend keeps reporting
+  //   the game as completed/aborted on subsequent polls.
+  // - dismissedRef: ids the user explicitly dismissed via the Done button.
+  // - resultModalGameRef: mirrors resultModalGame state so the interval can
+  //   read the latest value synchronously.
+  const resultsShownRef = useRef<Set<string>>(new Set());
+  const dismissedRef = useRef<Set<string>>(new Set());
+  const resultModalGameRef = useRef<Game | null>(null);
+
+  useEffect(() => {
+    resultModalGameRef.current = resultModalGame;
+  }, [resultModalGame]);
 
   useImperativeHandle(ref, () => ({
     openHost: () => setHostModalOpen(true),
@@ -129,14 +144,20 @@ const GamePanel = forwardRef<GamePanelHandle, Props>(function GamePanel(
         if (g.status === 'waiting' && isPlayer) {
           setPlayArenaGame((prev) => (prev?.id === g.id ? g : prev || g));
         }
-        if ((g.status === 'completed' || g.status === 'aborted') && !resultsShown.has(g.id)) {
-          if (isPlayer && !resultModalGame) {
+        if (g.status === 'completed' || g.status === 'aborted') {
+          // Once we've shown OR the user has dismissed, never re-open.
+          if (resultsShownRef.current.has(g.id) || dismissedRef.current.has(g.id)) {
+            return;
+          }
+          if (isPlayer && !resultModalGameRef.current) {
+            resultsShownRef.current.add(g.id);
+            resultModalGameRef.current = g;
             setResultModalGame(g);
             setPlayArenaGame((prev) => (prev?.id === g.id ? null : prev));
-            setResultsShown((prev) => new Set(prev).add(g.id));
             onGameUpdate();
-          } else {
-            setResultsShown((prev) => new Set(prev).add(g.id));
+          } else if (!isPlayer) {
+            // Non-players never see the modal; mark as shown so we skip it.
+            resultsShownRef.current.add(g.id);
           }
         }
       });
@@ -475,7 +496,14 @@ const GamePanel = forwardRef<GamePanelHandle, Props>(function GamePanel(
         visible={!!resultModalGame}
         transparent
         animationType="fade"
-        onRequestClose={() => setResultModalGame(null)}
+        onRequestClose={() => {
+          if (resultModalGame) {
+            dismissedRef.current.add(resultModalGame.id);
+            resultsShownRef.current.add(resultModalGame.id);
+          }
+          resultModalGameRef.current = null;
+          setResultModalGame(null);
+        }}
       >
         <View style={styles.modalOverlay}>
           {resultModalGame && (
@@ -558,7 +586,14 @@ const GamePanel = forwardRef<GamePanelHandle, Props>(function GamePanel(
 
               <TouchableOpacity
                 style={styles.closeButtonLight}
-                onPress={() => setResultModalGame(null)}
+                onPress={() => {
+                  if (resultModalGame) {
+                    dismissedRef.current.add(resultModalGame.id);
+                    resultsShownRef.current.add(resultModalGame.id);
+                  }
+                  resultModalGameRef.current = null;
+                  setResultModalGame(null);
+                }}
                 testID="close-result-modal"
               >
                 <Text style={styles.closeButtonTextLight}>Done</Text>

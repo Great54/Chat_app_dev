@@ -1,9 +1,10 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import api from '@/src/api/client';
-import { COLORS, SPACING } from '@/src/constants/theme';
+import { SPACING } from '@/src/constants/theme';
 
 interface LeaderboardEntry {
   rank: number;
@@ -22,9 +23,158 @@ interface LeaderboardEntry {
 type LeaderboardType = 'points' | 'coins-spent';
 
 const TAB_META: { id: LeaderboardType; label: string; icon: any; testId: string }[] = [
-  { id: 'points', label: 'Points Earned', icon: 'trophy', testId: 'leaderboard-tab-points' },
+  { id: 'points', label: 'Points', icon: 'trophy', testId: 'leaderboard-tab-points' },
   { id: 'coins-spent', label: 'Coins Spent', icon: 'wallet', testId: 'leaderboard-tab-spent' },
 ];
+
+// Gaming Arena Champions palette (Option 3)
+const ARENA = {
+  bg: '#070512',
+  bgDeep: '#0b0820',
+  surface: 'rgba(16,12,40,0.78)',
+  surfaceSolid: '#15102e',
+  border: 'rgba(255,255,255,0.08)',
+  borderHot: 'rgba(255, 64, 96, 0.55)',
+  text: '#ffffff',
+  textDim: '#b9b3d6',
+  red: '#ff2e5b',
+  redGlow: 'rgba(255, 46, 91, 0.55)',
+  cyan: '#22d3ee',
+  cyanGlow: 'rgba(34, 211, 238, 0.55)',
+  gold: '#ffcd3d',
+  goldGlow: 'rgba(255, 205, 61, 0.6)',
+  magenta: '#ff5fd8',
+  magentaGlow: 'rgba(255, 95, 216, 0.55)',
+  vipGold: '#f5b301',
+  vipPro: '#7c3aed',
+  vip: '#22d3ee',
+};
+
+const podiumAccent = (rank: number) => {
+  if (rank === 1) return { color: ARENA.gold, glow: ARENA.goldGlow };
+  if (rank === 2) return { color: ARENA.cyan, glow: ARENA.cyanGlow };
+  return { color: ARENA.magenta, glow: ARENA.magentaGlow };
+};
+
+function VipBadge({ tier }: { tier?: string | null }) {
+  if (!tier) return null;
+  const t = String(tier).toLowerCase();
+  const isElite = t.includes('elite');
+  const isPro = t.includes('pro');
+  const bg = isElite ? ARENA.vipGold : isPro ? ARENA.vipPro : ARENA.vip;
+  const label = isElite ? 'VIP ELITE' : isPro ? 'VIP PRO' : 'VIP';
+  return (
+    <View style={[s.vipBadge, { backgroundColor: bg + '22', borderColor: bg }]}>
+      <Ionicons name="diamond" size={9} color={bg} />
+      <Text style={[s.vipBadgeText, { color: bg }]}>{label}</Text>
+    </View>
+  );
+}
+
+function Octagon({ size, color, glow, children }: { size: number; color: string; glow: string; children: React.ReactNode }) {
+  // Achieves an "octagonal" neon framed look using rotated squares + radius.
+  return (
+    <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
+      <View
+        style={{
+          position: 'absolute',
+          width: size,
+          height: size,
+          borderRadius: size * 0.28,
+          borderWidth: 2,
+          borderColor: color,
+          transform: [{ rotate: '45deg' }],
+          shadowColor: color,
+          shadowOpacity: 0.9,
+          shadowRadius: 18,
+          shadowOffset: { width: 0, height: 0 },
+        }}
+      />
+      <View
+        style={{
+          position: 'absolute',
+          width: size - 8,
+          height: size - 8,
+          borderRadius: (size - 8) * 0.28,
+          borderWidth: 1,
+          borderColor: glow,
+          transform: [{ rotate: '45deg' }],
+        }}
+      />
+      <View style={{ width: size - 14, height: size - 14, borderRadius: (size - 14) / 2, overflow: 'hidden', backgroundColor: '#0b0820' }}>
+        {children}
+      </View>
+    </View>
+  );
+}
+
+function Avatar({ uri, size }: { uri?: string; size: number }) {
+  if (uri) {
+    return <Image source={{ uri }} style={{ width: size, height: size }} contentFit="cover" />;
+  }
+  return (
+    <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center', backgroundColor: '#1a1438' }}>
+      <Ionicons name="person" size={size * 0.55} color={ARENA.textDim} />
+    </View>
+  );
+}
+
+function PodiumCard({
+  entry,
+  metricLabel,
+  metricValue,
+}: {
+  entry: LeaderboardEntry;
+  metricLabel: string;
+  metricValue: number;
+}) {
+  const accent = podiumAccent(entry.rank);
+  const isFirst = entry.rank === 1;
+  const octSize = isFirst ? 92 : 72;
+  return (
+    <View style={[s.podiumCol, isFirst && s.podiumColFirst]} testID={`leaderboard-podium-${entry.rank}`}>
+      <View style={{ alignItems: 'center', marginBottom: 8 }}>
+        <Octagon size={octSize} color={accent.color} glow={accent.glow}>
+          <Avatar uri={entry.photoUrl} size={octSize - 14} />
+        </Octagon>
+        {/* Rank chip */}
+        <View
+          style={[
+            s.rankChip,
+            {
+              backgroundColor: accent.color,
+              shadowColor: accent.color,
+              top: octSize - 16,
+            },
+          ]}
+        >
+          <Text style={s.rankChipText}>{entry.rank}</Text>
+        </View>
+        {isFirst && (
+          <View style={s.crownWrap}>
+            <Ionicons name="trophy" size={22} color={ARENA.gold} style={{ textShadowColor: ARENA.goldGlow, textShadowRadius: 12 }} />
+          </View>
+        )}
+      </View>
+
+      {/* Podium block */}
+      <View
+        style={[
+          s.podiumBlock,
+          { borderColor: accent.color, shadowColor: accent.color },
+          isFirst && s.podiumBlockFirst,
+        ]}
+      >
+        <Text style={s.podiumName} numberOfLines={1}>{entry.displayName}</Text>
+        <VipBadge tier={entry.vipTier} />
+        <View style={s.podiumMetric}>
+          <Ionicons name={metricLabel === 'pts' ? 'trophy' : 'wallet'} size={13} color={ARENA.gold} />
+          <Text style={s.podiumMetricValue}>{metricValue.toLocaleString()}</Text>
+        </View>
+      </View>
+    </View>
+  );
+}
 
 export default function LeaderboardScreen() {
   const [activeTab, setActiveTab] = useState<LeaderboardType>('points');
@@ -33,6 +183,7 @@ export default function LeaderboardScreen() {
 
   useEffect(() => {
     loadLeaderboard();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab]);
 
   const loadLeaderboard = async () => {
@@ -47,152 +198,419 @@ export default function LeaderboardScreen() {
     }
   };
 
-  const renderEntry = (entry: LeaderboardEntry) => {
-    const medal = entry.rank === 1 ? '🥇' : entry.rank === 2 ? '🥈' : entry.rank === 3 ? '🥉' : `#${entry.rank}`;
-    return (
-      <View key={entry.id} style={[styles.entryCard, entry.rank <= 3 && styles.entryCardTop]} testID={`leaderboard-row-${entry.rank}`}>
-        <View style={[styles.rankBadge, entry.rank === 1 && styles.rankGold, entry.rank === 2 && styles.rankSilver, entry.rank === 3 && styles.rankBronze]}>
-          <Text style={[styles.rankText, entry.rank <= 3 && styles.rankTextTop]}>{medal}</Text>
-        </View>
+  const metricFor = (e: LeaderboardEntry) =>
+    activeTab === 'points' ? e.pointsEarned || 0 : e.coinsSpent || 0;
+  const metricUnit = activeTab === 'points' ? 'pts' : '🪙';
 
-        <View style={styles.avatar}>
-          <Ionicons name="person" size={24} color={COLORS.textSecondary} />
-        </View>
+  const podium = useMemo(() => {
+    const top3 = data.filter((e) => e.rank <= 3);
+    // Reorder so that #2 is left, #1 center, #3 right (gaming arena layout)
+    const byRank = new Map(top3.map((e) => [e.rank, e]));
+    return [byRank.get(2), byRank.get(1), byRank.get(3)].filter(Boolean) as LeaderboardEntry[];
+  }, [data]);
 
-        <View style={styles.entryInfo}>
-          <Text style={styles.entryName} numberOfLines={1}>{entry.displayName}</Text>
-          <Text style={styles.entryUsername} numberOfLines={1}>@{entry.username}</Text>
-          {activeTab === 'points' && (
-            <Text style={styles.entryBreakdown}>
-              {entry.gameWins || 0}W · {entry.gameRunnerUps || 0}RU
-              {entry.tournamentsWon ? ` · ${entry.tournamentsWon}🏆` : ''}
-            </Text>
-          )}
-        </View>
+  const rest = data.filter((e) => e.rank > 3);
 
-        <View style={styles.entryStats}>
-          {activeTab === 'points' ? (
-            <>
-              <Ionicons name="trophy" size={16} color={COLORS.coin} />
-              <Text style={styles.statValue}>{entry.pointsEarned || 0}</Text>
-              <Text style={styles.statUnit}>pts</Text>
-            </>
-          ) : (
-            <>
-              <Ionicons name="wallet" size={16} color={COLORS.accent} />
-              <Text style={styles.statValue}>{entry.coinsSpent || 0}</Text>
-              <Text style={styles.statUnit}>🪙</Text>
-            </>
-          )}
-        </View>
+  const renderRow = (entry: LeaderboardEntry) => (
+    <View key={entry.id} style={s.row} testID={`leaderboard-row-${entry.rank}`}>
+      <View style={s.rowRank}>
+        <Text style={s.rowRankText}>{entry.rank}</Text>
       </View>
-    );
-  };
+      <View style={s.rowAvatar}>
+        <Avatar uri={entry.photoUrl} size={32} />
+      </View>
+      <View style={{ flex: 1, marginLeft: 10 }}>
+        <Text style={s.rowName} numberOfLines={1}>{entry.displayName}</Text>
+        {activeTab === 'points' ? (
+          <Text style={s.rowSub} numberOfLines={1}>
+            {entry.gameWins || 0}W · {entry.gameRunnerUps || 0}RU
+            {entry.tournamentsWon ? ` · ${entry.tournamentsWon}🏆` : ''}
+          </Text>
+        ) : (
+          <Text style={s.rowSub} numberOfLines={1}>@{entry.username}</Text>
+        )}
+      </View>
+      <VipBadge tier={entry.vipTier} />
+      <View style={s.rowMetric}>
+        <Ionicons name={activeTab === 'points' ? 'trophy' : 'wallet'} size={12} color={ARENA.gold} />
+        <Text style={s.rowMetricText}>{metricFor(entry).toLocaleString()}</Text>
+      </View>
+    </View>
+  );
 
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>Leaderboard</Text>
-        <Text style={styles.headerSubtitle}>
-          {activeTab === 'points'
-            ? 'Win games to earn points · 10 for win, 5 for runner-up'
-            : 'Top spenders across the platform'}
-        </Text>
-      </View>
+    <View style={s.root}>
+      {/* Arena background layers */}
+      <View style={s.bgGradient} />
+      <View style={s.bgGridLeft} />
+      <View style={s.bgGridRight} />
+      <View style={[s.scanlineGlow, { top: 90, backgroundColor: ARENA.redGlow }]} />
+      <View style={[s.scanlineGlow, { top: 220, backgroundColor: ARENA.cyanGlow, opacity: 0.4 }]} />
 
-      <View style={styles.tabs}>
-        {TAB_META.map((t) => (
-          <TouchableOpacity
-            key={t.id}
-            style={[styles.tab, activeTab === t.id && styles.tabActive]}
-            onPress={() => setActiveTab(t.id)}
-            testID={t.testId}
-          >
-            <Ionicons
-              name={t.icon}
-              size={18}
-              color={activeTab === t.id ? COLORS.text : COLORS.textSecondary}
-            />
-            <Text style={[styles.tabText, activeTab === t.id && styles.tabTextActive]}>
-              {t.label}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </View>
+      <SafeAreaView style={{ flex: 1 }} edges={['top']}>
+        <View style={s.header}>
+          <View style={{ flex: 1 }}>
+            <Text style={s.headerEyebrow}>GAMING ARENA</Text>
+            <Text style={s.headerTitle}>Leaderboard</Text>
+          </View>
+          <View style={s.headerBadge}>
+            <Ionicons name="game-controller" size={16} color={ARENA.red} />
+          </View>
+        </View>
 
-      <ScrollView contentContainerStyle={styles.content}>
-        {loading ? (
-          <View style={styles.empty}>
-            <Text style={styles.emptyText}>Loading…</Text>
-          </View>
-        ) : data.length === 0 ? (
-          <View style={styles.empty}>
-            <Ionicons name="trophy-outline" size={48} color={COLORS.textSecondary} />
-            <Text style={styles.emptyText}>
-              {activeTab === 'points'
-                ? 'No points yet — play a game to start earning!'
-                : 'No spending recorded yet'}
-            </Text>
-          </View>
-        ) : (
-          data.map(renderEntry)
-        )}
-      </ScrollView>
-    </SafeAreaView>
+        {/* Tabs */}
+        <View style={s.tabs}>
+          {TAB_META.map((t) => {
+            const active = activeTab === t.id;
+            return (
+              <TouchableOpacity
+                key={t.id}
+                style={[s.tab, active && s.tabActive]}
+                onPress={() => setActiveTab(t.id)}
+                testID={t.testId}
+                activeOpacity={0.85}
+              >
+                <Ionicons name={t.icon} size={15} color={active ? '#fff' : ARENA.textDim} />
+                <Text style={[s.tabText, active && s.tabTextActive]}>{t.label}</Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+
+        <ScrollView contentContainerStyle={s.scroll} showsVerticalScrollIndicator={false}>
+          {loading ? (
+            <View style={s.empty}><Text style={s.emptyText}>Loading…</Text></View>
+          ) : data.length === 0 ? (
+            <View style={s.empty}>
+              <Ionicons name="trophy-outline" size={48} color={ARENA.textDim} />
+              <Text style={s.emptyText}>
+                {activeTab === 'points'
+                  ? 'No points yet — play a game to start earning!'
+                  : 'No spending recorded yet'}
+              </Text>
+            </View>
+          ) : (
+            <>
+              {/* Podium */}
+              {podium.length > 0 && (
+                <View style={s.podiumRow}>
+                  {podium.map((p) => (
+                    <PodiumCard
+                      key={p.id}
+                      entry={p}
+                      metricLabel={metricUnit}
+                      metricValue={metricFor(p)}
+                    />
+                  ))}
+                </View>
+              )}
+
+              {/* Rest of list */}
+              {rest.length > 0 && (
+                <View style={s.listCard}>
+                  {rest.map(renderRow)}
+                </View>
+              )}
+
+              <Text style={s.footerNote}>
+                {activeTab === 'points'
+                  ? 'Win games to earn points · 10 for win, 5 for runner-up'
+                  : 'Top spenders across the platform'}
+              </Text>
+            </>
+          )}
+        </ScrollView>
+      </SafeAreaView>
+    </View>
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: COLORS.background },
+const s = StyleSheet.create({
+  root: { flex: 1, backgroundColor: ARENA.bg },
+
+  // Background gaming-arena layers
+  bgGradient: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: ARENA.bgDeep,
+  },
+  bgGridLeft: {
+    position: 'absolute',
+    left: -120,
+    top: -80,
+    width: 360,
+    height: 360,
+    borderRadius: 180,
+    backgroundColor: ARENA.red,
+    opacity: 0.18,
+    transform: [{ scaleX: 1.6 }],
+  },
+  bgGridRight: {
+    position: 'absolute',
+    right: -140,
+    bottom: -120,
+    width: 380,
+    height: 380,
+    borderRadius: 190,
+    backgroundColor: ARENA.cyan,
+    opacity: 0.14,
+    transform: [{ scaleX: 1.4 }],
+  },
+  scanlineGlow: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    height: 2,
+    opacity: 0.55,
+  },
+
   header: {
-    paddingHorizontal: SPACING.md, paddingVertical: SPACING.md,
-    borderBottomWidth: 1, borderBottomColor: COLORS.border,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: SPACING.md,
+    paddingTop: SPACING.sm,
+    paddingBottom: SPACING.sm,
   },
-  headerTitle: { fontSize: 26, fontWeight: '800', color: COLORS.text },
-  headerSubtitle: { fontSize: 12, color: COLORS.textSecondary, marginTop: 4 },
-  tabs: { flexDirection: 'row', padding: SPACING.sm, gap: SPACING.sm },
+  headerEyebrow: {
+    color: ARENA.red,
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 3,
+    textShadowColor: ARENA.redGlow,
+    textShadowRadius: 8,
+  },
+  headerTitle: {
+    color: ARENA.text,
+    fontSize: 28,
+    fontWeight: '900',
+    letterSpacing: 0.5,
+    marginTop: 2,
+  },
+  headerBadge: {
+    width: 38,
+    height: 38,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: ARENA.borderHot,
+    backgroundColor: 'rgba(255,46,91,0.08)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: ARENA.red,
+    shadowOpacity: 0.6,
+    shadowRadius: 10,
+  },
+
+  tabs: {
+    flexDirection: 'row',
+    paddingHorizontal: SPACING.md,
+    gap: 10,
+    marginBottom: SPACING.md,
+  },
   tab: {
-    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    paddingVertical: SPACING.sm, borderRadius: 10,
-    backgroundColor: COLORS.cardBg, gap: 6,
-    borderWidth: 1, borderColor: 'transparent',
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 10,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.04)',
+    borderWidth: 1,
+    borderColor: ARENA.border,
   },
-  tabActive: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
-  tabText: { fontSize: 13, color: COLORS.textSecondary, fontWeight: '700' },
-  tabTextActive: { color: COLORS.text },
-  content: { padding: SPACING.md, gap: SPACING.sm },
-  entryCard: {
-    flexDirection: 'row', alignItems: 'center',
-    backgroundColor: COLORS.cardBg, padding: SPACING.md,
+  tabActive: {
+    backgroundColor: ARENA.red,
+    borderColor: ARENA.red,
+    shadowColor: ARENA.red,
+    shadowOpacity: 0.8,
+    shadowRadius: 12,
+  },
+  tabText: { color: ARENA.textDim, fontSize: 13, fontWeight: '700' },
+  tabTextActive: { color: '#fff', fontWeight: '800' },
+
+  scroll: { paddingHorizontal: SPACING.md, paddingBottom: 40 },
+
+  // Podium
+  podiumRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    justifyContent: 'space-between',
+    paddingTop: 24,
+    paddingBottom: 8,
+    gap: 8,
+  },
+  podiumCol: {
+    flex: 1,
+    alignItems: 'center',
+    paddingTop: 16,
+  },
+  podiumColFirst: {
+    paddingTop: 0,
+    transform: [{ translateY: -10 }],
+  },
+  rankChip: {
+    position: 'absolute',
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowOpacity: 0.9,
+    shadowRadius: 10,
+    borderWidth: 2,
+    borderColor: '#0b0820',
+  },
+  rankChipText: {
+    color: '#0b0820',
+    fontSize: 13,
+    fontWeight: '900',
+  },
+  crownWrap: {
+    position: 'absolute',
+    top: -14,
+  },
+  podiumBlock: {
+    width: '100%',
+    paddingVertical: 10,
+    paddingHorizontal: 8,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    backgroundColor: 'rgba(11,8,32,0.85)',
+    alignItems: 'center',
+    shadowOpacity: 0.5,
+    shadowRadius: 14,
+    marginTop: 14,
+  },
+  podiumBlockFirst: {
+    paddingVertical: 14,
+    backgroundColor: 'rgba(255, 205, 61, 0.08)',
+  },
+  podiumName: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '800',
+    maxWidth: '100%',
+  },
+  podiumMetric: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 999,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,205,61,0.4)',
+  },
+  podiumMetricValue: {
+    color: ARENA.gold,
+    fontSize: 12,
+    fontWeight: '800',
+  },
+
+  // List rows
+  listCard: {
+    marginTop: SPACING.md,
     borderRadius: 14,
-    borderWidth: 1, borderColor: COLORS.border,
+    borderWidth: 1,
+    borderColor: ARENA.border,
+    backgroundColor: ARENA.surface,
+    overflow: 'hidden',
   },
-  entryCardTop: { borderColor: COLORS.coin + '55' },
-  rankBadge: {
-    width: 44, height: 44, borderRadius: 22,
-    backgroundColor: COLORS.background,
-    alignItems: 'center', justifyContent: 'center',
-    marginRight: SPACING.sm,
-    borderWidth: 1, borderColor: COLORS.border,
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: ARENA.border,
+    gap: 8,
   },
-  rankGold: { backgroundColor: '#fef3c7', borderColor: '#fbbf24' },
-  rankSilver: { backgroundColor: '#e5e7eb', borderColor: '#9ca3af' },
-  rankBronze: { backgroundColor: '#fde6d3', borderColor: '#d97706' },
-  rankText: { color: COLORS.text, fontSize: 14, fontWeight: '800' },
-  rankTextTop: { fontSize: 20 },
-  avatar: {
-    width: 40, height: 40, borderRadius: 20,
-    backgroundColor: COLORS.background,
-    alignItems: 'center', justifyContent: 'center',
-    marginRight: SPACING.sm,
+  rowRank: {
+    width: 28,
+    height: 28,
+    borderRadius: 8,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    borderWidth: 1,
+    borderColor: ARENA.border,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  entryInfo: { flex: 1, marginRight: SPACING.sm },
-  entryName: { fontSize: 15, fontWeight: '700', color: COLORS.text },
-  entryUsername: { fontSize: 11, color: COLORS.textSecondary, marginTop: 1 },
-  entryBreakdown: { fontSize: 10, color: COLORS.primary, marginTop: 2, fontWeight: '600' },
-  entryStats: { flexDirection: 'row', alignItems: 'center', gap: 3 },
-  statValue: { fontSize: 16, fontWeight: '800', color: COLORS.text },
-  statUnit: { fontSize: 10, color: COLORS.textSecondary, fontWeight: '600', marginLeft: 1 },
-  empty: { alignItems: 'center', justifyContent: 'center', paddingVertical: SPACING.xl * 2 },
-  emptyText: { color: COLORS.textSecondary, fontSize: 14, marginTop: SPACING.md, textAlign: 'center', paddingHorizontal: SPACING.lg },
+  rowRankText: {
+    color: ARENA.text,
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  rowAvatar: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: ARENA.border,
+  },
+  rowName: {
+    color: ARENA.text,
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  rowSub: {
+    color: ARENA.textDim,
+    fontSize: 11,
+    marginTop: 1,
+  },
+  rowMetric: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 999,
+    backgroundColor: 'rgba(0,0,0,0.35)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,205,61,0.3)',
+  },
+  rowMetricText: {
+    color: ARENA.gold,
+    fontSize: 12,
+    fontWeight: '800',
+  },
+
+  // VIP badge
+  vipBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+    borderWidth: 1,
+    marginTop: 4,
+  },
+  vipBadgeText: {
+    fontSize: 8,
+    fontWeight: '900',
+    letterSpacing: 0.5,
+  },
+
+  footerNote: {
+    color: ARENA.textDim,
+    fontSize: 11,
+    textAlign: 'center',
+    marginTop: 20,
+    fontStyle: 'italic',
+  },
+
+  empty: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: SPACING.xl * 2,
+  },
+  emptyText: {
+    color: ARENA.textDim,
+    fontSize: 14,
+    marginTop: SPACING.md,
+    textAlign: 'center',
+    paddingHorizontal: SPACING.lg,
+  },
 });
