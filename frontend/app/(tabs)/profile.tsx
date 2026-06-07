@@ -555,8 +555,8 @@ const styles = StyleSheet.create({
   },
   bannerEditButton: {
     position: 'absolute',
-    bottom: SPACING.sm,
-    right: SPACING.sm,
+    top: SPACING.sm,
+    left: SPACING.sm,
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: 'rgba(0,0,0,0.6)',
@@ -572,7 +572,7 @@ const styles = StyleSheet.create({
   },
   headerEditButton: {
     position: 'absolute',
-    top: SPACING.md + 30,
+    top: SPACING.sm,
     right: SPACING.sm,
     backgroundColor: 'rgba(0,0,0,0.6)',
     width: 36,

@@ -12,9 +12,11 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { Link } from 'expo-router';
+import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '@/src/contexts/AuthContext';
 import { COLORS, SPACING } from '@/src/constants/theme';
+import CosmicAuthBackground from '@/src/components/CosmicAuthBackground';
 
 // react-native's Alert.alert is a no-op on web. Use window.alert there
 // so users actually see validation / API errors instead of silent failure.
@@ -60,16 +62,22 @@ export default function Register() {
       style={styles.container}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
+      <CosmicAuthBackground />
       <ScrollView contentContainerStyle={styles.scrollContent}>
         <View style={styles.header}>
-          <View style={styles.logoContainer}>
-            <Ionicons name="radio" size={48} color={COLORS.primary} />
+          <View style={styles.logoGlow}>
+            <Image
+              source={require('@/assets/brand/logo.png')}
+              style={styles.logoImage}
+              contentFit="contain"
+            />
           </View>
           <Text style={styles.title}>Create Account</Text>
-          <Text style={styles.subtitle}>Join GenC Vibez community</Text>
+          <Text style={styles.subtitle}>Join the GenC Vibez community</Text>
         </View>
 
-        <View style={styles.form}>
+        <View style={styles.formCard}>
+          <View style={styles.form}>
           <View style={styles.inputContainer}>
             <Ionicons name="person-outline" size={20} color={COLORS.textSecondary} style={styles.inputIcon} />
             <TextInput
@@ -139,6 +147,7 @@ export default function Register() {
             </Link>
           </View>
         </View>
+        </View>
       </ScrollView>
     </KeyboardAvoidingView>
   );
@@ -147,7 +156,7 @@ export default function Register() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: COLORS.background,
+    backgroundColor: '#0b0820',
   },
   scrollContent: {
     flexGrow: 1,
@@ -156,26 +165,51 @@ const styles = StyleSheet.create({
   },
   header: {
     alignItems: 'center',
-    marginBottom: SPACING.xl * 2,
+    marginBottom: SPACING.lg,
   },
-  logoContainer: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: COLORS.cardBg,
+  logoGlow: {
+    width: 128,
+    height: 128,
+    borderRadius: 64,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: SPACING.md,
+    // soft aura glow behind the logo
+    // @ts-ignore RN web shadow
+    boxShadow: '0 0 60px rgba(192,132,252,0.55), 0 0 120px rgba(236,72,153,0.35)',
+    shadowColor: '#c084fc',
+    shadowOpacity: 0.7,
+    shadowRadius: 30,
+    shadowOffset: { width: 0, height: 0 },
+  },
+  logoImage: {
+    width: 124,
+    height: 124,
   },
   title: {
     fontSize: 32,
-    fontWeight: '700',
-    color: COLORS.text,
-    marginBottom: SPACING.xs,
+    fontWeight: '800',
+    color: '#ffffff',
+    marginBottom: 4,
+    letterSpacing: 0.3,
+    // @ts-ignore RN web textShadow
+    textShadow: '0 2px 14px rgba(192,132,252,0.55)',
   },
   subtitle: {
-    fontSize: 16,
-    color: COLORS.textSecondary,
+    fontSize: 14,
+    color: '#cbb6ff',
+    opacity: 0.9,
+  },
+  formCard: {
+    backgroundColor: 'rgba(20, 14, 42, 0.62)',
+    borderWidth: 1,
+    borderColor: 'rgba(192,132,252,0.28)',
+    borderRadius: 22,
+    padding: SPACING.md,
+    // @ts-ignore RN web backdrop blur
+    backdropFilter: 'blur(18px)',
+    // @ts-ignore web shadow
+    boxShadow: '0 18px 60px rgba(124, 58, 237, 0.35), 0 4px 16px rgba(0,0,0,0.45)',
   },
   form: {
     width: '100%',
@@ -183,36 +217,41 @@ const styles = StyleSheet.create({
   inputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: COLORS.cardBg,
-    borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    borderRadius: 14,
     marginBottom: SPACING.md,
     paddingHorizontal: SPACING.md,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: 'rgba(192,132,252,0.22)',
   },
   inputIcon: {
     marginRight: SPACING.sm,
   },
   input: {
     flex: 1,
-    color: COLORS.text,
+    color: '#ffffff',
     fontSize: 16,
     paddingVertical: SPACING.md,
+    // @ts-ignore web outline removal for nicer look
+    outlineStyle: 'none',
   },
   button: {
     backgroundColor: COLORS.primary,
     paddingVertical: SPACING.md,
-    borderRadius: 12,
+    borderRadius: 14,
     alignItems: 'center',
     marginTop: SPACING.md,
+    // @ts-ignore
+    boxShadow: '0 10px 24px rgba(124,58,237,0.55)',
   },
   buttonDisabled: {
     opacity: 0.6,
   },
   buttonText: {
-    color: COLORS.text,
+    color: '#ffffff',
     fontSize: 16,
-    fontWeight: '700',
+    fontWeight: '800',
+    letterSpacing: 0.4,
   },
   footer: {
     flexDirection: 'row',
@@ -220,12 +259,13 @@ const styles = StyleSheet.create({
     marginTop: SPACING.lg,
   },
   footerText: {
-    color: COLORS.textSecondary,
+    color: '#cbb6ff',
+    opacity: 0.85,
     fontSize: 14,
   },
   link: {
-    color: COLORS.primary,
+    color: '#f0abfc',
     fontSize: 14,
-    fontWeight: '600',
+    fontWeight: '700',
   },
 });
