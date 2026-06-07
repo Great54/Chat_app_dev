@@ -47,7 +47,7 @@ const VIP_STYLES: Record<string, any> = {
     borderColor: '#fbbf24',
     crownColor: '#fbbf24',
     badgeIcon: 'diamond',
-    avatarScale: 1.25,
+    avatarScale: 1.18,
     nameColor: '#fde68a',
     // Premium golden→crimson→violet gradient frame
     gradientColors: ['#fde68a', '#fbbf24', '#dc2626', '#7c2d12', '#4c1d95'],
@@ -76,14 +76,58 @@ export default function DraggableMember({
   };
 
   const ITEM_SIZE = calculateAvatarSize();
-  const ITEMS_PER_ROW = Math.max(1, Math.floor(boundsWidth / (ITEM_SIZE + 8)));
-  const SPACING = 4;
 
-  // Compute initial grid position
-  const row = Math.floor(initialIndex / ITEMS_PER_ROW);
-  const col = initialIndex % ITEMS_PER_ROW;
-  const initialX = col * (ITEM_SIZE + SPACING);
-  const initialY = row * (ITEM_SIZE + SPACING);
+  // Scattered (but stable per-user) initial placement.
+  //
+  // We previously placed avatars on a strict grid using `initialIndex`, which
+  // made everyone appear in a perfect line/row when they joined. The user
+  // asked for them to "pop in any part of the room" while still being
+  // arranged in the join order (i.e. positions deterministic, not random
+  // each render).
+  //
+  // Implementation: a Halton low-discrepancy sequence indexed by
+  // `initialIndex` (preserves join order — earlier members get earlier,
+  // well-spread cells) lightly jittered by a hash of the userId so two users
+  // who happen to land on the same Halton point still drift apart.
+  const halton = (i: number, base: number) => {
+    let f = 1;
+    let r = 0;
+    let idx = i + 1; // 1-based
+    while (idx > 0) {
+      f /= base;
+      r += f * (idx % base);
+      idx = Math.floor(idx / base);
+    }
+    return r; // 0..1
+  };
+
+  const hashStr = (s: string) => {
+    let h = 2166136261;
+    for (let i = 0; i < s.length; i++) {
+      h ^= s.charCodeAt(i);
+      h = (h * 16777619) >>> 0;
+    }
+    return h;
+  };
+
+  const MARGIN = Math.max(8, Math.round(ITEM_SIZE * 0.15));
+  const maxX = Math.max(0, boundsWidth - ITEM_SIZE - MARGIN * 2);
+  const maxY = Math.max(0, boundsHeight - ITEM_SIZE - MARGIN * 2);
+
+  const hashU = hashStr(member.userId || `idx-${initialIndex}`);
+  // Small jitter (±12% of an avatar cell) so identical Halton coords still
+  // separate visually.
+  const jitterX = (((hashU & 0xffff) / 0xffff) - 0.5) * ITEM_SIZE * 0.24;
+  const jitterY = ((((hashU >>> 16) & 0xffff) / 0xffff) - 0.5) * ITEM_SIZE * 0.24;
+
+  const initialX = Math.max(
+    0,
+    Math.min(maxX, Math.round(MARGIN + halton(initialIndex, 2) * maxX + jitterX)),
+  );
+  const initialY = Math.max(
+    0,
+    Math.min(maxY, Math.round(MARGIN + halton(initialIndex, 3) * maxY + jitterY)),
+  );
 
   const pan = useRef(new Animated.ValueXY({ x: initialX, y: initialY })).current;
   const scale = useRef(new Animated.Value(1)).current;

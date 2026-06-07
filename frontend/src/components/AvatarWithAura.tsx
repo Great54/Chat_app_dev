@@ -22,7 +22,7 @@ interface Props {
 
 /**
  * Renders a circular avatar with optional VIP Pro aura effect and VIP badge.
- * Scales the avatar up by VIP_PRO_AVATAR_SCALE (1.25x) when `enlargedAvatar` is true.
+ * Scales the avatar up by VIP_PRO_AVATAR_SCALE (1.18x) when `enlargedAvatar` is true.
  */
 export default function AvatarWithAura({
   photoUrl,

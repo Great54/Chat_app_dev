@@ -1,0 +1,26 @@
+{
+  "summary": "All 4 review items VERIFIED. (1) /api/auth/forgot-password returns HTTP 200 with success message for both unknown email and the real test user — no 502/520. (2) VIP_PRO_AVATAR_SCALE = 1.18 in /app/frontend/src/utils/vipProCustomization.ts line 157 (confirmed). (3) VIP_STYLES.elite.avatarScale = 1.18 in /app/frontend/src/components/DraggableMember.tsx line 50 (confirmed). (4) Scattered placement WORKS: with 3 members in 'World Vibez' (parent 374x294), avatars rendered at relative (146,69), (88,136), (223,31) — X spread 135px, Y spread 105px, clearly NOT a single row. Stability: after page reload the same users land within 0–1px of their previous coordinates (deterministic Halton + userId hash jitter). Tap-to-move still works: current user glided from (146,68) to (275,211) after a tap at the lower-right of the room canvas. NOTE: Initial run showed all avatars in a perfect row (translate 0/84/168, Y=0 for all). RCA = Metro is launched with CI=true (frontend supervisor cmd: 'CI=true expo start --web --port 3000'), which disables Metro watch/HMR — the cached bundle predated the Halton fix. After clearing /app/frontend/.metro-cache + /tmp/metro-* and restarting supervisor 'frontend', the freshly built bundle correctly applied scatter. Main agent must remember to `sudo supervisorctl restart frontend` after every frontend source change for the preview URL to reflect it.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [],
+  "action_items": [
+    "Environment caveat (not a bug, just a process note): Expo Metro runs with CI=true on this container, so changes to frontend source do NOT hot-reload. After every frontend code change main agent must run `sudo supervisorctl restart frontend` and wait ~40s for the first bundle to complete before verifying via the preview URL. Consider removing CI=true from the supervisor command if continuous dev iteration is desired."
+  ],
+  "critical_code_review_comments": [
+    "DraggableMember Halton scatter (lines 78–130) is correct: uses initialIndex to derive base-2 (X) and base-3 (Y) Halton coords, then adds a small ±12% jitter from a hash of userId. Output is deterministic per user → stable across reloads. Confirmed empirically.",
+    "Initial pan position is captured once via useRef(new Animated.ValueXY({x: initialX, y: initialY})). If memberSectionLayout had been 0 at first DraggableMember render, the initial pan would freeze at (MARGIN, MARGIN) for all members and re-renders would NOT correct it (useRef ignores subsequent prop changes). Empirically the parent always lays out before members arrive in this app, but a future race (e.g. larger room background loading first) could regress this. Suggest: when boundsWidth*boundsHeight transitions from 0 to non-zero AND the user has not moved yet, programmatically pan.setValue({x: initialX, y: initialY}). Low risk, defensive.",
+    "Forgot-password endpoint is correct: always returns the same generic 200 message regardless of email existence — prevents enumeration. Backend .env is present (MONGO_URL=mongodb://localhost:27017, DB_NAME=genc_vibez)."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "100% (forgot-password 200, login 200)", "frontend": "100% (scatter ✓, stability ✓, tap-to-move ✓)"},
+  "test_credentials": "hosttest1780846544@test.com / TestPass123! (host). Created scatter1@test.com & scatter2@test.com with same password and joined them into room 6a258fd574a5efd0f4d3baf5 (World Vibez) so the room has >=3 members.",
+  "seed_data_creation": "Registered 2 helper users (scatter1, scatter2) and force-joined them into 'World Vibez' to reach 3 members for visual scatter verification.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Important: frontend is started via supervisor with CI=true expo start, which disables Metro HMR. After modifying any frontend file you MUST `sudo supervisorctl restart frontend` and wait ~40s for the first web bundle to compile. The first time I ran the room test I saw a stale bundle (avatars in a single row at translate 0/84/168). Clearing /app/frontend/.metro-cache and /tmp/metro-* then restarting supervisor produced the correct scatter. The room 6a258fd574a5efd0f4d3baf5 ('World Vibez') already has 3 members (host + scatter1 + scatter2). DraggableMember exposes data-testid='member-<userId>' and 'avatar-tap-<userId>'. Grid backdrop is testID='profile-grid-tap-area'. Login uses identifier+password (not email+password).",
+  "rca of the issue": "Stale-bundle false positive — not a code bug. Metro started with CI=true never re-bundles, so after the main agent's last code edit (Halton scatter) the served JS still contained the previous grid logic. Symptom: 3 avatars rendered with transforms matrix(1,0,0,1, 0, 0), (1,0,0,1, 84, 0), (1,0,0,1, 168, 0) — perfect horizontal row at Y=0. Fix: `rm -rf /app/frontend/.metro-cache /tmp/metro-*` + `sudo supervisorctl restart frontend`, wait for 'Web Bundled' log. Post-fix transforms: (146,69), (88,136), (223,31) — proper scatter."
+}

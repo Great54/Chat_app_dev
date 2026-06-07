@@ -154,7 +154,7 @@ export const PM_BOX_COLORS: string[] = [
 ];
 
 export const VIP_PRO_MONTHLY_COINS = 2000;
-export const VIP_PRO_AVATAR_SCALE = 1.25; // confirmed by user
+export const VIP_PRO_AVATAR_SCALE = 1.18; // confirmed by user
 
 /** Find a badge by id (searches both Pro and Elite sets) */
 export function findBadge(id?: string | null): VipBadge | undefined {
