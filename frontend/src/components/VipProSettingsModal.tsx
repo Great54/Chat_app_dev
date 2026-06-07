@@ -24,6 +24,8 @@ import {
   canCustomizeVipPro,
   findBadge,
   getAuraStyle,
+  getBadgesForTier,
+  getTierConfig,
 } from '@/src/utils/vipProCustomization';
 import AvatarWithAura from './AvatarWithAura';
 
@@ -54,6 +56,10 @@ export default function VipProSettingsModal({ visible, onClose }: Props) {
   const [settings, setSettings] = useState<SettingsState>({});
 
   const eligible = canCustomizeVipPro(user?.vipTier);
+  const tierCfg = getTierConfig(user?.vipTier);
+  const availableBadges = getBadgesForTier(user?.vipTier);
+  const monthlyCoins = tierCfg?.monthlyCoins ?? VIP_PRO_MONTHLY_COINS;
+  const tierLabel = tierCfg?.label || 'VIP';
 
   useEffect(() => {
     if (visible && eligible) {
@@ -133,7 +139,7 @@ export default function VipProSettingsModal({ visible, onClose }: Props) {
           <View style={styles.header}>
             <View style={{ flexDirection: 'row', alignItems: 'center' }}>
               <Ionicons name="diamond" size={22} color={ACCENT} />
-              <Text style={styles.title}>VIP Pro Customization</Text>
+              <Text style={styles.title}>{tierLabel} Customization</Text>
             </View>
             <TouchableOpacity onPress={onClose} data-testid="vip-pro-settings-close">
               <Ionicons name="close" size={28} color="#ef4444" />
@@ -185,9 +191,9 @@ export default function VipProSettingsModal({ visible, onClose }: Props) {
               <View style={styles.bonusCard}>
                 <Ionicons name="gift" size={22} color="#fbbf24" />
                 <View style={{ flex: 1, marginLeft: 12 }}>
-                  <Text style={styles.bonusTitle}>Monthly VIP Pro Bonus</Text>
+                  <Text style={styles.bonusTitle}>Monthly {tierLabel} Bonus</Text>
                   <Text style={styles.bonusSub}>
-                    {VIP_PRO_MONTHLY_COINS} coins every 30 days
+                    {monthlyCoins.toLocaleString()} coins every 30 days
                     {typeof settings.nextGrantInDays === 'number'
                       ? ` · next in ${settings.nextGrantInDays}d`
                       : ' · claim on next login'}
@@ -314,7 +320,8 @@ export default function VipProSettingsModal({ visible, onClose }: Props) {
           >
             <Ionicons name="close-circle" size={32} color="#ef4444" />
           </TouchableOpacity>
-          {VIP_PRO_BADGES.map((b) => {
+          {availableBadges.map((b) => {
+            const isElite = b.id.startsWith('elite_');
             const selected = settings.vipBadgeId === b.id;
             return (
               <TouchableOpacity
@@ -326,11 +333,17 @@ export default function VipProSettingsModal({ visible, onClose }: Props) {
                 style={[
                   styles.badgeItem,
                   { backgroundColor: b.bg },
+                  isElite && { borderColor: '#fbbf24', borderWidth: 2 },
                   selected && { borderColor: ACCENT, borderWidth: 3 },
                 ]}
                 data-testid={`badge-${b.id}`}
               >
                 <Text style={{ fontSize: 30 }}>{b.emoji}</Text>
+                {isElite && (
+                  <View style={styles.eliteRibbon}>
+                    <Text style={styles.eliteRibbonText}>ELITE</Text>
+                  </View>
+                )}
               </TouchableOpacity>
             );
           })}
@@ -661,6 +674,23 @@ const styles = StyleSheet.create({
     backgroundColor: '#1f1730',
     borderWidth: 1,
     borderColor: '#3f3f4666',
+    position: 'relative',
+    overflow: 'hidden',
+  },
+  eliteRibbon: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    backgroundColor: '#fbbf24',
+    paddingHorizontal: 4,
+    paddingVertical: 1,
+    borderBottomLeftRadius: 6,
+  },
+  eliteRibbonText: {
+    color: '#0f0a1f',
+    fontWeight: '800',
+    fontSize: 8,
+    letterSpacing: 0.5,
   },
   gridAuras: {
     flexDirection: 'row',

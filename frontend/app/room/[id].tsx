@@ -30,6 +30,7 @@ import BoardTab from '@/src/components/BoardTab';
 import FeedTab from '@/src/components/FeedTab';
 import TournamentModal from '@/src/components/TournamentModal';
 import AvatarWithAura from '@/src/components/AvatarWithAura';
+import VipEliteWelcomeBanner from '@/src/components/VipEliteWelcomeBanner';
 
 interface Message {
   id: string;
@@ -300,6 +301,8 @@ export default function RoomScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
+      {/* VIP Elite Priority Welcome — slides down at top, never blocks chat */}
+      <VipEliteWelcomeBanner roomId={id as string} />
       <View style={styles.header}>
         <View style={styles.headerLeft}>
           {activeRoomTab !== 'board' && (

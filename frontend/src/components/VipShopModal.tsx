@@ -228,16 +228,26 @@ export default function VipShopModal({ visible, onClose }: Props) {
                 data-testid="open-vip-pro-settings"
               >
                 <LinearGradient
-                  colors={["#06b6d4", "#7c3aed"]}
+                  colors={user?.vipTier === 'elite'
+                    ? (["#fbbf24", "#dc2626", "#7c2d12"] as [string, string, ...string[]])
+                    : (["#06b6d4", "#7c3aed"] as [string, string, ...string[]])}
                   start={{ x: 0, y: 0 }}
                   end={{ x: 1, y: 1 }}
                   style={styles.proSettingsBg}
                 >
-                  <Ionicons name="color-palette" size={22} color="#fff" />
+                  <Ionicons
+                    name={user?.vipTier === 'elite' ? 'star' : 'color-palette'}
+                    size={22}
+                    color="#fff"
+                  />
                   <View style={{ flex: 1, marginLeft: 12 }}>
-                    <Text style={styles.proSettingsTitle}>VIP Pro Customization</Text>
+                    <Text style={styles.proSettingsTitle}>
+                      {user?.vipTier === 'elite' ? 'VIP Elite Customization' : 'VIP Pro Customization'}
+                    </Text>
                     <Text style={styles.proSettingsSub}>
-                      Badge, aura, chat & username colors · 2,000 coins / month
+                      {user?.vipTier === 'elite'
+                        ? 'Elite badges, premium aura, colors · 3,500 coins / month'
+                        : 'Badge, aura, chat & username colors · 2,000 coins / month'}
                     </Text>
                   </View>
                   <Ionicons name="chevron-forward" size={20} color="#fff" />

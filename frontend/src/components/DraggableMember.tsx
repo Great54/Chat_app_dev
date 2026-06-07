@@ -1,6 +1,7 @@
 import React, { useRef, useState, useEffect } from 'react';
 import { View, Text, StyleSheet, PanResponder, Animated, TouchableOpacity } from 'react-native';
 import { Image } from 'expo-image';
+import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '@/src/constants/theme';
 import { getAuraStyle, findBadge, VIP_PRO_AVATAR_SCALE } from '@/src/utils/vipProCustomization';
@@ -39,13 +40,18 @@ const VIP_STYLES: Record<string, any> = {
     badgeIcon: 'star',
     avatarScale: 1.1,
     nameColor: '#FFD700',
+    gradientColors: ['#FFD700', '#FFA500'],
+    haloColor: 'rgba(255,215,0,0.55)',
   },
   elite: {
-    borderColor: '#FF69B4',
-    crownColor: '#FF69B4',
+    borderColor: '#fbbf24',
+    crownColor: '#fbbf24',
     badgeIcon: 'diamond',
     avatarScale: 1.25,
-    nameColor: '#FF69B4',
+    nameColor: '#fde68a',
+    // Premium golden→crimson→violet gradient frame
+    gradientColors: ['#fde68a', '#fbbf24', '#dc2626', '#7c2d12', '#4c1d95'],
+    haloColor: 'rgba(251,191,36,0.85)',
   },
 };
 
@@ -156,15 +162,27 @@ export default function DraggableMember({
   const effectiveScale = (vipStyle ? vipStyle.avatarScale : 1) * enlargedScale;
   const auraStyle = getAuraStyle(member.auraType, member.auraColor, ITEM_SIZE);
   const customBadge = findBadge(member.vipBadgeId);
+  const isElite = member.vipTier === 'elite';
 
-  const avatarVisual = (
+  const avatarInner = (
     <View
       style={[
         styles.avatar,
         { width: ITEM_SIZE - 8, height: ITEM_SIZE - 8 },
-        vipStyle && { borderColor: vipStyle.borderColor, borderWidth: 3 },
+        vipStyle && !isElite && { borderColor: vipStyle.borderColor, borderWidth: 3 },
+        isElite && { borderWidth: 0 },
         isCurrentUser && styles.currentUserRing,
         auraStyle,
+        // Premium golden halo for Elite (web boxShadow + RN shadow)
+        isElite && {
+          // @ts-ignore – RN web supports boxShadow
+          boxShadow: `0 0 14px 3px ${vipStyle.haloColor}, 0 0 26px 8px rgba(251,191,36,0.35)`,
+          shadowColor: '#fbbf24',
+          shadowOpacity: 0.9,
+          shadowRadius: 14,
+          shadowOffset: { width: 0, height: 0 },
+          elevation: 12,
+        },
       ]}
     >
       {member.profilePhoto ? (
@@ -208,6 +226,25 @@ export default function DraggableMember({
         </View>
       ) : null}
     </View>
+  );
+
+  // Wrap Elite in a multi-stop gradient ring for premium look
+  const avatarVisual = isElite ? (
+    <LinearGradient
+      colors={vipStyle.gradientColors as [string, string, ...string[]]}
+      start={{ x: 0, y: 0 }}
+      end={{ x: 1, y: 1 }}
+      style={{
+        padding: 2.5,
+        borderRadius: 4,
+        // @ts-ignore
+        boxShadow: '0 0 12px 2px rgba(251,191,36,0.55)',
+      }}
+    >
+      {avatarInner}
+    </LinearGradient>
+  ) : (
+    avatarInner
   );
 
   return (

@@ -27,6 +27,12 @@ import PrivateMessagesModal from '@/src/components/PrivateMessagesModal';
 import SendCoinsModal from '@/src/components/SendCoinsModal';
 import { getAuraStyle, findBadge, VIP_PRO_AVATAR_SCALE } from '@/src/utils/vipProCustomization';
 
+// Cursive font stack for VIP Elite premium look (loaded in +html.tsx on web)
+const ELITE_SCRIPT_FONT = Platform.select({
+  web: '"Dancing Script", "Brush Script MT", cursive',
+  default: 'System',
+}) as string;
+
 interface Props {
   visible: boolean;
   userId: string | null;
@@ -131,6 +137,7 @@ export default function ProfilePopupModal({ visible, userId, onClose }: Props) {
 
   const vipStyle = profile?.vipTier ? VIP_STYLES[profile.vipTier] : null;
   const isSelf = profile?.isSelf;
+  const isElite = profile?.vipTier === 'elite';
 
   // --- Action handlers ---
   const handleAddFriend = async () => {
@@ -247,6 +254,7 @@ export default function ProfilePopupModal({ visible, userId, onClose }: Props) {
         <Animated.View
           style={[
             styles.card,
+            isElite && styles.cardElite,
             {
               opacity: fadeAnim,
               transform: [{ scale: scaleAnim }],
@@ -344,12 +352,32 @@ export default function ProfilePopupModal({ visible, userId, onClose }: Props) {
 
               {/* Name + badges */}
               <View style={styles.identityBlock}>
+                {isElite && (
+                  <View style={styles.eliteRibbon} data-testid="elite-ribbon">
+                    <LinearGradient
+                      colors={['#fde68a', '#fbbf24', '#dc2626'] as [string, string, ...string[]]}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 0 }}
+                      style={styles.eliteRibbonGrad}
+                    >
+                      <Ionicons name="diamond" size={11} color="#1a0f2e" />
+                      <Text style={styles.eliteRibbonText}>VIP ELITE</Text>
+                      <Ionicons name="star" size={10} color="#1a0f2e" />
+                    </LinearGradient>
+                  </View>
+                )}
                 <View style={styles.nameRow}>
                   <Text
                     style={[
                       styles.displayName,
                       vipStyle && { color: vipStyle.nameColor },
                       profile.usernameColor ? { color: profile.usernameColor } : null,
+                      isElite && {
+                        fontFamily: ELITE_SCRIPT_FONT,
+                        fontSize: 26,
+                        // @ts-ignore - RN web textShadow
+                        textShadow: '0 1px 8px rgba(251,191,36,0.55)',
+                      },
                     ]}
                     numberOfLines={1}
                   >
@@ -589,6 +617,40 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#2a2240',
     paddingBottom: SPACING.md,
+  },
+  cardElite: {
+    borderWidth: 1.5,
+    borderColor: '#fbbf24',
+    // Premium gold halo around the entire profile card
+    // @ts-ignore – RN web supports boxShadow
+    boxShadow: '0 0 0 1px rgba(251,191,36,0.45), 0 12px 40px rgba(251,191,36,0.30), 0 0 60px rgba(220,38,38,0.25)',
+    shadowColor: '#fbbf24',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.55,
+    shadowRadius: 24,
+    elevation: 14,
+  },
+  eliteRibbon: {
+    alignSelf: 'center',
+    marginTop: 4,
+    marginBottom: 6,
+    borderRadius: 10,
+    overflow: 'hidden',
+    // @ts-ignore
+    boxShadow: '0 2px 10px rgba(251,191,36,0.55)',
+  },
+  eliteRibbonGrad: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+  },
+  eliteRibbonText: {
+    color: '#1a0f2e',
+    fontSize: 11,
+    fontWeight: '900',
+    letterSpacing: 1.2,
   },
   loadingBox: {
     padding: SPACING.xl * 2,

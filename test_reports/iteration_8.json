@@ -1,0 +1,52 @@
+{
+  "summary": "Frontend testing of VIP Elite Priority Welcome banner + Elite Profile Popup. Backend (priority-welcomes endpoint, elite_welcomes insertion on join) verified working via direct fetch. Elite Profile Popup visual styling (golden glow, gradient ring, VIP ELITE ribbon, Dancing Script cursive name) renders correctly. CRITICAL: VipEliteWelcomeBanner UI component never appears in the room even though backend returns the welcome record — the polling/state path inside the React component silently fails to display the banner.",
+  "backend_issues": { "critical": [], "minor": [] },
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "VipEliteWelcomeBanner",
+        "issue": "Banner never renders in /room/{id} screen even after a valid Elite join. Verified via fetch that GET /api/rooms/{roomId}/priority-welcomes?since_ms=10000 returns the elite_welcomes record (message '👑 An Elite member has entered the room — welcome!', tier='elite', durationMs=4000) immediately after POST /api/rooms/{roomId}/join (200). Banner component is mounted (room/[id].tsx line 305), polling every 1500ms, but no [data-testid='vip-elite-welcome-banner'] ever appears in the DOM (waited >6s; 'vip-elite-welcome' never appears in document.body HTML). The internal try/catch in poll() swallows errors. Likely causes: (a) axios call in component silently fails (401/CORS/baseURL issue), or (b) setActive never fires, or (c) Animated.View with translateY=-90 + opacity=0 starts but never animates because useNativeDriver is unsupported on web → component stays off-screen/invisible. Note console warning: 'Animated: useNativeDriver is not supported because the native animated module is missing. Falling back to JS-based animation.' Recommend (1) add console.error in poll catch and useEffect to verify call fires & state updates, (2) confirm initial slideAnim/opacity values render visibly while waiting for animation to start, (3) set useNativeDriver:false for opacity since native driver is unavailable on web.",
+        "selector": "[data-testid=\"vip-elite-welcome-banner\"]",
+        "priority": "CRITICAL"
+      },
+      {
+        "component": "ProfilePopupModal",
+        "issue": "data-testid='elite-ribbon' is set as a plain prop on RN <View>, which is NOT propagated to the rendered DOM (querySelector('[data-testid=elite-ribbon]') returns 0 matches). RN-web converts only the `testID` prop to data-testid. Fix: rename the attribute on the View at line 356 from `data-testid` to `testID`. Visual rendering of the ribbon itself works fine (VIP ELITE chip + golden glow + cursive Dancing Script name confirmed in screenshot).",
+        "selector": "[data-testid=\"elite-ribbon\"]",
+        "priority": "MEDIUM"
+      }
+    ],
+    "integration_issues": [
+      {
+        "flow": "Elite Priority Welcome",
+        "issue": "End-to-end UI flow broken — backend correctly inserts and returns elite_welcomes record, but no other user (or the Elite themself) ever sees the banner in the room because the React component fails to render anything. Verified using two real user contexts (Elite + Pro) and direct API fetch.",
+        "affected_selectors": ["[data-testid=\"vip-elite-welcome-banner\"]", "[data-testid^=\"vip-elite-welcome-\"]"]
+      }
+    ],
+    "design_issues": [
+      {
+        "screen": "ProfilePopupModal (Elite)",
+        "issues": ["Confirmed visually correct: golden card boxShadow + multi-color avatar gradient ring + 'VIP ELITE' ribbon + Dancing Script cursive display name + ELITE chip — see /app/test_reports/elite_popup_final.png"]
+      }
+    ]
+  },
+  "test_report_links": [],
+  "action_items": [
+    "FIX CRITICAL: VipEliteWelcomeBanner.tsx — banner never appears in DOM despite backend returning data. Debug the poll() callback (add a console.log for fresh.length and setActive call), and consider switching the slide/opacity Animated to useNativeDriver:false on web because RCTAnimation is unavailable in react-native-web (a console warning confirms this). The combination of initial translateY=-90 + opacity=0 with native-driver-fallback may prevent the View from ever becoming visible.",
+    "FIX MEDIUM: ProfilePopupModal.tsx line 356 — change `data-testid=\"elite-ribbon\"` to `testID=\"elite-ribbon\"` so it propagates to the DOM via react-native-web.",
+    "OPTIONAL: Add a network/auth log to confirm /api/rooms/{id}/priority-welcomes is actually being polled by the mounted banner (not just by my direct fetch)."
+  ],
+  "critical_code_review_comments": [
+    "VipEliteWelcomeBanner.tsx uses useNativeDriver:true for opacity AND translateY. On react-native-web, RCTAnimation is missing (console warning logged), so the framework falls back to JS-driven animation. The card initial state is translateY:-90 + opacity:0 — if the JS fallback animation never schedules, the banner remains hidden. Use useNativeDriver:false explicitly on web, or render the card initially visible and animate FROM the on-screen position.",
+    "Polling poll() has a silent catch — wrap with a development-only console.warn to surface 401/network errors during integration.",
+    "data-testid attribute on RN View doesn't reach DOM; use testID consistently across components (DraggableMember, VipEliteWelcomeBanner, ProfilePopupModal currently mix `data-testid` and `testID`)."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "100%", "frontend": "40%"},
+  "test_credentials": "Elite: vippro@test.com / Test123!  |  Pro: proonly@test.com / Test123!  |  Room: mermaid (6a250fb3887fc39328a98cd4)",
+  "seed_data_creation": "None. Re-used existing test accounts; sent a couple of TEST chat messages in mermaid room while testing.",
+  "retest_needed": true,
+  "main_agent_can_self_test": false,
+  "context_for_next_testing_agent": "Backend Elite welcome insertion + GET /priority-welcomes confirmed working via direct fetch (response sample logged in iteration_8). Elite Profile Popup visual rendering confirmed (see screenshot elite_popup_final.png). The remaining blocker is purely a frontend rendering issue in VipEliteWelcomeBanner.tsx — fix likely involves useNativeDriver:false on web and/or making the initial render state visible. After fix, retest with: login as Elite via UI → goto /room/6a250fb3887fc39328a98cd4 → from page.evaluate POST /api/rooms/{id}/leave then /api/rooms/{id}/join with Elite token → expect [data-testid='vip-elite-welcome-banner'] to appear within 3s.",
+  "rca_of_the_issue": "Root cause hypothesis: react-native-web cannot use useNativeDriver=true (RCTAnimation native module not bundled — confirmed via console warning). The banner's initial state is translateY=-90 + opacity=0 inside an Animated.View. The animation that should bring it on-screen relies on useNativeDriver=true which falls back to JS-driven animation, but in some web cases the initial styles are committed but the JS animation tick never starts (or starts but is unable to update transformed styles before the exit timer fires). The user never sees the banner at all. Additionally, the polling fetch's catch is silent so any network/auth error would also be invisible. Reproduce: open https://66dd3cde-5880-476a-883e-7233a78c3396.preview.emergentagent.com, login as vippro@test.com, goto /room/6a250fb3887fc39328a98cd4, in DevTools console POST /api/rooms/{id}/leave then /api/rooms/{id}/join with the auth token, observe that GET /priority-welcomes returns the elite welcome record but no DOM element with data-testid='vip-elite-welcome-banner' ever appears. Mitigation: (1) Pass useNativeDriver:false to all Animated.timing calls in VipEliteWelcomeBanner.tsx WelcomeCard; (2) Add a console.warn inside the poll catch to surface failures; (3) Optionally render the card initially at translateY:0 + opacity:1 and animate the exit only, since the slide-in is a nice-to-have and the visibility is must-have."
+}

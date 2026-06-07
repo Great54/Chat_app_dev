@@ -59,6 +59,67 @@ export const VIP_PRO_AURAS: AuraType[] = [
   { id: 'smoke',   label: 'Smoke Aura' },
 ];
 
+export const VIP_ELITE_BADGES: VipBadge[] = [
+  { id: 'elite_diamond_crown', label: 'Diamond Crown',  emoji: '👑',   bg: '#1e1b4b' },
+  { id: 'elite_phoenix',       label: 'Royal Phoenix',  emoji: '🦅',   bg: '#7c2d12' },
+  { id: 'elite_dragon',        label: 'Eternal Dragon', emoji: '🐉',   bg: '#581c87' },
+  { id: 'elite_star',          label: 'Supernova',      emoji: '🌟',   bg: '#92400e' },
+  { id: 'elite_lightning',     label: 'Stormbringer',   emoji: '⚡',   bg: '#1e3a8a' },
+  { id: 'elite_galaxy',        label: 'Galaxy Lord',    emoji: '🌌',   bg: '#312e81' },
+  { id: 'elite_fire',          label: 'Inferno King',   emoji: '🔥',   bg: '#7f1d1d' },
+  { id: 'elite_diamond',       label: 'Diamond Soul',   emoji: '💎',   bg: '#0c4a6e' },
+  { id: 'elite_unicorn',       label: 'Mythic Unicorn', emoji: '🦄',   bg: '#831843' },
+  { id: 'elite_trophy',        label: 'Eternal Trophy', emoji: '🏆',   bg: '#854d0e' },
+  { id: 'elite_lion',          label: 'Lion of Light',  emoji: '🦁',   bg: '#78350f' },
+  { id: 'elite_wizard',        label: 'Arch Wizard',    emoji: '🧙‍♂️', bg: '#4c1d95' },
+  { id: 'elite_rocket',        label: 'Celestial Ride', emoji: '🚀',   bg: '#0f172a' },
+  { id: 'elite_planet',        label: 'Cosmic Planet',  emoji: '🪐',   bg: '#1e1b4b' },
+  { id: 'elite_sword_gold',    label: 'Golden Blade',   emoji: '🗡️',  bg: '#713f12' },
+  { id: 'elite_heart_aura',    label: 'Heart of Aura',  emoji: '💖',   bg: '#831843' },
+];
+
+/** Tier configuration table — easily extensible for future tiers. */
+export const VIP_TIER_CONFIG: Record<string, {
+  label: string;
+  monthlyCoins: number;
+  grantIntervalDays: number;
+  badgeSets: ('pro' | 'elite')[];
+  priorityWelcome: boolean;
+  /** Hex gradient used for Elite-only premium frame */
+  accentGradient: [string, string, ...string[]];
+}> = {
+  pro: {
+    label: 'VIP Pro',
+    monthlyCoins: 2000,
+    grantIntervalDays: 30,
+    badgeSets: ['pro'],
+    priorityWelcome: false,
+    accentGradient: ['#06b6d4', '#7c3aed'],
+  },
+  elite: {
+    label: 'VIP Elite',
+    monthlyCoins: 3500,
+    grantIntervalDays: 30,
+    badgeSets: ['pro', 'elite'],
+    priorityWelcome: true,
+    accentGradient: ['#fbbf24', '#dc2626', '#7c2d12'],
+  },
+};
+
+export function getTierConfig(tier?: string | null) {
+  if (!tier) return undefined;
+  return VIP_TIER_CONFIG[tier];
+}
+
+export function getBadgesForTier(tier?: string | null): VipBadge[] {
+  const cfg = getTierConfig(tier);
+  if (!cfg) return [];
+  const sets: VipBadge[] = [];
+  if (cfg.badgeSets.includes('pro')) sets.push(...VIP_PRO_BADGES);
+  if (cfg.badgeSets.includes('elite')) sets.push(...VIP_ELITE_BADGES);
+  return sets;
+}
+
 export const CHAT_COLORS: string[] = [
   '#FF6B6B', '#F59E0B', '#FBCFE8', '#FDBA74', '#FFFFFF',
   '#FEF08A', '#FCA5A5', '#FBBF24', '#E9D5FF', '#FB923C', '#EC4899',
@@ -95,10 +156,10 @@ export const PM_BOX_COLORS: string[] = [
 export const VIP_PRO_MONTHLY_COINS = 2000;
 export const VIP_PRO_AVATAR_SCALE = 1.25; // confirmed by user
 
-/** Find a badge by id (returns undefined if not found) */
+/** Find a badge by id (searches both Pro and Elite sets) */
 export function findBadge(id?: string | null): VipBadge | undefined {
   if (!id) return undefined;
-  return VIP_PRO_BADGES.find((b) => b.id === id);
+  return VIP_PRO_BADGES.find((b) => b.id === id) || VIP_ELITE_BADGES.find((b) => b.id === id);
 }
 
 /** True if user has access to VIP Pro customization */

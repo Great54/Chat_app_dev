@@ -291,6 +291,64 @@ VIP_PRO_BADGES = [
     {"id": "badge_crown",      "label": "Royal Crown",  "emoji": "👑",  "bg": "#3f3f46"},
 ]
 
+# VIP Elite Badge collection (16 premium badges, distinct from Pro)
+VIP_ELITE_BADGES = [
+    {"id": "elite_diamond_crown", "label": "Diamond Crown",  "emoji": "👑", "bg": "#1e1b4b"},
+    {"id": "elite_phoenix",       "label": "Royal Phoenix",  "emoji": "🦅", "bg": "#7c2d12"},
+    {"id": "elite_dragon",        "label": "Eternal Dragon", "emoji": "🐉", "bg": "#581c87"},
+    {"id": "elite_star",          "label": "Supernova",      "emoji": "🌟", "bg": "#92400e"},
+    {"id": "elite_lightning",     "label": "Stormbringer",   "emoji": "⚡", "bg": "#1e3a8a"},
+    {"id": "elite_galaxy",        "label": "Galaxy Lord",    "emoji": "🌌", "bg": "#312e81"},
+    {"id": "elite_fire",          "label": "Inferno King",   "emoji": "🔥", "bg": "#7f1d1d"},
+    {"id": "elite_diamond",       "label": "Diamond Soul",   "emoji": "💎", "bg": "#0c4a6e"},
+    {"id": "elite_unicorn",       "label": "Mythic Unicorn", "emoji": "🦄", "bg": "#831843"},
+    {"id": "elite_trophy",        "label": "Eternal Trophy", "emoji": "🏆", "bg": "#854d0e"},
+    {"id": "elite_lion",          "label": "Lion of Light",  "emoji": "🦁", "bg": "#78350f"},
+    {"id": "elite_wizard",        "label": "Arch Wizard",    "emoji": "🧙‍♂️","bg": "#4c1d95"},
+    {"id": "elite_rocket",        "label": "Celestial Ride", "emoji": "🚀", "bg": "#0f172a"},
+    {"id": "elite_planet",        "label": "Cosmic Planet",  "emoji": "🪐", "bg": "#1e1b4b"},
+    {"id": "elite_sword_gold",    "label": "Golden Blade",   "emoji": "🗡️","bg": "#713f12"},
+    {"id": "elite_heart_aura",    "label": "Heart of Aura",  "emoji": "💖", "bg": "#831843"},
+]
+
+# Tier configuration — scalable: add more tiers / perks here without changing endpoints
+VIP_TIER_CONFIG: Dict[str, Dict[str, Any]] = {
+    "pro": {
+        "label": "VIP Pro",
+        "monthlyCoins": 2000,
+        "grantIntervalDays": 30,
+        "badgeSets": ["pro"],
+        "priorityWelcome": False,
+        "welcomeMessage": "",
+    },
+    "elite": {
+        "label": "VIP Elite",
+        "monthlyCoins": 3500,
+        "grantIntervalDays": 30,
+        # Elite users may pick from BOTH badge sets
+        "badgeSets": ["pro", "elite"],
+        "priorityWelcome": True,
+        "welcomeMessage": "👑 An Elite member has entered the room — welcome!",
+    },
+}
+
+def get_tier_config(tier: Optional[str]) -> Optional[Dict[str, Any]]:
+    if not tier:
+        return None
+    return VIP_TIER_CONFIG.get(tier)
+
+def get_allowed_badge_ids(tier: Optional[str]) -> set:
+    cfg = get_tier_config(tier)
+    if not cfg:
+        return set()
+    allowed: set = set()
+    for key in cfg["badgeSets"]:
+        if key == "pro":
+            allowed.update(b["id"] for b in VIP_PRO_BADGES)
+        elif key == "elite":
+            allowed.update(b["id"] for b in VIP_ELITE_BADGES)
+    return allowed
+
 # VIP Pro Aura types
 VIP_PRO_AURAS = [
     {"id": "none",    "label": "No Aura"},
@@ -337,30 +395,36 @@ VIP_PRO_MONTHLY_COINS = 2000
 VIP_PRO_GRANT_INTERVAL_DAYS = 30
 
 async def maybe_grant_vip_pro_monthly(user: dict) -> Optional[int]:
-    """If user is VIP Pro/Elite and 30+ days since last monthly grant, award 2000 coins.
+    """If user is VIP Pro/Elite and the configured interval has passed since the last
+    monthly grant, award the tier-appropriate coin amount.
     Returns the granted amount, or None if not granted."""
     tier = user.get("vipTier")
-    if tier not in ("pro", "elite"):
+    cfg = get_tier_config(tier)
+    if not cfg:
         return None
+    monthly_coins = cfg["monthlyCoins"]
+    interval_days = cfg["grantIntervalDays"]
     last_grant = user.get("vipProMonthlyGrantAt")
     now = datetime.utcnow()
-    if last_grant and (now - last_grant).days < VIP_PRO_GRANT_INTERVAL_DAYS:
+    if last_grant and (now - last_grant).days < interval_days:
         return None
     user_id = str(user["_id"])
-    await add_coins(user_id, VIP_PRO_MONTHLY_COINS, "vip_pro_monthly", "VIP Pro monthly bonus")
+    reason = f"vip_{tier}_monthly"
+    description = f"{cfg['label']} monthly bonus"
+    await add_coins(user_id, monthly_coins, reason, description)
     await db.users.update_one(
         {"_id": ObjectId(user_id)},
         {"$set": {"vipProMonthlyGrantAt": now}},
     )
     await db.notifications.insert_one({
         "userId": user_id,
-        "title": "💎 VIP Pro Monthly Bonus!",
-        "body": f"You received {VIP_PRO_MONTHLY_COINS} coins as your VIP Pro monthly reward.",
-        "type": "vip_pro_monthly",
+        "title": f"💎 {cfg['label']} Monthly Bonus!",
+        "body": f"You received {monthly_coins} coins as your {cfg['label']} monthly reward.",
+        "type": reason,
         "createdAt": now,
         "readStatus": False,
     })
-    return VIP_PRO_MONTHLY_COINS
+    return monthly_coins
 
 # Static catalog of gifts (id, name, icon, price in coins)
 GIFTS_CATALOG = [
@@ -1296,7 +1360,34 @@ async def join_room(room_id: str, current_user: dict = Depends(get_current_user)
         "userId": user_id,
         "username": current_user["username"]
     })
-    
+
+    # Elite priority welcome — broadcast a separate, non-blocking welcome event
+    tier = current_user.get("vipTier")
+    tier_cfg = get_tier_config(tier)
+    if tier_cfg and tier_cfg.get("priorityWelcome"):
+        welcome_doc = {
+            "roomId": room_id,
+            "tier": tier,
+            "tierLabel": tier_cfg["label"],
+            "userId": user_id,
+            "username": current_user["username"],
+            "displayName": current_user.get("displayName") or current_user["username"],
+            "photoUrl": current_user.get("photoUrl"),
+            "vipBadgeId": current_user.get("vipBadgeId"),
+            "auraType": current_user.get("auraType"),
+            "auraColor": current_user.get("auraColor"),
+            "usernameColor": current_user.get("usernameColor"),
+            "message": tier_cfg.get("welcomeMessage", ""),
+            "durationMs": 4000,
+            "createdAt": datetime.utcnow(),
+        }
+        await db.elite_welcomes.insert_one(welcome_doc)
+        # Best-effort WS broadcast (in case other clients subscribe later)
+        await manager.broadcast(room_id, {
+            "type": "vip_priority_welcome",
+            **{k: (v.isoformat() if isinstance(v, datetime) else v) for k, v in welcome_doc.items() if k != "_id"},
+        })
+
     return {"message": "Joined room successfully"}
 
 async def leave_room_helper(room_id: str, user_id: str):
@@ -1329,6 +1420,35 @@ async def leave_room(room_id: str, current_user: dict = Depends(get_current_user
     )
     
     return {"message": "Left room successfully"}
+
+@api_router.get("/rooms/{room_id}/priority-welcomes")
+async def get_priority_welcomes(room_id: str, since_ms: int = 6000):
+    """Return active VIP Elite priority welcome notifications for a room
+    that were created within the last `since_ms` milliseconds (default 6s)."""
+    cutoff = datetime.utcnow() - timedelta(milliseconds=max(1000, min(since_ms, 60000)))
+    docs = await db.elite_welcomes.find({
+        "roomId": room_id,
+        "createdAt": {"$gte": cutoff},
+    }).sort("createdAt", -1).to_list(20)
+    result = []
+    for d in docs:
+        result.append({
+            "id": str(d["_id"]),
+            "tier": d.get("tier"),
+            "tierLabel": d.get("tierLabel"),
+            "userId": d.get("userId"),
+            "username": d.get("username"),
+            "displayName": d.get("displayName"),
+            "photoUrl": d.get("photoUrl"),
+            "vipBadgeId": d.get("vipBadgeId"),
+            "auraType": d.get("auraType"),
+            "auraColor": d.get("auraColor"),
+            "usernameColor": d.get("usernameColor"),
+            "message": d.get("message", ""),
+            "durationMs": d.get("durationMs", 4000),
+            "createdAt": d.get("createdAt").isoformat() if d.get("createdAt") else None,
+        })
+    return result
 
 @api_router.get("/rooms/{room_id}/members")
 async def get_room_members(room_id: str):
@@ -3387,25 +3507,33 @@ async def get_vouchers(current_user: dict = Depends(get_current_user)):
 
 @api_router.get("/vip-pro/catalog")
 async def get_vip_pro_catalog():
-    """Return badges, auras, and color palettes for VIP Pro customization."""
+    """Return badges (Pro + Elite), auras, color palettes, and tier configs."""
     return {
-        "badges": VIP_PRO_BADGES,
+        "badges": VIP_PRO_BADGES,                       # legacy / Pro set
+        "eliteBadges": VIP_ELITE_BADGES,                # Elite-exclusive set
         "auras": VIP_PRO_AURAS,
         "colors": VIP_PRO_COLORS,
-        "monthlyCoins": VIP_PRO_MONTHLY_COINS,
+        "monthlyCoins": VIP_PRO_MONTHLY_COINS,          # legacy field (Pro)
         "grantIntervalDays": VIP_PRO_GRANT_INTERVAL_DAYS,
+        "tiers": VIP_TIER_CONFIG,
     }
 
 @api_router.get("/vip-pro/settings")
 async def get_vip_pro_settings(current_user: dict = Depends(get_current_user)):
-    """Return current user's VIP Pro customization settings and monthly grant info."""
+    """Return current user's VIP Pro/Elite customization settings and monthly grant info."""
+    tier = current_user.get("vipTier")
+    cfg = get_tier_config(tier)
+    monthly_coins = cfg["monthlyCoins"] if cfg else VIP_PRO_MONTHLY_COINS
+    interval_days = cfg["grantIntervalDays"] if cfg else VIP_PRO_GRANT_INTERVAL_DAYS
     last_grant = current_user.get("vipProMonthlyGrantAt")
     next_grant_in_days = None
     if last_grant:
         elapsed = (datetime.utcnow() - last_grant).days
-        next_grant_in_days = max(0, VIP_PRO_GRANT_INTERVAL_DAYS - elapsed)
+        next_grant_in_days = max(0, interval_days - elapsed)
     return {
-        "vipTier": current_user.get("vipTier"),
+        "vipTier": tier,
+        "tierLabel": cfg["label"] if cfg else None,
+        "allowedBadgeSets": cfg["badgeSets"] if cfg else [],
         "vipBadgeId": current_user.get("vipBadgeId"),
         "auraType": current_user.get("auraType"),
         "auraColor": current_user.get("auraColor"),
@@ -3415,7 +3543,7 @@ async def get_vip_pro_settings(current_user: dict = Depends(get_current_user)):
         "enlargedAvatar": bool(current_user.get("enlargedAvatar", False)),
         "vipProMonthlyGrantAt": last_grant.isoformat() if last_grant else None,
         "nextGrantInDays": next_grant_in_days,
-        "monthlyCoins": VIP_PRO_MONTHLY_COINS,
+        "monthlyCoins": monthly_coins,
     }
 
 @api_router.put("/vip-pro/settings")
@@ -3427,14 +3555,14 @@ async def update_vip_pro_settings(payload: VipProSettings, current_user: dict = 
 
     update_fields: Dict[str, Any] = {}
 
-    # Badge
+    # Badge — validate against the tier's allowed badge set
     if payload.vipBadgeId is not None:
         if payload.vipBadgeId == "":
             update_fields["vipBadgeId"] = None
         else:
-            valid_ids = {b["id"] for b in VIP_PRO_BADGES}
-            if payload.vipBadgeId not in valid_ids:
-                raise HTTPException(status_code=400, detail="Invalid badge id")
+            allowed = get_allowed_badge_ids(tier)
+            if payload.vipBadgeId not in allowed:
+                raise HTTPException(status_code=400, detail="Invalid or unavailable badge for your tier")
             update_fields["vipBadgeId"] = payload.vipBadgeId
 
     # Aura type
