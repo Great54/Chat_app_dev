@@ -171,7 +171,11 @@ export default function RoomScreen() {
 
   const handleBack = async () => {
     await handleLeaveRoom();
-    router.back();
+    // Always return to the Rooms tab. When the user enters a room via
+    // auto-join we use `router.replace(...)`, which means there's no history
+    // to go back to and `router.back()` becomes a no-op. Use a hard replace
+    // so back always lands on the rooms list.
+    router.replace('/(tabs)');
   };
 
   const renderMessage = ({ item }: { item: Message }) => {

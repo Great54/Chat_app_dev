@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -9,6 +9,7 @@ import {
   TextInput,
   ActivityIndicator,
   Platform,
+  Modal,
 } from 'react-native';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -21,6 +22,7 @@ import VipShopModal from '@/src/components/VipShopModal';
 import api from '@/src/api/client';
 import { COLORS, SPACING } from '@/src/constants/theme';
 import { getAuraStyle, findBadge, VIP_PRO_AVATAR_SCALE } from '@/src/utils/vipProCustomization';
+import type { ProfileCard } from '@/src/types/profile';
 
 // Cursive font stack matching the profile popup look
 const CURSIVE_FONT = Platform.select({
@@ -35,7 +37,25 @@ export default function ProfileScreen() {
   const [bio, setBio] = useState(user?.bio || '');
   const [loading, setLoading] = useState(false);
   const [vipModalOpen, setVipModalOpen] = useState(false);
+  const [postsOpen, setPostsOpen] = useState(false);
+  const [card, setCard] = useState<ProfileCard | null>(null);
   const vipStyle = user?.vipTier ? VIP_STYLES[user.vipTier] : null;
+
+  // Fetch the profile-card for the logged-in user so we can show likes /
+  // friends / posts counts on the own profile screen (same data the popup uses).
+  const loadCard = useCallback(async () => {
+    if (!user?.id) return;
+    try {
+      const res = await api.get(`/users/${user.id}/profile-card`);
+      setCard(res.data);
+    } catch (e) {
+      // soft-fail — the rest of the profile UI still works without these stats
+    }
+  }, [user?.id]);
+
+  useEffect(() => {
+    loadCard();
+  }, [loadCard]);
 
   useEffect(() => {
     if (editing && user) {
@@ -260,6 +280,93 @@ export default function ProfileScreen() {
           </View>
         </View>
 
+        {/* Stats row: Likes / Friends / Posts — mirrors the View Profile page */}
+        <View style={styles.statsCirclesRow}>
+          <View style={[styles.statCircle, styles.statCircleLikes]} testID="profile-stat-likes">
+            <Ionicons name="heart" size={16} color="#9d174d" />
+            <Text style={[styles.statCircleValue, { color: '#9d174d' }]}>{card?.likesCount ?? 0}</Text>
+            <Text style={[styles.statCircleLabel, { color: '#9d174d' }]}>Likes</Text>
+          </View>
+          <View style={[styles.statCircle, styles.statCircleFriends]} testID="profile-stat-friends">
+            <Ionicons name="people" size={16} color="#1e40af" />
+            <Text style={[styles.statCircleValue, { color: '#1e40af' }]}>{card?.friendCount ?? 0}</Text>
+            <Text style={[styles.statCircleLabel, { color: '#1e40af' }]}>Friends</Text>
+          </View>
+          <TouchableOpacity
+            onPress={() => setPostsOpen(true)}
+            activeOpacity={0.85}
+            style={[styles.statCircle, styles.statCirclePosts]}
+            testID="profile-stat-posts"
+          >
+            <Ionicons name="newspaper" size={16} color="#166534" />
+            <Text style={[styles.statCircleValue, { color: '#166534' }]}>{card?.postsCount ?? 0}</Text>
+            <Text style={[styles.statCircleLabel, { color: '#166534' }]}>Posts</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* View Posts pill — opens a modal listing this user's posts */}
+        <TouchableOpacity
+          onPress={() => setPostsOpen(true)}
+          style={styles.viewPostsPill}
+          testID="profile-view-posts"
+          activeOpacity={0.85}
+        >
+          <Ionicons name="newspaper" size={15} color="#fde68a" />
+          <Text style={styles.viewPostsText}>View Posts</Text>
+          <View style={styles.viewPostsCount}>
+            <Text style={styles.viewPostsCountText}>{card?.postsCount ?? 0}</Text>
+          </View>
+        </TouchableOpacity>
+
+        {/* VIP subscription CTA — drives conversions */}
+        <TouchableOpacity
+          onPress={() => setVipModalOpen(true)}
+          activeOpacity={0.9}
+          style={styles.vipCtaWrap}
+          testID="profile-vip-cta"
+        >
+          <LinearGradient
+            colors={
+              user.vipTier === 'elite'
+                ? (['#fde68a', '#fbbf24', '#dc2626'] as [string, string, ...string[]])
+                : user.vipTier === 'pro'
+                  ? (['#a78bfa', '#7c3aed', '#4c1d95'] as [string, string, ...string[]])
+                  : (['#f472b6', '#fb7185', '#fbbf24'] as [string, string, ...string[]])
+            }
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.vipCtaGradient}
+          >
+            <View style={styles.vipCtaIcon}>
+              <Ionicons
+                name={user.vipTier === 'elite' ? 'diamond' : user.vipTier === 'pro' ? 'star' : 'sparkles'}
+                size={22}
+                color="#1a0f2e"
+              />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.vipCtaTitle}>
+                {user.vipTier === 'elite'
+                  ? 'VIP Elite — active'
+                  : user.vipTier === 'pro'
+                    ? 'VIP Pro — active'
+                    : 'Unlock VIP'}
+              </Text>
+              <Text style={styles.vipCtaSubtitle}>
+                {user.vipTier
+                  ? 'Manage your subscription, perks & customizations'
+                  : 'Custom aura, badges, name color, larger avatar and more'}
+              </Text>
+            </View>
+            <View style={styles.vipCtaBadge}>
+              <Text style={styles.vipCtaBadgeText}>
+                {user.vipTier ? 'Manage' : 'Subscribe'}
+              </Text>
+              <Ionicons name="chevron-forward" size={14} color="#1a0f2e" />
+            </View>
+          </LinearGradient>
+        </TouchableOpacity>
+
         {editing ? (
           <View style={styles.form}>
             <View style={styles.inputGroup}>
@@ -328,7 +435,93 @@ export default function ProfileScreen() {
       </ScrollView>
 
       <VipShopModal visible={vipModalOpen} onClose={() => setVipModalOpen(false)} />
+
+      {/* Posts sub-page — slide-up modal listing this user's posts */}
+      <Modal visible={postsOpen} animationType="slide" onRequestClose={() => setPostsOpen(false)}>
+        <SafeAreaView style={styles.container} edges={['top']}>
+          <View style={styles.postsTopBar}>
+            <TouchableOpacity
+              onPress={() => setPostsOpen(false)}
+              style={styles.postsBackBtn}
+              testID="profile-posts-back"
+            >
+              <Ionicons name="arrow-back" size={22} color={COLORS.text} />
+            </TouchableOpacity>
+            <Text style={styles.postsTopTitle} numberOfLines={1}>My Posts</Text>
+            <View style={styles.postsBackBtn} />
+          </View>
+          <ScrollView contentContainerStyle={{ paddingBottom: SPACING.xl * 2 }}>
+            <MyPostsList userId={user.id} />
+          </ScrollView>
+        </SafeAreaView>
+      </Modal>
     </SafeAreaView>
+  );
+}
+
+// Lightweight posts list for the own-profile Posts modal
+function MyPostsList({ userId }: { userId: string }) {
+  const [posts, setPosts] = useState<any[]>([]);
+  const [loadingPosts, setLoadingPosts] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        setLoadingPosts(true);
+        const res = await api.get(`/users/${userId}/posts`);
+        if (!cancelled) setPosts(res.data || []);
+      } catch (e) {
+        if (!cancelled) setPosts([]);
+      } finally {
+        if (!cancelled) setLoadingPosts(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [userId]);
+
+  if (loadingPosts) {
+    return (
+      <View style={styles.postsPlaceholder}>
+        <ActivityIndicator color={COLORS.primary} />
+      </View>
+    );
+  }
+  if (posts.length === 0) {
+    return (
+      <View style={styles.postsPlaceholder}>
+        <Ionicons name="newspaper-outline" size={48} color={COLORS.textSecondary} />
+        <Text style={styles.postsPlaceholderTitle}>No posts yet</Text>
+        <Text style={styles.postsPlaceholderText}>
+          Posts you share on a Board will show up here.
+        </Text>
+      </View>
+    );
+  }
+  return (
+    <View style={styles.postsList}>
+      {posts.map((p) => (
+        <View key={p.id} style={styles.postCard} testID={`my-post-${p.id}`}>
+          {p.imageUrl ? (
+            <Image source={{ uri: p.imageUrl }} style={styles.postImage} contentFit="cover" />
+          ) : null}
+          {p.text ? <Text style={styles.postText}>{p.text}</Text> : null}
+          <View style={styles.postMetaRow}>
+            <View style={styles.postMetaItem}>
+              <Ionicons name="heart" size={14} color="#ec4899" />
+              <Text style={styles.postMetaText}>{p.likeCount ?? 0}</Text>
+            </View>
+            <View style={styles.postMetaItem}>
+              <Ionicons name="chatbubble" size={14} color="#7c3aed" />
+              <Text style={styles.postMetaText}>{p.commentCount ?? 0}</Text>
+            </View>
+            <Text style={styles.postMetaTime}>
+              {p.createdAt ? new Date(p.createdAt).toLocaleDateString() : ''}
+            </Text>
+          </View>
+        </View>
+      ))}
+    </View>
   );
 }
 
@@ -558,6 +751,213 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: '900',
     letterSpacing: 1.2,
+  },
+  // ---- New: stats circles row (Likes / Friends / Posts) ----
+  statsCirclesRow: {
+    flexDirection: 'row',
+    paddingHorizontal: SPACING.md,
+    marginTop: SPACING.md,
+    gap: 8,
+  },
+  statCircle: {
+    flex: 1,
+    minWidth: 0,
+    height: 78,
+    borderRadius: 18,
+    borderWidth: 2.5,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 4,
+    gap: 2,
+  },
+  statCircleLikes: {
+    backgroundColor: '#fce7f3',
+    borderColor: '#f472b6',
+  },
+  statCircleFriends: {
+    backgroundColor: '#dbeafe',
+    borderColor: '#60a5fa',
+  },
+  statCirclePosts: {
+    backgroundColor: '#dcfce7',
+    borderColor: '#4ade80',
+  },
+  statCircleValue: {
+    fontSize: 18,
+    fontWeight: '900',
+    lineHeight: 22,
+  },
+  statCircleLabel: {
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 0.4,
+    textTransform: 'uppercase',
+  },
+  // ---- View Posts pill ----
+  viewPostsPill: {
+    flexDirection: 'row',
+    alignSelf: 'center',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 9,
+    marginTop: SPACING.md,
+    backgroundColor: '#1f1226',
+    borderRadius: 999,
+    borderWidth: 1.5,
+    borderColor: '#fbbf24',
+    // @ts-ignore RN web shadow
+    boxShadow: '0 6px 18px rgba(251,191,36,0.45)',
+  },
+  viewPostsText: {
+    color: '#fde68a',
+    fontSize: 13,
+    fontWeight: '800',
+    letterSpacing: 0.4,
+  },
+  viewPostsCount: {
+    paddingHorizontal: 8,
+    paddingVertical: 1,
+    borderRadius: 999,
+    backgroundColor: '#fbbf24',
+    minWidth: 24,
+    alignItems: 'center',
+  },
+  viewPostsCountText: { color: '#1f1226', fontSize: 11, fontWeight: '900' },
+  // ---- VIP subscription CTA ----
+  vipCtaWrap: {
+    marginTop: SPACING.md,
+    marginHorizontal: SPACING.md,
+    borderRadius: 18,
+    overflow: 'hidden',
+    // @ts-ignore RN web shadow
+    boxShadow: '0 10px 24px rgba(251,191,36,0.35)',
+  },
+  vipCtaGradient: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.md,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: 14,
+  },
+  vipCtaIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.6)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  vipCtaTitle: {
+    color: '#1a0f2e',
+    fontSize: 15,
+    fontWeight: '900',
+    letterSpacing: 0.3,
+  },
+  vipCtaSubtitle: {
+    color: '#1a0f2e',
+    fontSize: 12,
+    fontWeight: '600',
+    opacity: 0.85,
+    marginTop: 2,
+  },
+  vipCtaBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.85)',
+  },
+  vipCtaBadgeText: {
+    color: '#1a0f2e',
+    fontSize: 12,
+    fontWeight: '900',
+    letterSpacing: 0.3,
+  },
+  // ---- Posts modal ----
+  postsTopBar: {
+    height: 48,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: SPACING.sm,
+  },
+  postsBackBtn: {
+    width: 40,
+    height: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  postsTopTitle: {
+    color: COLORS.text,
+    fontSize: 16,
+    fontWeight: '700',
+    flex: 1,
+    textAlign: 'center',
+  },
+  postsList: {
+    gap: SPACING.sm,
+    paddingHorizontal: SPACING.md,
+    paddingTop: SPACING.sm,
+  },
+  postCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 14,
+    padding: SPACING.md,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    gap: SPACING.sm,
+  },
+  postImage: {
+    width: '100%',
+    height: 200,
+    borderRadius: 10,
+    backgroundColor: '#f1f5f9',
+  },
+  postText: {
+    color: '#1f2937',
+    fontSize: 15,
+    lineHeight: 21,
+  },
+  postMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+  },
+  postMetaItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  postMetaText: {
+    color: '#475569',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  postMetaTime: {
+    color: '#94a3b8',
+    fontSize: 12,
+    marginLeft: 'auto',
+  },
+  postsPlaceholder: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: SPACING.xl * 2,
+  },
+  postsPlaceholderTitle: {
+    color: COLORS.text,
+    fontSize: 16,
+    fontWeight: '700',
+    marginTop: SPACING.sm,
+  },
+  postsPlaceholderText: {
+    color: COLORS.textSecondary,
+    fontSize: 13,
+    textAlign: 'center',
+    marginTop: 4,
+    paddingHorizontal: SPACING.lg,
   },
   avatarContainer: {
     position: 'relative',
