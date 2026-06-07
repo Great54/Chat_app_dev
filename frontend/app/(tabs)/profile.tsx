@@ -20,6 +20,7 @@ import { VIP_STYLES } from '@/src/utils/vip';
 import VipShopModal from '@/src/components/VipShopModal';
 import api from '@/src/api/client';
 import { COLORS, SPACING } from '@/src/constants/theme';
+import { getAuraStyle, findBadge, VIP_PRO_AVATAR_SCALE } from '@/src/utils/vipProCustomization';
 
 export default function ProfileScreen() {
   const { user, logout, refreshUser } = useAuth();
@@ -134,6 +135,8 @@ export default function ProfileScreen() {
             style={[
               styles.avatarContainer,
               vipStyle && { transform: [{ scale: vipStyle.avatarScale }] },
+              user?.enlargedAvatar && { transform: [{ scale: (vipStyle?.avatarScale || 1) * VIP_PRO_AVATAR_SCALE }] },
+              getAuraStyle(user?.auraType, user?.auraColor, 110),
             ]}
             testID="edit-avatar-btn"
           >
@@ -155,11 +158,24 @@ export default function ProfileScreen() {
                 <Ionicons name="person" size={56} color={COLORS.textSecondary} />
               </View>
             )}
-            {vipStyle && (
-              <View style={[styles.vipCrownOnAvatar, { backgroundColor: vipStyle.crownColor }]}>
-                <Ionicons name={vipStyle.badgeIcon} size={14} color={COLORS.background} />
-              </View>
-            )}
+            {(() => {
+              const customBadge = findBadge(user.vipBadgeId);
+              if (customBadge) {
+                return (
+                  <View style={[styles.vipCrownOnAvatar, { backgroundColor: customBadge.bg, width: 30, height: 30, borderRadius: 15 }]}>
+                    <Text style={{ fontSize: 18 }}>{customBadge.emoji}</Text>
+                  </View>
+                );
+              }
+              if (vipStyle) {
+                return (
+                  <View style={[styles.vipCrownOnAvatar, { backgroundColor: vipStyle.crownColor }]}>
+                    <Ionicons name={vipStyle.badgeIcon} size={14} color={COLORS.background} />
+                  </View>
+                );
+              }
+              return null;
+            })()}
             <View style={styles.cameraIcon}>
               <Ionicons name="camera" size={14} color={COLORS.text} />
             </View>
@@ -168,11 +184,12 @@ export default function ProfileScreen() {
             style={[
               styles.displayName,
               vipStyle && { color: vipStyle.nameColor, fontWeight: '800' },
+              user?.usernameColor ? { color: user.usernameColor } : null,
             ]}
           >
             {user.displayName}
             {vipStyle && (
-              <Text style={{ color: vipStyle.nameColor }}> {vipStyle.badgeIcon === 'diamond' ? '💎' : '⭐'}</Text>
+              <Text style={{ color: user?.usernameColor || vipStyle.nameColor }}> {vipStyle.badgeIcon === 'diamond' ? '💎' : '⭐'}</Text>
             )}
           </Text>
           <Text style={styles.username}>@{user.username}</Text>

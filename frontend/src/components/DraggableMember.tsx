@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, PanResponder, Animated, TouchableOpacity } from
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '@/src/constants/theme';
+import { getAuraStyle, findBadge, VIP_PRO_AVATAR_SCALE } from '@/src/utils/vipProCustomization';
 
 interface Member {
   userId: string;
@@ -11,6 +12,11 @@ interface Member {
   level: number;
   onlineStatus: boolean;
   vipTier?: string | null;
+  vipBadgeId?: string | null;
+  auraType?: string | null;
+  auraColor?: string | null;
+  usernameColor?: string | null;
+  enlargedAvatar?: boolean;
 }
 
 interface Props {
@@ -146,7 +152,10 @@ export default function DraggableMember({
   ).current;
 
   const vipStyle = member.vipTier ? VIP_STYLES[member.vipTier] : null;
-  const effectiveScale = vipStyle ? vipStyle.avatarScale : 1;
+  const enlargedScale = member.enlargedAvatar ? VIP_PRO_AVATAR_SCALE : 1;
+  const effectiveScale = (vipStyle ? vipStyle.avatarScale : 1) * enlargedScale;
+  const auraStyle = getAuraStyle(member.auraType, member.auraColor, ITEM_SIZE);
+  const customBadge = findBadge(member.vipBadgeId);
 
   const avatarVisual = (
     <View
@@ -155,6 +164,7 @@ export default function DraggableMember({
         { width: ITEM_SIZE - 8, height: ITEM_SIZE - 8 },
         vipStyle && { borderColor: vipStyle.borderColor, borderWidth: 3 },
         isCurrentUser && styles.currentUserRing,
+        auraStyle,
       ]}
     >
       {member.profilePhoto ? (
@@ -174,7 +184,16 @@ export default function DraggableMember({
         />
       )}
       {member.onlineStatus && <View style={styles.onlineDot} />}
-      {vipStyle && (
+      {customBadge ? (
+        <View
+          style={[
+            styles.customBadge,
+            { backgroundColor: customBadge.bg, width: ITEM_SIZE * 0.42, height: ITEM_SIZE * 0.42, borderRadius: ITEM_SIZE * 0.21 },
+          ]}
+        >
+          <Text style={{ fontSize: ITEM_SIZE * 0.24 }}>{customBadge.emoji}</Text>
+        </View>
+      ) : vipStyle ? (
         <View
           style={[
             styles.vipBadge,
@@ -187,7 +206,7 @@ export default function DraggableMember({
             color={COLORS.background}
           />
         </View>
-      )}
+      ) : null}
     </View>
   );
 
@@ -230,7 +249,7 @@ export default function DraggableMember({
         <Text
           style={[
             styles.vipLabel,
-            { color: vipStyle.crownColor, fontSize: Math.max(7, ITEM_SIZE / 10) },
+            { color: member.usernameColor || vipStyle.crownColor, fontSize: Math.max(7, ITEM_SIZE / 10) },
           ]}
           numberOfLines={1}
         >
@@ -293,7 +312,15 @@ const styles = StyleSheet.create({
     borderRadius: 7,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 1.5,
+    borderWidth: 1.5,    borderColor: COLORS.cardBg,
+  },
+  customBadge: {
+    position: 'absolute',
+    bottom: -4,
+    right: -4,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
     borderColor: COLORS.cardBg,
   },
 });

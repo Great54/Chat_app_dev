@@ -16,6 +16,15 @@ interface User {
   vouchers?: number;
   currentRoomId?: string;
   onlineStatus: boolean;
+  // VIP Pro customizations
+  vipBadgeId?: string | null;
+  auraType?: 'glow' | 'sparkle' | 'frame' | 'smoke' | null;
+  auraColor?: string | null;
+  chatColor?: string | null;
+  usernameColor?: string | null;
+  pmBoxColor?: string | null;
+  enlargedAvatar?: boolean;
+  vipProMonthlyGrantAt?: string | null;
 }
 
 interface AuthContextType {

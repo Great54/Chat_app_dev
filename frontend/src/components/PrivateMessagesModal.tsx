@@ -27,6 +27,9 @@ interface DirectMessage {
   messageText: string;
   createdAt: string;
   readStatus: boolean;
+  senderPmBoxColor?: string | null;
+  senderChatColor?: string | null;
+  senderUsernameColor?: string | null;
 }
 
 interface Conversation {
@@ -161,9 +164,31 @@ export default function PrivateMessagesModal({ visible, onClose, initialUserId }
             )}
           </View>
         )}
-        <View style={[styles.messageBubble, isOwnMessage && styles.ownMessageBubble]}>
-          <Text style={styles.messageText}>{item.messageText}</Text>
-          <Text style={styles.timestamp}>
+        <View
+          style={[
+            styles.messageBubble,
+            isOwnMessage && styles.ownMessageBubble,
+            item.senderPmBoxColor ? { backgroundColor: item.senderPmBoxColor } : null,
+          ]}
+        >
+          <Text
+            style={[
+              styles.messageText,
+              item.senderChatColor
+                ? { color: item.senderChatColor }
+                : item.senderPmBoxColor
+                ? { color: '#0f0a1f' }
+                : null,
+            ]}
+          >
+            {item.messageText}
+          </Text>
+          <Text
+            style={[
+              styles.timestamp,
+              item.senderPmBoxColor ? { color: '#0f0a1f99' } : null,
+            ]}
+          >
             {new Date(item.createdAt).toLocaleTimeString([], {
               hour: '2-digit',
               minute: '2-digit',

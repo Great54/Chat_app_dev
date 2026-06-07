@@ -26,6 +26,14 @@ export interface ProfileCard {
   friendRequestId?: string | null;
   isBlocked: boolean;
   isSelf: boolean;
+  // VIP Pro customization
+  vipBadgeId?: string | null;
+  auraType?: 'glow' | 'sparkle' | 'frame' | 'smoke' | null;
+  auraColor?: string | null;
+  chatColor?: string | null;
+  usernameColor?: string | null;
+  pmBoxColor?: string | null;
+  enlargedAvatar?: boolean;
 }
 
 export interface Gift {

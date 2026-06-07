@@ -16,6 +16,8 @@ import api from '@/src/api/client';
 import { useAuth } from '@/src/contexts/AuthContext';
 import { COLORS, SPACING } from '@/src/constants/theme';
 import { VIP_STYLES } from '@/src/utils/vip';
+import VipProSettingsModal from './VipProSettingsModal';
+import { canCustomizeVipPro } from '@/src/utils/vipProCustomization';
 
 interface VipTierConfig {
   id: 'pro' | 'elite';
@@ -55,6 +57,7 @@ export default function VipShopModal({ visible, onClose }: Props) {
   const { user, refreshUser } = useAuth();
   const [tiers, setTiers] = useState<VipTierConfig[]>([]);
   const [loading, setLoading] = useState(false);
+  const [showVipProSettings, setShowVipProSettings] = useState(false);
 
   useEffect(() => {
     if (visible) loadTiers();
@@ -218,6 +221,29 @@ export default function VipShopModal({ visible, onClose }: Props) {
           )}
 
           <ScrollView contentContainerStyle={styles.tiersContainer}>
+            {canCustomizeVipPro(user?.vipTier) && (
+              <TouchableOpacity
+                style={styles.proSettingsBtn}
+                onPress={() => setShowVipProSettings(true)}
+                data-testid="open-vip-pro-settings"
+              >
+                <LinearGradient
+                  colors={["#06b6d4", "#7c3aed"]}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={styles.proSettingsBg}
+                >
+                  <Ionicons name="color-palette" size={22} color="#fff" />
+                  <View style={{ flex: 1, marginLeft: 12 }}>
+                    <Text style={styles.proSettingsTitle}>VIP Pro Customization</Text>
+                    <Text style={styles.proSettingsSub}>
+                      Badge, aura, chat & username colors · 2,000 coins / month
+                    </Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={20} color="#fff" />
+                </LinearGradient>
+              </TouchableOpacity>
+            )}
             {Array.isArray(tiers) && tiers.length > 0 ? (
               tiers.map(renderTier)
             ) : (
@@ -226,6 +252,10 @@ export default function VipShopModal({ visible, onClose }: Props) {
           </ScrollView>
         </View>
       </View>
+      <VipProSettingsModal
+        visible={showVipProSettings}
+        onClose={() => setShowVipProSettings(false)}
+      />
     </Modal>
   );
 }
@@ -287,6 +317,27 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 3,
     borderRadius: 8,
+  },
+  proSettingsBtn: {
+    marginHorizontal: SPACING.lg,
+    marginBottom: SPACING.md,
+    borderRadius: 14,
+    overflow: 'hidden',
+  },
+  proSettingsBg: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 14,
+  },
+  proSettingsTitle: {
+    color: '#fff',
+    fontWeight: '700',
+    fontSize: 15,
+  },
+  proSettingsSub: {
+    color: '#e5e7eb',
+    fontSize: 11,
+    marginTop: 2,
   },
   currentVipText: {
     color: COLORS.background,

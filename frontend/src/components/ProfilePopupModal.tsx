@@ -25,6 +25,7 @@ import { useAuth } from '@/src/contexts/AuthContext';
 import GiftSendModal from '@/src/components/GiftSendModal';
 import PrivateMessagesModal from '@/src/components/PrivateMessagesModal';
 import SendCoinsModal from '@/src/components/SendCoinsModal';
+import { getAuraStyle, findBadge, VIP_PRO_AVATAR_SCALE } from '@/src/utils/vipProCustomization';
 
 interface Props {
   visible: boolean;
@@ -280,7 +281,13 @@ export default function ProfilePopupModal({ visible, userId, onClose }: Props) {
               </View>
 
               {/* Avatar + frame */}
-              <View style={styles.avatarWrap}>
+              <View
+                style={[
+                  styles.avatarWrap,
+                  profile.enlargedAvatar && { transform: [{ scale: VIP_PRO_AVATAR_SCALE }] },
+                  getAuraStyle(profile.auraType, profile.auraColor, 96),
+                ]}
+              >
                 {vipStyle ? (
                   <LinearGradient
                     colors={vipStyle.borderColors as [string, string, ...string[]]}
@@ -314,12 +321,25 @@ export default function ProfilePopupModal({ visible, userId, onClose }: Props) {
                     { backgroundColor: profile.onlineStatus ? COLORS.success : '#666' },
                   ]}
                 />
-                {/* VIP crown on avatar */}
-                {vipStyle && (
-                  <View style={[styles.crown, { backgroundColor: vipStyle.crownColor }]}>
-                    <Ionicons name={vipStyle.badgeIcon} size={14} color={COLORS.background} />
-                  </View>
-                )}
+                {/* Custom VIP Pro badge (overrides crown) */}
+                {(() => {
+                  const customBadge = findBadge(profile.vipBadgeId);
+                  if (customBadge) {
+                    return (
+                      <View style={[styles.crown, { backgroundColor: customBadge.bg, width: 30, height: 30, borderRadius: 15 }]}>
+                        <Text style={{ fontSize: 18 }}>{customBadge.emoji}</Text>
+                      </View>
+                    );
+                  }
+                  if (vipStyle) {
+                    return (
+                      <View style={[styles.crown, { backgroundColor: vipStyle.crownColor }]}>
+                        <Ionicons name={vipStyle.badgeIcon} size={14} color={COLORS.background} />
+                      </View>
+                    );
+                  }
+                  return null;
+                })()}
               </View>
 
               {/* Name + badges */}
@@ -329,6 +349,7 @@ export default function ProfilePopupModal({ visible, userId, onClose }: Props) {
                     style={[
                       styles.displayName,
                       vipStyle && { color: vipStyle.nameColor },
+                      profile.usernameColor ? { color: profile.usernameColor } : null,
                     ]}
                     numberOfLines={1}
                   >

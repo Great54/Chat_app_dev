@@ -29,6 +29,7 @@ import { useProfilePopup } from '@/src/contexts/ProfilePopupContext';
 import BoardTab from '@/src/components/BoardTab';
 import FeedTab from '@/src/components/FeedTab';
 import TournamentModal from '@/src/components/TournamentModal';
+import AvatarWithAura from '@/src/components/AvatarWithAura';
 
 interface Message {
   id: string;
@@ -37,6 +38,13 @@ interface Message {
   senderPhoto?: string;
   messageText: string;
   createdAt: string;
+  senderVipTier?: string | null;
+  senderVipBadgeId?: string | null;
+  senderAuraType?: string | null;
+  senderAuraColor?: string | null;
+  senderChatColor?: string | null;
+  senderUsernameColor?: string | null;
+  senderEnlargedAvatar?: boolean;
 }
 
 interface Member {
@@ -46,6 +54,11 @@ interface Member {
   level: number;
   onlineStatus: boolean;
   vipTier?: string | null;
+  vipBadgeId?: string | null;
+  auraType?: string | null;
+  auraColor?: string | null;
+  usernameColor?: string | null;
+  enlargedAvatar?: boolean;
 }
 
 interface Room {
@@ -168,23 +181,38 @@ export default function RoomScreen() {
         onPress={() => openProfile(item.senderId)}
         testID={`msg-row-${item.id}`}
       >
-        <View
-          style={styles.avatar}
-          testID={`msg-avatar-${item.senderId}`}
-        >
-          {item.senderPhoto ? (
-            <Image source={{ uri: item.senderPhoto }} style={styles.avatarImg} />
-          ) : (
-            <Ionicons name="person" size={18} color="#7c3aed" />
-          )}
+        <View testID={`msg-avatar-${item.senderId}`} style={{ marginRight: 8 }}>
+          <AvatarWithAura
+            photoUrl={item.senderPhoto}
+            displayName={item.senderName}
+            size={32}
+            vipTier={item.senderVipTier}
+            vipBadgeId={item.senderVipBadgeId}
+            auraType={item.senderAuraType}
+            auraColor={item.senderAuraColor}
+            enlargedAvatar={item.senderEnlargedAvatar}
+            showBadge
+          />
         </View>
         <View style={styles.senderCol}>
-          <Text style={styles.senderName} numberOfLines={0}>
+          <Text
+            style={[
+              styles.senderName,
+              item.senderUsernameColor ? { color: item.senderUsernameColor } : null,
+            ]}
+            numberOfLines={0}
+          >
             {item.senderName}
           </Text>
         </View>
         <View style={styles.messageCol}>
-          <Text style={styles.messageText} numberOfLines={0}>
+          <Text
+            style={[
+              styles.messageText,
+              item.senderChatColor ? { color: item.senderChatColor } : null,
+            ]}
+            numberOfLines={0}
+          >
             {item.messageText}
           </Text>
         </View>

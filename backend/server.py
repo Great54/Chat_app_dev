@@ -136,6 +136,24 @@ class UserProfile(BaseModel):
     onlineStatus: bool = True
     lastSeen: datetime
     createdAt: datetime
+    # VIP Pro customizations
+    vipBadgeId: Optional[str] = None
+    auraType: Optional[str] = None  # glow | sparkle | frame | smoke
+    auraColor: Optional[str] = None
+    chatColor: Optional[str] = None
+    usernameColor: Optional[str] = None
+    pmBoxColor: Optional[str] = None
+    enlargedAvatar: bool = False
+    vipProMonthlyGrantAt: Optional[datetime] = None
+
+class VipProSettings(BaseModel):
+    vipBadgeId: Optional[str] = None
+    auraType: Optional[str] = None
+    auraColor: Optional[str] = None
+    chatColor: Optional[str] = None
+    usernameColor: Optional[str] = None
+    pmBoxColor: Optional[str] = None
+    enlargedAvatar: Optional[bool] = None
 
 class UpdateProfile(BaseModel):
     displayName: Optional[str] = None
@@ -237,6 +255,113 @@ class GiftSendPayload(BaseModel):
     giftId: str
     message: Optional[str] = ""
 
+# VIP Pro Badge collection (32 badges) - emoji-based for zero asset cost
+VIP_PRO_BADGES = [
+    {"id": "badge_lady_vip",   "label": "Lady VIP",     "emoji": "👸",  "bg": "#7c2d12"},
+    {"id": "badge_octopus",    "label": "Octopus",      "emoji": "🐙",  "bg": "#581c87"},
+    {"id": "badge_skull",      "label": "Skull King",   "emoji": "💀",  "bg": "#1f1f1f"},
+    {"id": "badge_bunny",      "label": "Bunny",        "emoji": "🐰",  "bg": "#78350f"},
+    {"id": "badge_flowers",    "label": "Flowers",      "emoji": "💐",  "bg": "#86198f"},
+    {"id": "badge_cat",        "label": "Cat",          "emoji": "🐱",  "bg": "#a16207"},
+    {"id": "badge_giraffe",    "label": "Cool Giraffe", "emoji": "🦒",  "bg": "#854d0e"},
+    {"id": "badge_umbrella",   "label": "Magic Umbrella","emoji": "☂️", "bg": "#3730a3"},
+    {"id": "badge_detective",  "label": "Detective",    "emoji": "🕵️", "bg": "#171717"},
+    {"id": "badge_angel",      "label": "Guardian",     "emoji": "👼",  "bg": "#a16207"},
+    {"id": "badge_otter",      "label": "Otter",        "emoji": "🦦",  "bg": "#1e40af"},
+    {"id": "badge_witch",      "label": "Witch",        "emoji": "🧙",  "bg": "#581c87"},
+    {"id": "badge_heart",      "label": "Sweet Heart",  "emoji": "💗",  "bg": "#fce7f3"},
+    {"id": "badge_demon",      "label": "Dark Demon",   "emoji": "👹",  "bg": "#7f1d1d"},
+    {"id": "badge_puppy",      "label": "Puppy",        "emoji": "🐶",  "bg": "#fde68a"},
+    {"id": "badge_tiger",      "label": "Tiger Cub",    "emoji": "🐯",  "bg": "#fbbf24"},
+    {"id": "badge_cross",      "label": "Blessed",      "emoji": "✝️", "bg": "#fbcfe8"},
+    {"id": "badge_sword",      "label": "Ice Sword",    "emoji": "⚔️", "bg": "#1e3a8a"},
+    {"id": "badge_dog_cool",   "label": "Cool Dog",     "emoji": "🐕",  "bg": "#1e293b"},
+    {"id": "badge_frog",       "label": "Rainbow Frog", "emoji": "🐸",  "bg": "#15803d"},
+    {"id": "badge_rabbit_punk","label": "Punk Rabbit",  "emoji": "🐇",  "bg": "#0f172a"},
+    {"id": "badge_bear",       "label": "Hoodie Bear",  "emoji": "🐻",  "bg": "#0e7490"},
+    {"id": "badge_phoenix",    "label": "Phoenix",      "emoji": "🔥",  "bg": "#9a3412"},
+    {"id": "badge_rose",       "label": "Rose VIP",     "emoji": "🌹",  "bg": "#831843"},
+    {"id": "badge_chest",      "label": "Treasure",     "emoji": "💰",  "bg": "#78350f"},
+    {"id": "badge_easter",     "label": "Easter Bunny", "emoji": "🐇",  "bg": "#fef3c7"},
+    {"id": "badge_butterfly",  "label": "Butterfly VIP","emoji": "🦋",  "bg": "#7f1d1d"},
+    {"id": "badge_shark",      "label": "Shark VIP",    "emoji": "🦈",  "bg": "#0ea5e9"},
+    {"id": "badge_bird",       "label": "Kingfisher",   "emoji": "🐦",  "bg": "#0c4a6e"},
+    {"id": "badge_mubarak",    "label": "Mubarak",      "emoji": "🕌",  "bg": "#713f12"},
+    {"id": "badge_moon",       "label": "Moon VIP",     "emoji": "🌙",  "bg": "#1e3a8a"},
+    {"id": "badge_crown",      "label": "Royal Crown",  "emoji": "👑",  "bg": "#3f3f46"},
+]
+
+# VIP Pro Aura types
+VIP_PRO_AURAS = [
+    {"id": "none",    "label": "No Aura"},
+    {"id": "glow",    "label": "Glow Aura"},
+    {"id": "sparkle", "label": "Sparkle Aura"},
+    {"id": "frame",   "label": "Frame Aura"},
+    {"id": "smoke",   "label": "Smoke Aura"},
+]
+
+# Chat / Username / PM Box color palettes
+VIP_PRO_COLORS = {
+    "chat": [
+        "#FF6B6B", "#F59E0B", "#FBCFE8", "#FDBA74", "#FFFFFF",
+        "#FEF08A", "#FCA5A5", "#FBBF24", "#E9D5FF", "#FB923C", "#EC4899",
+        "#D946EF", "#EF4444", "#DDD6FE", "#FACC15", "#EAB308", "#BEF264",
+        "#D6BCFA", "#F472B6", "#CA8A04", "#D946EF", "#A3E635", "#FCA5A5",
+        "#C4B5FD", "#CA8A04", "#67E8F9", "#84CC16", "#A7F3D0", "#BAE6FD",
+        "#3B82F6", "#34D399", "#22C55E", "#2DD4BF", "#7C3AED", "#67E8F9",
+        "#22C55E", "#06B6D4", "#0EA5E9", "#14B8A6", "#10B981",
+    ],
+    "username": [
+        "#FFFFFF", "#FFD700", "#FF6B9D", "#FF6B6B", "#FACC15", "#FB923C",
+        "#22D3EE", "#34D399", "#A78BFA", "#F472B6", "#EF4444", "#10B981",
+        "#3B82F6", "#EC4899", "#FBBF24", "#06B6D4",
+    ],
+    "aura": [
+        "#FF6B35", "#EC4899", "#FB923C", "#F59E0B", "#FFFFFF",
+        "#DDD6FE", "#D9F99D", "#FDE68A", "#FEF08A", "#F59E0B", "#FBCFE8",
+        "#CA8A04", "#BEF264", "#FBCFE8", "#D946EF", "#EF4444", "#E5E7EB",
+        "#A7F3D0", "#A3E635", "#67E8F9", "#93C5FD", "#A8A29E", "#F9A8D4",
+        "#CA8A04", "#A16207", "#DC2626", "#67E8F9", "#C4B5FD", "#D97706",
+        "#7C3AED", "#22C55E", "#B91C1C", "#A3E635", "#BE185D", "#B91C1C",
+        "#1D4ED8", "#1E3A8A", "#14532D", "#52525B", "#3F3F46",
+        "#0F766E", "#0E7490", "#22C55E", "#22D3EE", "#0EA5E9",
+    ],
+    "pmBox": [
+        "#FBCFE8", "#FFFFFF", "#FEF08A", "#FBBF24", "#FB923C",
+        "#E9D5FF", "#FECACA", "#D9F99D", "#BEF264", "#D6BCFA",
+        "#BEF264", "#FACA15", "#93C5FD", "#A7F3D0", "#BAE6FD", "#BEF264", "#C4B5FD",
+    ],
+}
+
+VIP_PRO_MONTHLY_COINS = 2000
+VIP_PRO_GRANT_INTERVAL_DAYS = 30
+
+async def maybe_grant_vip_pro_monthly(user: dict) -> Optional[int]:
+    """If user is VIP Pro/Elite and 30+ days since last monthly grant, award 2000 coins.
+    Returns the granted amount, or None if not granted."""
+    tier = user.get("vipTier")
+    if tier not in ("pro", "elite"):
+        return None
+    last_grant = user.get("vipProMonthlyGrantAt")
+    now = datetime.utcnow()
+    if last_grant and (now - last_grant).days < VIP_PRO_GRANT_INTERVAL_DAYS:
+        return None
+    user_id = str(user["_id"])
+    await add_coins(user_id, VIP_PRO_MONTHLY_COINS, "vip_pro_monthly", "VIP Pro monthly bonus")
+    await db.users.update_one(
+        {"_id": ObjectId(user_id)},
+        {"$set": {"vipProMonthlyGrantAt": now}},
+    )
+    await db.notifications.insert_one({
+        "userId": user_id,
+        "title": "💎 VIP Pro Monthly Bonus!",
+        "body": f"You received {VIP_PRO_MONTHLY_COINS} coins as your VIP Pro monthly reward.",
+        "type": "vip_pro_monthly",
+        "createdAt": now,
+        "readStatus": False,
+    })
+    return VIP_PRO_MONTHLY_COINS
+
 # Static catalog of gifts (id, name, icon, price in coins)
 GIFTS_CATALOG = [
     {"id": "rose",        "name": "Rose",         "icon": "rose",          "price": 10,  "color": "#ec4899"},
@@ -304,7 +429,15 @@ def _build_user_profile(user: dict) -> UserProfile:
         currentRoomId=user.get("currentRoomId"),
         onlineStatus=user.get("onlineStatus", True),
         lastSeen=user.get("lastSeen", datetime.utcnow()),
-        createdAt=user.get("createdAt", datetime.utcnow())
+        createdAt=user.get("createdAt", datetime.utcnow()),
+        vipBadgeId=user.get("vipBadgeId"),
+        auraType=user.get("auraType"),
+        auraColor=user.get("auraColor"),
+        chatColor=user.get("chatColor"),
+        usernameColor=user.get("usernameColor"),
+        pmBoxColor=user.get("pmBoxColor"),
+        enlargedAvatar=bool(user.get("enlargedAvatar", False)),
+        vipProMonthlyGrantAt=user.get("vipProMonthlyGrantAt"),
     )
 
 # ==================== HELPER FUNCTIONS ====================
@@ -521,7 +654,13 @@ async def login(user_data: UserLogin):
     if last_login:
         if (datetime.utcnow() - last_login).days >= 1:
             await add_coins(str(user["_id"]), 50, "daily_login", "Daily login reward")
-    
+
+    # VIP Pro monthly bonus (2000 coins, every 30 days)
+    try:
+        await maybe_grant_vip_pro_monthly(user)
+    except Exception as e:
+        logger.error(f"Failed to grant VIP Pro monthly: {e}")
+
     access_token = create_access_token({"sub": str(user["_id"])})
     return {"access_token": access_token, "token_type": "bearer"}
 
@@ -726,6 +865,14 @@ async def get_profile_card(user_id: str, current_user: dict = Depends(get_curren
         "friendRequestId": friend_request_id,
         "isBlocked": is_blocked,
         "isSelf": is_self,
+        # VIP Pro customization
+        "vipBadgeId": user.get("vipBadgeId"),
+        "auraType": user.get("auraType"),
+        "auraColor": user.get("auraColor"),
+        "chatColor": user.get("chatColor"),
+        "usernameColor": user.get("usernameColor"),
+        "pmBoxColor": user.get("pmBoxColor"),
+        "enlargedAvatar": bool(user.get("enlargedAvatar", False)),
     }
 
 @api_router.get("/users/{user_id}/friends")
@@ -1195,6 +1342,11 @@ async def get_room_members(room_id: str):
             "username": member["username"],
             "profilePhoto": user_doc.get("photoUrl") if user_doc else member.get("profilePhoto"),
             "vipTier": user_doc.get("vipTier") if user_doc else None,
+            "vipBadgeId": user_doc.get("vipBadgeId") if user_doc else None,
+            "auraType": user_doc.get("auraType") if user_doc else None,
+            "auraColor": user_doc.get("auraColor") if user_doc else None,
+            "usernameColor": user_doc.get("usernameColor") if user_doc else None,
+            "enlargedAvatar": bool(user_doc.get("enlargedAvatar", False)) if user_doc else False,
             "onlineStatus": member.get("onlineStatus", True)
         })
     return enriched
@@ -1230,19 +1382,39 @@ async def get_room_activities(room_id: str, limit: int = 50, skip: int = 0):
 async def get_messages(room_id: str, limit: int = 50):
     messages = await db.messages.find({"roomId": room_id}).sort("createdAt", -1).limit(limit).to_list(limit)
     messages.reverse()
-    
-    return [
-        Message(
-            id=str(msg["_id"]),
-            roomId=msg["roomId"],
-            senderId=msg["senderId"],
-            senderName=msg["senderName"],
-            senderPhoto=msg.get("senderPhoto"),
-            messageText=msg["messageText"],
-            createdAt=msg["createdAt"],
-            reactions=msg.get("reactions", [])
-        ) for msg in messages
-    ]
+
+    # Bulk-load sender user docs to attach VIP customizations
+    sender_ids = list({msg["senderId"] for msg in messages if msg.get("senderId") and msg["senderId"] != "system"})
+    senders_map: Dict[str, dict] = {}
+    for sid in sender_ids:
+        try:
+            u = await db.users.find_one({"_id": ObjectId(sid)})
+            if u:
+                senders_map[sid] = u
+        except Exception:
+            pass
+
+    result = []
+    for msg in messages:
+        sender = senders_map.get(msg.get("senderId"), {})
+        result.append({
+            "id": str(msg["_id"]),
+            "roomId": msg["roomId"],
+            "senderId": msg["senderId"],
+            "senderName": msg["senderName"],
+            "senderPhoto": sender.get("photoUrl") or msg.get("senderPhoto"),
+            "messageText": msg["messageText"],
+            "createdAt": msg["createdAt"],
+            "reactions": msg.get("reactions", []),
+            "senderVipTier": sender.get("vipTier"),
+            "senderVipBadgeId": sender.get("vipBadgeId"),
+            "senderAuraType": sender.get("auraType"),
+            "senderAuraColor": sender.get("auraColor"),
+            "senderChatColor": sender.get("chatColor"),
+            "senderUsernameColor": sender.get("usernameColor"),
+            "senderEnlargedAvatar": bool(sender.get("enlargedAvatar", False)),
+        })
+    return result
 
 @api_router.post("/messages/{room_id}")
 async def send_message(room_id: str, message_data: MessageCreate, current_user: dict = Depends(get_current_user)):
@@ -1271,22 +1443,29 @@ async def send_message(room_id: str, message_data: MessageCreate, current_user: 
         await add_coins(user_id, 5, "chat", "Active participation reward")
     
     # Broadcast message
-    message_obj = Message(
-        id=str(result.inserted_id),
-        roomId=room_id,
-        senderId=user_id,
-        senderName=current_user["displayName"],
-        senderPhoto=current_user.get("photoUrl"),
-        messageText=message_data.messageText,
-        createdAt=message_doc["createdAt"],
-        reactions=[]
-    )
-    
+    message_obj = {
+        "id": str(result.inserted_id),
+        "roomId": room_id,
+        "senderId": user_id,
+        "senderName": current_user["displayName"],
+        "senderPhoto": current_user.get("photoUrl"),
+        "messageText": message_data.messageText,
+        "createdAt": message_doc["createdAt"].isoformat(),
+        "reactions": [],
+        "senderVipTier": current_user.get("vipTier"),
+        "senderVipBadgeId": current_user.get("vipBadgeId"),
+        "senderAuraType": current_user.get("auraType"),
+        "senderAuraColor": current_user.get("auraColor"),
+        "senderChatColor": current_user.get("chatColor"),
+        "senderUsernameColor": current_user.get("usernameColor"),
+        "senderEnlargedAvatar": bool(current_user.get("enlargedAvatar", False)),
+    }
+
     await manager.broadcast(room_id, {
         "type": "new_message",
-        "message": message_obj.dict()
+        "message": message_obj
     })
-    
+
     return message_obj
 
 # ==================== PRIVATE MESSAGING ROUTES ====================
@@ -1361,19 +1540,37 @@ async def get_direct_messages(user_id: str, current_user: dict = Depends(get_cur
         {"senderId": user_id, "receiverId": current_user_id, "readStatus": False},
         {"$set": {"readStatus": True}}
     )
-    
-    return [
-        DirectMessageResponse(
-            id=str(msg["_id"]),
-            senderId=msg["senderId"],
-            senderName=msg["senderName"],
-            senderPhoto=msg.get("senderPhoto"),
-            receiverId=msg["receiverId"],
-            messageText=msg["messageText"],
-            createdAt=msg["createdAt"],
-            readStatus=msg.get("readStatus", False)
-        ) for msg in messages
-    ]
+
+    # Load other user's customizations once
+    other_user = None
+    try:
+        other_user = await db.users.find_one({"_id": ObjectId(user_id)})
+    except Exception:
+        pass
+    other_pm_color = other_user.get("pmBoxColor") if other_user else None
+    other_chat_color = other_user.get("chatColor") if other_user else None
+    other_username_color = other_user.get("usernameColor") if other_user else None
+    self_pm_color = current_user.get("pmBoxColor")
+    self_chat_color = current_user.get("chatColor")
+    self_username_color = current_user.get("usernameColor")
+
+    result = []
+    for msg in messages:
+        is_self = msg["senderId"] == current_user_id
+        result.append({
+            "id": str(msg["_id"]),
+            "senderId": msg["senderId"],
+            "senderName": msg["senderName"],
+            "senderPhoto": msg.get("senderPhoto"),
+            "receiverId": msg["receiverId"],
+            "messageText": msg["messageText"],
+            "createdAt": msg["createdAt"],
+            "readStatus": msg.get("readStatus", False),
+            "senderPmBoxColor": self_pm_color if is_self else other_pm_color,
+            "senderChatColor": self_chat_color if is_self else other_chat_color,
+            "senderUsernameColor": self_username_color if is_self else other_username_color,
+        })
+    return result
 
 @api_router.get("/messages/direct/conversations/list")
 async def get_conversations(current_user: dict = Depends(get_current_user)):
@@ -3185,6 +3382,104 @@ async def get_vouchers(current_user: dict = Depends(get_current_user)):
         "vipTier": tier,
         "discount": discount,
     }
+
+# ==================== VIP PRO CUSTOMIZATION ====================
+
+@api_router.get("/vip-pro/catalog")
+async def get_vip_pro_catalog():
+    """Return badges, auras, and color palettes for VIP Pro customization."""
+    return {
+        "badges": VIP_PRO_BADGES,
+        "auras": VIP_PRO_AURAS,
+        "colors": VIP_PRO_COLORS,
+        "monthlyCoins": VIP_PRO_MONTHLY_COINS,
+        "grantIntervalDays": VIP_PRO_GRANT_INTERVAL_DAYS,
+    }
+
+@api_router.get("/vip-pro/settings")
+async def get_vip_pro_settings(current_user: dict = Depends(get_current_user)):
+    """Return current user's VIP Pro customization settings and monthly grant info."""
+    last_grant = current_user.get("vipProMonthlyGrantAt")
+    next_grant_in_days = None
+    if last_grant:
+        elapsed = (datetime.utcnow() - last_grant).days
+        next_grant_in_days = max(0, VIP_PRO_GRANT_INTERVAL_DAYS - elapsed)
+    return {
+        "vipTier": current_user.get("vipTier"),
+        "vipBadgeId": current_user.get("vipBadgeId"),
+        "auraType": current_user.get("auraType"),
+        "auraColor": current_user.get("auraColor"),
+        "chatColor": current_user.get("chatColor"),
+        "usernameColor": current_user.get("usernameColor"),
+        "pmBoxColor": current_user.get("pmBoxColor"),
+        "enlargedAvatar": bool(current_user.get("enlargedAvatar", False)),
+        "vipProMonthlyGrantAt": last_grant.isoformat() if last_grant else None,
+        "nextGrantInDays": next_grant_in_days,
+        "monthlyCoins": VIP_PRO_MONTHLY_COINS,
+    }
+
+@api_router.put("/vip-pro/settings")
+async def update_vip_pro_settings(payload: VipProSettings, current_user: dict = Depends(get_current_user)):
+    """Update VIP Pro customization. Requires VIP Pro or Elite."""
+    tier = current_user.get("vipTier")
+    if tier not in ("pro", "elite"):
+        raise HTTPException(status_code=403, detail="VIP Pro or Elite required for customization")
+
+    update_fields: Dict[str, Any] = {}
+
+    # Badge
+    if payload.vipBadgeId is not None:
+        if payload.vipBadgeId == "":
+            update_fields["vipBadgeId"] = None
+        else:
+            valid_ids = {b["id"] for b in VIP_PRO_BADGES}
+            if payload.vipBadgeId not in valid_ids:
+                raise HTTPException(status_code=400, detail="Invalid badge id")
+            update_fields["vipBadgeId"] = payload.vipBadgeId
+
+    # Aura type
+    if payload.auraType is not None:
+        if payload.auraType == "" or payload.auraType == "none":
+            update_fields["auraType"] = None
+        else:
+            valid_auras = {a["id"] for a in VIP_PRO_AURAS}
+            if payload.auraType not in valid_auras:
+                raise HTTPException(status_code=400, detail="Invalid aura type")
+            update_fields["auraType"] = payload.auraType
+
+    # Colors – accept any hex code starting with '#'
+    def _validate_color(c: Optional[str]) -> Optional[str]:
+        if c is None:
+            return None
+        c = c.strip()
+        if c == "":
+            return ""
+        if not c.startswith("#") or len(c) not in (4, 7, 9):
+            raise HTTPException(status_code=400, detail=f"Invalid color: {c}")
+        return c
+
+    for field in ("auraColor", "chatColor", "usernameColor", "pmBoxColor"):
+        v = getattr(payload, field)
+        if v is not None:
+            cv = _validate_color(v)
+            update_fields[field] = None if cv == "" else cv
+
+    if payload.enlargedAvatar is not None:
+        update_fields["enlargedAvatar"] = bool(payload.enlargedAvatar)
+
+    user_oid = ObjectId(str(current_user["_id"]))
+    if update_fields:
+        await db.users.update_one(
+            {"_id": user_oid},
+            {"$set": update_fields},
+        )
+
+    updated = await db.users.find_one({"_id": user_oid})
+    if not updated:
+        raise HTTPException(status_code=404, detail="User not found")
+    return _build_user_profile(updated)
+
+# ==================== VIP ROUTES (continued) ====================
 
 # ==================== LEADERBOARD ====================
 
