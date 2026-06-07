@@ -554,19 +554,27 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
 def calculate_level(xp: int) -> int:
     return xp // 100
 
-async def add_coins(user_id: str, amount: int, transaction_type: str, description: str):
-    """Add coins to user and log transaction"""
+async def add_coins(user_id: str, amount: int, transaction_type: str, description: str, game_id: str | None = None):
+    """Add coins to user and log transaction.
+
+    `game_id` (optional) links the transaction to a specific game so the
+    abort path can later mark the negative entry-fee row as `refunded:true`,
+    which the coins-spent leaderboard then excludes.
+    """
     await db.users.update_one(
         {"_id": ObjectId(user_id)},
         {"$inc": {"coins": amount}}
     )
-    await db.coin_transactions.insert_one({
+    doc = {
         "userId": user_id,
         "amount": amount,
         "type": transaction_type,
         "description": description,
         "createdAt": datetime.utcnow()
-    })
+    }
+    if game_id:
+        doc["gameId"] = game_id
+    await db.coin_transactions.insert_one(doc)
 
 async def add_xp(user_id: str, amount: int):
     """Add XP to user and update level"""
@@ -2496,9 +2504,21 @@ async def _resolve_game(game: dict) -> dict:
     game_id = game["_id"]
     
     if len(game["players"]) < game["minPlayers"]:
-        # Abort - refund all players their entry fee
+        # Abort - refund all players their entry fee.
+        # IMPORTANT: also flag the original negative entry-fee transactions for
+        # this game as `refunded:true` so the coins-spent leaderboard does NOT
+        # treat the cancelled entry fee as spent. The refund credit itself is
+        # positive and already excluded by the leaderboard's `amount<0` filter.
+        await db.coin_transactions.update_many(
+            {
+                "gameId": str(game_id),
+                "type": "game",
+                "amount": {"$lt": 0},
+            },
+            {"$set": {"refunded": True, "refundedAt": datetime.utcnow()}},
+        )
         for player in game["players"]:
-            await add_coins(player["userId"], game["entryFee"], "game", "Game aborted - refund")
+            await add_coins(player["userId"], game["entryFee"], "game", "Game aborted - refund", game_id=str(game_id))
         
         await db.game_sessions.update_one(
             {"_id": game_id},
@@ -2679,10 +2699,8 @@ async def host_room_game(room_id: str, req: HostGameRequest, current_user: dict 
         if existing["status"] == "waiting":
             raise HTTPException(status_code=400, detail="You already have an active game in this room")
     
-    # Deduct entry fee from host
-    await add_coins(user_id, -entry_fee, "game", f"Hosted {game_config['name']} entry fee")
-    
-    # Create game session
+    # Deduct entry fee from host (tagged with gameId so the abort path can
+    # mark it refunded for the coins-spent leaderboard)
     expires_at = datetime.utcnow() + timedelta(seconds=GAME_TIMER_SECONDS)
     session = {
         "roomId": room_id,
@@ -2704,9 +2722,11 @@ async def host_room_game(room_id: str, req: HostGameRequest, current_user: dict 
         "createdAt": datetime.utcnow(),
         "gameState": {}
     }
-    
     result = await db.game_sessions.insert_one(session)
     session["_id"] = result.inserted_id
+    game_id_str = str(result.inserted_id)
+
+    await add_coins(user_id, -entry_fee, "game", f"Hosted {game_config['name']} entry fee", game_id=game_id_str)
     
     # Post system message to chat announcing the game
     await db.messages.insert_one({
@@ -2754,7 +2774,7 @@ async def join_room_game(game_id: str, current_user: dict = Depends(get_current_
         raise HTTPException(status_code=400, detail=f"Need {game['entryFee']} coins to join")
     
     # Deduct entry fee
-    await add_coins(user_id, -game["entryFee"], "game", f"Joined {game['gameType']} game")
+    await add_coins(user_id, -game["entryFee"], "game", f"Joined {game['gameType']} game", game_id=str(game["_id"]))
     
     # Add player to game
     player_data = {
@@ -3397,6 +3417,95 @@ async def _backfill_default_avatars():
             print(f"[startup] assigned default avatars to {rewritten} users")
     except Exception as e:
         print(f"[startup] default-avatar backfill warn: {e}")
+
+@app.on_event("startup")
+async def _backfill_refunded_aborts():
+    """Retroactively mark spend rows for already-aborted games / cancelled
+    tournaments as `refunded:true` so the coins-spent leaderboard stops
+    counting cancelled entry fees. Idempotent.
+
+    For games created BEFORE the gameId-tagging fix, transactions don't have
+    a gameId field; we then fall back to matching by (userId, type, amount,
+    timestamp window around the game's createdAt) which is good enough for
+    historical healing.
+    """
+    try:
+        n_games = 0
+        async for g in db.game_sessions.find({"status": "aborted"}):
+            gid = str(g["_id"])
+            # Newer rows (tagged with gameId)
+            res = await db.coin_transactions.update_many(
+                {
+                    "gameId": gid,
+                    "type": "game",
+                    "amount": {"$lt": 0},
+                    "refunded": {"$ne": True},
+                },
+                {"$set": {"refunded": True, "refundedAt": datetime.utcnow()}},
+            )
+            n_games += res.modified_count
+            # Legacy fallback for rows without gameId
+            entry_fee = g.get("entryFee", 0)
+            created = g.get("createdAt")
+            if not entry_fee or not created:
+                continue
+            player_ids = [p.get("userId") for p in g.get("players", []) if p.get("userId")]
+            for pid in player_ids:
+                fb = await db.coin_transactions.update_many(
+                    {
+                        "userId": pid,
+                        "type": "game",
+                        "amount": -entry_fee,
+                        "gameId": {"$exists": False},
+                        "refunded": {"$ne": True},
+                        "createdAt": {
+                            "$gte": created - timedelta(seconds=5),
+                            "$lte": created + timedelta(seconds=60),
+                        },
+                    },
+                    {"$set": {"refunded": True, "refundedAt": datetime.utcnow(), "gameId": gid}},
+                )
+                n_games += fb.modified_count
+
+        n_t = 0
+        async for t in db.tournaments.find({"status": "completed", "winners": []}):
+            tid = str(t["_id"])
+            res = await db.coin_transactions.update_many(
+                {
+                    "gameId": tid,
+                    "type": "tournament",
+                    "amount": {"$lt": 0},
+                    "refunded": {"$ne": True},
+                },
+                {"$set": {"refunded": True, "refundedAt": datetime.utcnow()}},
+            )
+            n_t += res.modified_count
+            entry_fee = t.get("entryFee", 0)
+            created = t.get("createdAt")
+            if not entry_fee or not created:
+                continue
+            player_ids = [p.get("userId") for p in t.get("players", []) if p.get("userId")]
+            for pid in player_ids:
+                fb = await db.coin_transactions.update_many(
+                    {
+                        "userId": pid,
+                        "type": "tournament",
+                        "amount": -entry_fee,
+                        "gameId": {"$exists": False},
+                        "refunded": {"$ne": True},
+                        "createdAt": {
+                            "$gte": created - timedelta(seconds=5),
+                            "$lte": created + timedelta(seconds=60),
+                        },
+                    },
+                    {"$set": {"refunded": True, "refundedAt": datetime.utcnow(), "gameId": tid}},
+                )
+                n_t += fb.modified_count
+
+        if n_games or n_t:
+            print(f"[startup] flagged refunded entry-fees — games:{n_games} tournaments:{n_t}")
+    except Exception as e:
+        print(f"[startup] refunded-aborts backfill warn: {e}")
 
 @app.on_event("shutdown")
 async def shutdown_db_client():

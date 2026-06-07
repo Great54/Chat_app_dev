@@ -159,8 +159,6 @@ async def create_tournament(room_id: str, payload: TournamentCreate, current_use
         raise HTTPException(status_code=400, detail=f"Need {fee} coins to host & enter")
 
     me_id = str(current_user["_id"])
-    # Deduct entry fee from creator (auto-joined as first player)
-    await add_coins(me_id, -fee, "tournament", "Tournament entry fee")
 
     gt_cfg = GAME_TYPES[payload.gameType]
     is_private = bool(payload.isPrivate)
@@ -201,6 +199,11 @@ async def create_tournament(room_id: str, payload: TournamentCreate, current_use
     res = await db.tournaments.insert_one(doc)
     doc["_id"] = res.inserted_id
 
+    # Deduct entry fee from creator (auto-joined as first player). Tag with
+    # the tournament id so a cancelled tournament can flag this row refunded
+    # for the coins-spent leaderboard.
+    await add_coins(me_id, -fee, "tournament", "Tournament entry fee", game_id=str(res.inserted_id))
+
     # System message in chat — for public tournaments only
     if not is_private:
         await db.messages.insert_one({
@@ -234,7 +237,7 @@ async def join_tournament_by_code(payload: TournamentJoinByCode, current_user: d
     if current_user.get("coins", 0) < t["entryFee"]:
         raise HTTPException(status_code=400, detail=f"Need {t['entryFee']} coins")
 
-    await add_coins(me_id, -t["entryFee"], "tournament", "Tournament entry fee")
+    await add_coins(me_id, -t["entryFee"], "tournament", "Tournament entry fee", game_id=str(t["_id"]))
     new_player = {
         "userId": me_id,
         "username": current_user["username"],
@@ -272,7 +275,7 @@ async def join_tournament(tid: str, current_user: dict = Depends(get_current_use
     if current_user.get("coins", 0) < t["entryFee"]:
         raise HTTPException(status_code=400, detail=f"Need {t['entryFee']} coins")
 
-    await add_coins(me_id, -t["entryFee"], "tournament", "Tournament entry fee")
+    await add_coins(me_id, -t["entryFee"], "tournament", "Tournament entry fee", game_id=str(t["_id"]))
     new_player = {
         "userId": me_id,
         "username": current_user["username"],
@@ -396,9 +399,19 @@ async def _run_tournament(t: dict) -> dict:
     bracket: List[Dict[str, Any]] = []
 
     if len(players) < 2:
-        # Edge case: lone joiner — refund + abort
+        # Edge case: lone joiner — refund + abort.
+        # Mark the original negative entry-fee row(s) as refunded so the
+        # coins-spent leaderboard excludes them.
+        await db.coin_transactions.update_many(
+            {
+                "gameId": str(tid),
+                "type": "tournament",
+                "amount": {"$lt": 0},
+            },
+            {"$set": {"refunded": True, "refundedAt": datetime.utcnow()}},
+        )
         if players:
-            await add_coins(players[0]["userId"], entry_fee, "refund", f"{name} cancelled — not enough players")
+            await add_coins(players[0]["userId"], entry_fee, "refund", f"{name} cancelled — not enough players", game_id=str(tid))
         await db.tournaments.update_one(
             {"_id": tid},
             {"$set": {"status": "completed", "winners": [], "bracket": [], "completedAt": datetime.utcnow(), "pot": 0}},

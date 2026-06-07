@@ -74,10 +74,18 @@ async def get_points_leaderboard(limit: int = 50):
 
 @api_router.get("/leaderboard/coins-spent")
 async def get_coins_spent_leaderboard(limit: int = 50):
-    """Top spenders ranked by total coins spent (sum of negative coin_transactions)."""
-    # spend types are negative entries with these labels
+    """Top spenders ranked by total coins spent (sum of negative coin_transactions).
+
+    Excludes refunded entry-fee transactions — when a game is cancelled the
+    original spend row is marked `refunded:true` and must NOT count.
+    """
     pipeline = [
-        {"$match": {"amount": {"$lt": 0}}},
+        {
+            "$match": {
+                "amount": {"$lt": 0},
+                "refunded": {"$ne": True},
+            }
+        },
         {"$group": {"_id": "$userId", "spent": {"$sum": "$amount"}}},
         {"$project": {"_id": 1, "spent": {"$abs": "$spent"}}},
         {"$sort": {"spent": -1}},
