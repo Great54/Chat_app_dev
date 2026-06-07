@@ -68,3 +68,35 @@
 
 ### Smart enhancement idea
 > Right after the scatter, run a single Lloyd's relaxation step server-side (or client-side memoized) so avatars settle into a Voronoi-balanced layout. Adds zero perceived load time and prevents the rare case where two members' Halton+jitter coords overlap. Combined with a tiny entrance "pop" animation (Animated.spring scale 0→1) it turns the room screen into a satisfying micro-moment of life that increases the average time-in-room.
+
+## Iteration 17 (Jun 2026) — Three sound effects (room enter / notification / message)
+
+### What shipped
+1. **`/app/frontend/src/utils/sound.ts`** — new utility that synthesizes 3 distinct SFX via the Web Audio API (no asset files, zero network requests, ~6 KB). Distinct frequency signatures so they can be told apart even in monkey-patched headless tests:
+   - `playRoomEnterSound()` — airy "whoosh-pop", sine sweep 220 → 660 Hz + soft noise burst.
+   - `playNotificationSound()` — bright two-note "ding", E6 (1318.51 Hz) → A6 (1760 Hz) + E7 sparkle.
+   - `playMessageSound()` — soft "pop-tap", 660 → 420 Hz sine + 1240 Hz triangle ping.
+   Features: AudioContext singleton, one-time user-gesture autoplay-unlock listener (pointerdown / keydown / touchstart), per-tag throttle (220-350 ms) to prevent burst stacking, `Platform.OS === 'web'` guard (no-op on native).
+
+2. **`/app/frontend/src/contexts/AuthContext.tsx`** — added a global polling effect (every 8s notifications, 6s DM unread total) that:
+   - plays `playNotificationSound()` when a brand-new id appears in `/notifications`,
+   - plays `playMessageSound()` when `/messages/direct/unread/total` strictly increases,
+   - seeds dedup refs silently on first poll so history doesn't replay sounds on app launch,
+   - clears refs + intervals on logout / unmount.
+
+3. **`/app/frontend/app/room/[id].tsx`** — added per-room dedup refs (`seenMemberIdsRef`, `seenMessageIdsRef`) that:
+   - silently seed inside `loadRoomData()` (first hydration),
+   - in `refreshRoomData()` (3s poll) play `playRoomEnterSound()` when a new memberId appears (excluding self) and `playMessageSound()` when a new messageId arrives whose `senderId !== user.id`.
+
+### Verified (iteration_15)
+- Static code review PASSED across all 3 sound paths (Web Audio gating, dedup correctness, self-exclusion, throttle, cleanup).
+- REST regression PASSED: frontend HTTP 200, login 200, /api/auth/me 403 unauth, /api/messages, /api/notifications, /api/rooms/:id/members all 200.
+- Manual smoke: page loads with zero JS errors, `AudioContext` available in window.
+- Runtime oscillator-call live test was BLOCKED by a browser_automation wrapper pre-nav timeout (10s budget vs Expo cold-bundle time); not a code bug.
+
+### Known follow-up
+- (P2) Add a Settings toggle that calls `setSoundsEnabled(false)` and persists in storage. The mute hook is already in `sound.ts`.
+- (P2) Add native sound support via `expo-audio` when targeting iOS/Android — currently no-op on native.
+
+### Smart enhancement idea
+> Add a single-tap "sound preview" row inside Profile → Preferences ("Hear room-enter / notification / message") that lets users assign their own pack from a curated list of 3-4 themed packs ("Arcade", "Cozy", "Minimal", "Lofi"). Sound personalization is a tiny effort but materially boosts identity attachment and the perceived polish of the app — and it's a natural upsell hook for a future VIP-only premium pack.
