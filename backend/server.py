@@ -3262,7 +3262,7 @@ async def initialize_rooms():
             "roomName": "Philippines",
             "roomCategory": "Country",
             "roomDescription": "Mabuhay! Vibe with friends from the PH",
-            "roomBanner": "https://images.unsplash.com/photo-1518509562904-e7ef99cddc85?w=600&q=70",
+            "roomBanner": "/api/static/rooms/philippines.png",
             "roomBackground": "https://images.unsplash.com/photo-1519181258491-c302bc59b46a?w=900&q=60",
         },
         {
@@ -3283,7 +3283,7 @@ async def initialize_rooms():
             "roomName": "Birthday",
             "roomCategory": "Vibe",
             "roomDescription": "Celebrate birthdays together",
-            "roomBanner": "https://images.unsplash.com/photo-1530648672449-81f6c623f3ce?w=600&q=70",
+            "roomBanner": "/api/static/rooms/birthday.png",
             "roomBackground": "https://images.unsplash.com/photo-1558636508-e0db3814bd1d?w=900&q=60",
         },
     ]
@@ -3323,6 +3323,12 @@ from routes import vip as _vip_router  # noqa: E402, F401
 
 # Include router
 app.include_router(api_router)
+
+# Static files (room thumbnails, etc.). Mounted under /api/static so the
+# Kubernetes ingress (which only routes /api/* to the backend) forwards
+# requests correctly.
+from fastapi.staticfiles import StaticFiles  # noqa: E402
+app.mount("/api/static", StaticFiles(directory=str(ROOT_DIR / "static")), name="static")
 
 # CORS
 app.add_middleware(
