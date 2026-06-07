@@ -96,7 +96,7 @@ export default function RoomScreen() {
       ]);
       const currentRoom = roomResponse.data.find((r: Room) => r.id === id);
       setRoom(currentRoom);
-      setMessages(messagesResponse.data);
+      setMessages(Array.isArray(messagesResponse.data) ? messagesResponse.data : []);
       setMembers(membersResponse.data);
     } catch (error) {
       Alert.alert('Error', 'Failed to load room data');
@@ -151,7 +151,6 @@ export default function RoomScreen() {
   };
 
   const renderMessage = ({ item }: { item: Message }) => {
-    const isOwnMessage = item.senderId === user?.id;
     const isSystem = item.senderId === 'system';
 
     if (isSystem) {
@@ -163,30 +162,29 @@ export default function RoomScreen() {
     }
 
     return (
-      <View style={[styles.messageContainer, isOwnMessage && styles.ownMessage]}>
-        {!isOwnMessage && (
-          <TouchableOpacity
-            style={styles.avatar}
-            onPress={() => openProfile(item.senderId)}
-            activeOpacity={0.7}
-            testID={`msg-avatar-${item.senderId}`}
-          >
-            {item.senderPhoto ? (
-              <Image source={{ uri: item.senderPhoto }} style={styles.avatarImg} />
-            ) : (
-              <Ionicons name="person" size={16} color={COLORS.textSecondary} />
-            )}
-          </TouchableOpacity>
-        )}
-        <View style={[styles.messageBubble, isOwnMessage && styles.ownMessageBubble]}>
-          {!isOwnMessage && (
-            <TouchableOpacity onPress={() => openProfile(item.senderId)} activeOpacity={0.7}>
-              <Text style={styles.senderName}>{item.senderName}</Text>
-            </TouchableOpacity>
+      <TouchableOpacity
+        style={styles.messageRow}
+        activeOpacity={0.7}
+        onPress={() => openProfile(item.senderId)}
+        testID={`msg-row-${item.id}`}
+      >
+        <View
+          style={styles.avatar}
+          testID={`msg-avatar-${item.senderId}`}
+        >
+          {item.senderPhoto ? (
+            <Image source={{ uri: item.senderPhoto }} style={styles.avatarImg} />
+          ) : (
+            <Ionicons name="person" size={16} color={COLORS.textSecondary} />
           )}
-          <Text style={styles.messageText}>{item.messageText}</Text>
         </View>
-      </View>
+        <View style={styles.messageLineWrap}>
+          <Text style={styles.messageLine}>
+            <Text style={styles.senderName}>{item.senderName}</Text>
+            <Text style={styles.messageText}>{'  '}{item.messageText}</Text>
+          </Text>
+        </View>
+      </TouchableOpacity>
     );
   };
 
@@ -415,11 +413,13 @@ export default function RoomScreen() {
               placeholderTextColor={COLORS.textSecondary}
               multiline
               maxLength={500}
+              testID="chat-input"
             />
             <TouchableOpacity
               style={[styles.sendButton, !messageText.trim() && styles.sendButtonDisabled]}
               onPress={handleSendMessage}
               disabled={!messageText.trim() || loading}
+              testID="send-message-btn"
             >
               <Ionicons name="send" size={20} color={COLORS.text} />
             </TouchableOpacity>
@@ -586,18 +586,16 @@ const styles = StyleSheet.create({
     padding: SPACING.md,
     flexGrow: 1,
   },
-  messageContainer: {
+  messageRow: {
     flexDirection: 'row',
-    marginBottom: SPACING.sm,
-    alignItems: 'flex-end',
-  },
-  ownMessage: {
-    justifyContent: 'flex-end',
+    alignItems: 'flex-start',
+    marginBottom: 6,
+    paddingHorizontal: 2,
   },
   avatar: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
     backgroundColor: 'rgba(255,255,255,0.08)',
     alignItems: 'center',
     justifyContent: 'center',
@@ -605,32 +603,28 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   avatarImg: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
   },
-  messageBubble: {
-    backgroundColor: 'rgba(255,255,255,0.08)',
-    padding: SPACING.sm,
-    borderRadius: 12,
-    maxWidth: '70%',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.06)',
+  messageLineWrap: {
+    flex: 1,
+    paddingTop: 4,
   },
-  ownMessageBubble: {
-    backgroundColor: COLORS.primary,
-    borderColor: 'transparent',
+  messageLine: {
+    fontSize: 15,
+    color: COLORS.text,
+    lineHeight: 21,
   },
   senderName: {
-    fontSize: 12,
-    color: COLORS.textSecondary,
-    fontWeight: '600',
-    marginBottom: 2,
+    fontSize: 15,
+    color: COLORS.accent,
+    fontWeight: '700',
   },
   messageText: {
     fontSize: 15,
     color: COLORS.text,
-    lineHeight: 20,
+    lineHeight: 21,
   },
   emptyMessages: {
     alignItems: 'center',
