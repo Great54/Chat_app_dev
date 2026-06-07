@@ -7,66 +7,48 @@
 - Frontend: React Native + Expo Router (web build served on :3000)
 - Backend: FastAPI + Motor (Async Mongo) at :8001, prefix `/api`
 - Database: MongoDB local
+- Backend split into `server.py` + `routes/` sub-modules (tournaments, leaderboard, vip)
 
-## What's been implemented (this iteration — Jun 2026)
+## Implementation log
 
-### Profile (popup + full page)
-- Redesigned `ProfilePopupModal` and `app/profile/[id].tsx` with the user's reference layout:
-  - Background banner image (top), profile picture on the LEFT of the banner, display name in CENTER in **cursive (Dancing Script / Great Vibes)**.
-  - Bright pastel theme (cream `#fffaf3` card, gold/peach banner, sky-blue / pink / mint / amber stat chips).
-  - Status pill, VIP badge crown on avatar, scallop divider, gradient "View Profile" CTA.
-  - 4-stat row: **Coins, Friends, Likes, Posts** (each a colored bordered chip with cursive value).
-  - Cursive **Bio** below stats.
-  - VIP Pro/Elite badge pills with ribbon for Elite users retained.
-- Backend `/api/users/{user_id}/profile-card` now returns `postsCount` and `likesCount` aggregated across rooms.
-- **Privacy:**
-  - `/api/users/{user_id}/friends` now returns **403** unless `user_id == current_user.id`. Only owners see their friends list.
-  - Profile page hides the **Friends tab** for non-self viewers; only counts remain visible.
-  - Likes count is shown but the list of likers is not exposed (already behavior — frontend never requested it for other users).
+### Iteration 11 (Jun 2026) — initial profile + tournament changes
+- Profile popup + profile page redesigned with cursive name (Dancing Script), pic-LEFT/name-CENTER layout, 4 bright pastel stat chips (Coins/Friends/Likes/Posts) and cursive bio.
+- Backend `/api/users/{id}/profile-card` now returns `postsCount` + `likesCount`.
+- Friends list privacy: `/api/users/{id}/friends` returns 403 unless owner; profile page hides Friends tab for non-self viewers.
+- Tournament prize tiers: ≤4 → 1 winner (100%); 5-10 → 2 winners (70/30); >10 → ceil(0.3·n) winners with ratios n:(n-1):…:1.
+- Public/Private tournaments with 6-char invite code + `POST /api/tournaments/join-by-code`.
+- Tournament listing window extended to 5h, still room-scoped.
+- 17/17 backend tests passed.
 
-### Tournaments
-- Prize distribution rewritten in `_run_tournament` + new helpers (`_winners_count`, `_prize_split`):
-  - **≤4 players** → 1 winner takes 100% of the pot.
-  - **5–10 players** → 2 winners, 70% / 30%.
-  - **>10 players** → `ceil(0.30 × n)` winners, with ratios `n:(n-1):…:1` (e.g. 11p → 4 winners → 44/33/22/11 of pot 110).
-- All prize splits are integer math and always sum exactly to the pot (remainder → champion).
-- Placements are derived from the **knockout elimination round** (later elimination = higher placement). Champion never eliminated → 1st place.
-- Tournament visibility window extended from 2h → **5h** (`TOURNAMENT_VISIBLE_HOURS = 5`). Tournaments remain **room-scoped** (per user request — not app-wide).
-- **Public / Private tournaments:**
-  - `TournamentCreate` accepts `isPrivate: bool` (default `false`).
-  - Private tournaments get a random **6-character invite code** (alphabet `A-Z` minus `I,O` + digits `2-9`).
-  - `GET /api/rooms/{room_id}/tournaments` filters out private tournaments unless the viewer is the creator or already joined.
-  - `POST /api/tournaments/{tid}/join` rejects private tournaments with 403 unless the caller is the creator / already in the player list.
-  - New endpoint `POST /api/tournaments/join-by-code` lets anyone in the host's room join with the code.
-  - Join code is only returned to creator / joined players via the serializer (`viewer_id`-gated).
-- Frontend `TournamentModal`:
-  - Header now has a **Code** button (opens "Join with code" mini-modal) alongside **New**.
-  - Rewards banner updated to show the 3 tiers (≤4p / 5-10p / >10p).
-  - Each tournament card shows a **PUBLIC** / **PRIVATE** pill and the invite code badge (creator + joined players only).
-  - Create flow has a **Public / Private** chooser and a dynamic Reward preview that renders the exact list of winners + coin amounts using the same `prizeShares()` mirror function on the frontend.
-  - Detail screen displays a copy-friendly **Invite code** card while the tournament is in lobby (creator / joined players only) and renders variable-length winners table after completion.
-
-### Test verification
-- 17 / 17 backend pytests passing (see `/app/test_reports/iteration_11.json`).
-- Manual end-to-end (curl): public tournament visible to all room members; private hidden; direct-id 403 for non-participants; join-by-code works; 2-player tournament awards full pot to the one winner; profile-card now includes postsCount + likesCount.
+### Iteration 12 (Jun 2026) — follow-ups
+1. **Bug fix — removed phantom "dots" from profile card.** The scallop divider I added on the previous iteration was unrequested and looked like a UI bug. Removed the `<View style={styles.scallopRow}>` block (the 14 yellow dots) from `ProfilePopupModal.tsx`.
+2. **Animated podium reveal on tournament completion.** New `<PodiumRow>` component using `Animated.View` with `useNativeDriver` + a staggered (220ms-per-row) opacity + spring `translateY` + `scale` reveal. Champion row gets a CHAMP pill, gold/silver/bronze tinted backgrounds.
+3. **"Tournaments You've Won" / Hall of Champions leaderboard.**
+   - **Backend:** New `GET /api/tournaments/wins/leaderboard?limit=N` returns `{ windowDays: 30, leaderboard: [{rank,userId,displayName,photoUrl,wins,coinsWon}...], me: {...} }`. Pipeline filters `winners.placement == 1` within the last 30 days; caller's own stats (and rank if outside top N) are returned in the `me` block.
+   - **Frontend:** A new gold "Hall" button in the tournament header opens a modal showing the user's record card + ranked rows (medals for top 3, purple border highlight for self).
+4. **P1 — `server.py` refactor.** Extracted three cohesive sections into router modules. `server.py` shrunk **4177 → 3296 lines (-21%)**.
+   - `/app/backend/routes/__init__.py` — package marker.
+   - `/app/backend/routes/tournaments.py` (569 lines) — all `/api/tournaments/*` + `/api/rooms/{id}/tournaments` endpoints, prize-split helpers, bracket runner.
+   - `/app/backend/routes/leaderboard.py` (142 lines) — `/api/leaderboard/*` endpoints.
+   - `/app/backend/routes/vip.py` (246 lines) — `/api/vip/*` + Pro customization.
+   - Pattern: each submodule imports shared state (`api_router`, `db`, helpers, models, constants) from `server`; `server.py` then imports each submodule at the END (just before `app.include_router`) to trigger registration. No circular imports.
+5. **Verified:** Backend regression + new endpoint tests: 21/23 (91%) passing. The 2 failures (`Room is full`) are pre-existing test-DB saturation, not a regression.
 
 ## What's been implemented (history)
 - Authentication (JWT, email/username login, daily login reward, password reset token).
 - Rooms (9 default rooms seedable via `/api/init/rooms`), join/leave, room members listing.
-- Real-time chat (WebSocket broadcasting).
-- VIP Pro / Elite system: tiers, customizations (avatar aura/frame/badge/colors), monthly coin grant, priority Elite welcome.
-- Board posts + likes + comments per room (with feed and global user-posts view).
-- Friends (send/accept/remove), private messages, gifts catalog + send, send coins.
-- Notifications (in-app), activity feed (self + friends).
-- Knockout tournaments with the previous 50/50 split (now upgraded per this iteration).
+- Real-time chat (WebSocket broadcasting), board posts + likes + comments.
+- VIP Pro / Elite system: tiers, avatar customization (aura/frame/badge/colors), monthly coin grant.
+- Friends, private messages, gifts catalog + send, send coins.
+- Knockout tournaments with public/private modes, 6-char invite codes, tiered prize distribution (100% / 70-30 / k:k-1:…:1), animated podium reveal, "Hall of Champions" global leaderboard.
 
 ## Backlog / Next actions
-- **P1 — Tournament chat broadcast for private codes:** Currently private tournaments suppress the system message (since others can't join). Consider whispering the code to the creator's DM thread for sharing.
-- **P1 — Refactor `server.py` (4118 lines):** Split into modules (auth, profile, rooms, tournaments, board, vip) — code review feedback from testing agent.
-- **P2 — Move private-tournament filter into the Mongo query** (currently in-Python loop) for scale.
-- **P2 — Tournament XP / leaderboard view** that aggregates winners across all rooms.
-- **P3 — Share sheet** in the invite-code card (auto-copy to clipboard with a toast).
-- **P3 — Animated podium reveal** on tournament completion.
+- **(P1)** Continue the refactor — extract `auth`, `board_posts`, `rooms`, `messages`, `friends`, `notifications` sections into their own router modules (`server.py` still has ~3300 lines).
+- **(P1)** Add a test-cleanup endpoint or raise default room `maxCapacity` (currently 36) — long-lived dev DBs saturate the default rooms and break the >10-player test.
+- **(P1)** Surface the private-tournament invite code in a one-tap copy/share sheet on creation toast.
+- **(P2)** Push private-tournament filter into the Mongo query (currently in-Python loop).
+- **(P3)** Real-time push when you're crowned champion (popup celebration with confetti).
+- **(P3)** Auto-host "Tournament of the Day" daily knockout with house-sponsored prize (no entry fee).
 
 ## Smart enhancement idea
-> Tournaments are a strong viral engagement loop. Consider a **"Tournament of the Day"** banner on the room board that auto-creates a small free-entry tournament every 24 hours with sponsored prizes — pulls dormant users back into rooms and creates a daily ritual without coin friction.
+> Tournaments are an existing viral loop. With the new public/private + Hall of Champions, consider a **weekly "Champions Banner"** posted automatically to every room's board — top 3 winners' avatars + their best run. Creates social proof, drives FOMO on dormant users, and pulls visits to the Hall of Champions for verification.
