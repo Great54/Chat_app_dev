@@ -24,6 +24,7 @@ import { getCachedProfile, setCachedProfile, invalidateProfile } from '@/src/uti
 import { useAuth } from '@/src/contexts/AuthContext';
 import GiftSendModal from '@/src/components/GiftSendModal';
 import PrivateMessagesModal from '@/src/components/PrivateMessagesModal';
+import SendCoinsModal from '@/src/components/SendCoinsModal';
 
 interface Props {
   visible: boolean;
@@ -73,12 +74,13 @@ const showReportPicker = (onPick: (label: string) => void) => {
 };
 
 export default function ProfilePopupModal({ visible, userId, onClose }: Props) {
-  const { user: currentUser } = useAuth();
+  const { user: currentUser, refreshUser } = useAuth();
   const [profile, setProfile] = useState<ProfileCard | null>(null);
   const [loading, setLoading] = useState(false);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [giftOpen, setGiftOpen] = useState(false);
   const [dmOpen, setDmOpen] = useState(false);
+  const [sendCoinsOpen, setSendCoinsOpen] = useState(false);
 
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const scaleAnim = useRef(new Animated.Value(0.85)).current;
@@ -402,6 +404,13 @@ export default function ProfilePopupModal({ visible, userId, onClose }: Props) {
                     onPress={handleGift}
                     testID="profile-popup-gift"
                   />
+                  <ActionButton
+                    label="Send Coins"
+                    icon="cash"
+                    color={COLORS.coin}
+                    onPress={() => setSendCoinsOpen(true)}
+                    testID="profile-popup-send-coins"
+                  />
                 </View>
               )}
 
@@ -454,6 +463,18 @@ export default function ProfilePopupModal({ visible, userId, onClose }: Props) {
             visible={dmOpen}
             onClose={() => setDmOpen(false)}
             initialUserId={profile.id}
+          />
+        )}
+
+        {/* Send Coins sub-modal */}
+        {profile && currentUser && (
+          <SendCoinsModal
+            visible={sendCoinsOpen}
+            onClose={() => setSendCoinsOpen(false)}
+            receiverId={profile.id}
+            receiverName={profile.displayName}
+            userCoins={currentUser.coins}
+            onSuccess={refreshUser}
           />
         )}
       </Animated.View>

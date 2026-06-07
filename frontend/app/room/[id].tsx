@@ -28,6 +28,7 @@ import { COLORS, SPACING } from '@/src/constants/theme';
 import { useProfilePopup } from '@/src/contexts/ProfilePopupContext';
 import BoardTab from '@/src/components/BoardTab';
 import FeedTab from '@/src/components/FeedTab';
+import TournamentModal from '@/src/components/TournamentModal';
 
 interface Message {
   id: string;
@@ -70,6 +71,7 @@ export default function RoomScreen() {
   const [messagesModalVisible, setMessagesModalVisible] = useState(false);
   const [dmInitialUserId, setDmInitialUserId] = useState<string | null>(null);
   const [activeRoomTab, setActiveRoomTab] = useState<'feed' | 'chat' | 'board'>('chat');
+  const [tournamentModalOpen, setTournamentModalOpen] = useState(false);
   const [currentUserTarget, setCurrentUserTarget] = useState<{ x: number; y: number } | null>(null);
   const flatListRef = useRef<FlatList>(null);
   const gameRef = useRef<GamePanelHandle>(null);
@@ -269,9 +271,19 @@ export default function RoomScreen() {
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={handleBack} style={styles.backButton}>
-          <Ionicons name="arrow-back" size={24} color={COLORS.text} />
-        </TouchableOpacity>
+        <View style={styles.headerLeft}>
+          <TouchableOpacity onPress={handleBack} style={styles.backButton} testID="room-back-btn">
+            <Ionicons name="arrow-back" size={24} color={COLORS.text} />
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => setTournamentModalOpen(true)}
+            style={styles.tournamentBtn}
+            testID="open-tournaments-btn"
+          >
+            <Ionicons name="trophy" size={18} color={COLORS.coin} />
+            <Text style={styles.tournamentBtnText}>Tournaments</Text>
+          </TouchableOpacity>
+        </View>
         <View style={[styles.headerInfo, { pointerEvents: 'none' }]}>
           <Text style={styles.headerTitle} numberOfLines={1}>{room?.roomName}</Text>
           <Text style={styles.headerSubtitle}>
@@ -420,6 +432,17 @@ export default function RoomScreen() {
         onClose={handleCloseDmModal}
         initialUserId={dmInitialUserId}
       />
+
+      {user && (
+        <TournamentModal
+          visible={tournamentModalOpen}
+          roomId={id as string}
+          currentUserId={user.id}
+          userCoins={user.coins}
+          onClose={() => setTournamentModalOpen(false)}
+          onUserUpdate={refreshUser}
+        />
+      )}
     </SafeAreaView>
   );
 }
@@ -481,6 +504,29 @@ const styles = StyleSheet.create({
   backButton: {
     padding: 4,
     zIndex: 2,
+  },
+  headerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    zIndex: 2,
+  },
+  tournamentBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'rgba(251,191,36,0.12)',
+    borderColor: COLORS.coin,
+    borderWidth: 1,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 999,
+  },
+  tournamentBtnText: {
+    color: COLORS.coin,
+    fontWeight: '800',
+    fontSize: 12,
+    letterSpacing: 0.3,
   },
   headerRight: {
     flexDirection: 'row',

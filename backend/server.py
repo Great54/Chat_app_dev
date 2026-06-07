@@ -62,7 +62,7 @@ class ConnectionManager:
             for connection in self.active_connections[room_id]:
                 try:
                     await connection.send_json(message)
-                except:
+                except Exception:
                     pass
 
 manager = ConnectionManager()
@@ -1136,7 +1136,7 @@ async def join_room(room_id: str, current_user: dict = Depends(get_current_user)
     
     # Update user's current room
     await db.users.update_one(
-        {"_id": current_user["_id"]},
+        {"_id": ObjectId(current_user["_id"])},
         {"$set": {"currentRoomId": room_id}}
     )
     
@@ -1177,7 +1177,7 @@ async def leave_room(room_id: str, current_user: dict = Depends(get_current_user
     
     # Update user's current room
     await db.users.update_one(
-        {"_id": current_user["_id"]},
+        {"_id": ObjectId(current_user["_id"])},
         {"$set": {"currentRoomId": None}}
     )
     
@@ -1447,7 +1447,7 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str):
     await manager.connect(websocket, room_id)
     try:
         while True:
-            data = await websocket.receive_text()
+            _ = await websocket.receive_text()
             # Keep connection alive
             await websocket.send_json({"type": "pong"})
     except WebSocketDisconnect:
@@ -1909,9 +1909,26 @@ async def draw_card_game(current_user: dict = Depends(get_current_user)):
 # ==================== MULTIPLAYER ROOM GAMES ====================
 
 GAME_TIMER_SECONDS = 20
+# Pretty stock images from Unsplash for game logos / banners
 GAME_TYPES = {
-    "card_higher": {"name": "Higher Card", "minPlayers": 2, "maxPlayers": 6, "entryFee": 10},
-    "dice_roll": {"name": "Dice Roll", "minPlayers": 2, "maxPlayers": 6, "entryFee": 10},
+    "card_higher": {
+        "name": "Higher Card",
+        "minPlayers": 2,
+        "maxPlayers": 6,
+        "entryFee": 10,
+        "image": "https://images.unsplash.com/photo-1541278107931-e006523892df?w=800&q=70",
+        "icon": "card",
+        "tagline": "Draw the highest card — winner & runner-up take the pot",
+    },
+    "dice_roll": {
+        "name": "Dice Roll",
+        "minPlayers": 2,
+        "maxPlayers": 6,
+        "entryFee": 10,
+        "image": "https://images.unsplash.com/photo-1606167668584-78701c57f13d?w=800&q=70",
+        "icon": "dice",
+        "tagline": "Roll two dice — highest sum wins, runner-up gets share",
+    },
 }
 
 class HostGameRequest(BaseModel):
@@ -1925,11 +1942,15 @@ def _serialize_game(game: dict) -> dict:
         delta = (expires_at - datetime.utcnow()).total_seconds()
         seconds_remaining = max(0, int(delta))
     
+    gt_cfg = GAME_TYPES.get(game["gameType"], {})
     return {
         "id": str(game["_id"]),
         "roomId": game["roomId"],
         "gameType": game["gameType"],
-        "gameTypeName": GAME_TYPES.get(game["gameType"], {}).get("name", game["gameType"]),
+        "gameTypeName": gt_cfg.get("name", game["gameType"]),
+        "image": gt_cfg.get("image"),
+        "icon": gt_cfg.get("icon", "game-controller"),
+        "tagline": gt_cfg.get("tagline", ""),
         "hostId": game["hostId"],
         "hostName": game["hostName"],
         "players": game["players"],
@@ -1940,6 +1961,10 @@ def _serialize_game(game: dict) -> dict:
         "pot": game["pot"],
         "winnerId": game.get("winnerId"),
         "winnerName": game.get("winnerName"),
+        "runnerUpId": game.get("runnerUpId"),
+        "runnerUpName": game.get("runnerUpName"),
+        "winnerShare": game.get("winnerShare"),
+        "runnerShare": game.get("runnerShare"),
         "secondsRemaining": seconds_remaining,
         "createdAt": game["createdAt"],
         "completedAt": game.get("completedAt"),
@@ -1990,41 +2015,90 @@ async def _resolve_game(game: dict) -> dict:
             "result": result_value
         })
     
-    # Find winner (highest result; if tie, first to join wins)
-    winner = max(players_with_results, key=lambda p: p["result"])
+    # Sort by result desc — tie-breaker: original join order (stable sort)
+    ranked = sorted(players_with_results, key=lambda p: -p["result"])
+    winner = ranked[0]
+    runner_up = ranked[1] if len(ranked) > 1 else None
     
-    # Award pot to winner
-    await add_coins(winner["userId"], game["pot"], "game_win", f"Won {GAME_TYPES[game_type]['name']} game")
+    # Reward split: winner takes 70% of pot, runner-up takes 30%, rest eliminated
+    pot = game["pot"]
+    winner_share = int(round(pot * 0.7))
+    runner_share = pot - winner_share if runner_up else 0
+    
+    # Mark placements on each player
+    for idx, p in enumerate(ranked):
+        if idx == 0:
+            p["placement"] = 1
+            p["coinsWon"] = winner_share
+            p["pointsEarned"] = 10
+        elif idx == 1:
+            p["placement"] = 2
+            p["coinsWon"] = runner_share
+            p["pointsEarned"] = 5
+        else:
+            p["placement"] = idx + 1
+            p["coinsWon"] = 0
+            p["pointsEarned"] = 0
+    
+    # Award winner
+    await add_coins(winner["userId"], winner_share, "game_win", f"Won {GAME_TYPES[game_type]['name']} game")
+    await db.users.update_one(
+        {"_id": ObjectId(winner["userId"])},
+        {"$inc": {"pointsEarned": 10, "gameWins": 1}}
+    )
+    
+    # Award runner-up
+    if runner_up:
+        await add_coins(runner_up["userId"], runner_share, "game_runnerup", f"Runner-up in {GAME_TYPES[game_type]['name']}")
+        await db.users.update_one(
+            {"_id": ObjectId(runner_up["userId"])},
+            {"$inc": {"pointsEarned": 5, "gameRunnerUps": 1}}
+        )
     
     # Notify winner
     await db.notifications.insert_one({
         "userId": winner["userId"],
         "title": "🏆 You Won!",
-        "body": f"Won {game['pot']} coins in {GAME_TYPES[game_type]['name']} game",
+        "body": f"+{winner_share} coins · +10 points in {GAME_TYPES[game_type]['name']}",
         "type": "game",
         "createdAt": datetime.utcnow(),
         "readStatus": False
     })
+    # Notify runner-up
+    if runner_up:
+        await db.notifications.insert_one({
+            "userId": runner_up["userId"],
+            "title": "🥈 Runner-up!",
+            "body": f"+{runner_share} coins · +5 points in {GAME_TYPES[game_type]['name']}",
+            "type": "game",
+            "createdAt": datetime.utcnow(),
+            "readStatus": False
+        })
     
     # Update game session
     await db.game_sessions.update_one(
         {"_id": game_id},
         {"$set": {
             "status": "completed",
-            "players": players_with_results,
+            "players": ranked,
             "winnerId": winner["userId"],
             "winnerName": winner["displayName"],
+            "runnerUpId": runner_up["userId"] if runner_up else None,
+            "runnerUpName": runner_up["displayName"] if runner_up else None,
+            "winnerShare": winner_share,
+            "runnerShare": runner_share,
             "completedAt": datetime.utcnow()
         }}
     )
     
     # Post system message to chat
+    rs_text = f" · 🥈 {runner_up['displayName']} +{runner_share}" if runner_up else ""
     await db.messages.insert_one({
         "roomId": game["roomId"],
         "senderId": "system",
         "senderName": "🎮 System",
         "senderPhoto": None,
-        "messageText": f"🏆 {winner['displayName']} won {game['pot']} coins in {GAME_TYPES[game_type]['name']}!",
+        "messageText": f"🏆 {winner['displayName']} won +{winner_share} coins in {GAME_TYPES[game_type]['name']}{rs_text}",
         "createdAt": datetime.utcnow(),
         "reactions": [],
         "isSystem": True
@@ -2203,6 +2277,392 @@ async def list_game_types():
         for key, value in GAME_TYPES.items()
     ]
 
+# ==================== COIN GIFTING (USER → USER) ====================
+
+DAILY_COIN_GIFT_LIMIT = 1000
+MIN_COIN_GIFT = 10
+
+class SendCoinsPayload(BaseModel):
+    receiverId: str
+    amount: int
+    message: Optional[str] = ""
+
+@api_router.get("/coins/send-status")
+async def coin_send_status(current_user: dict = Depends(get_current_user)):
+    """How many coins the current user has already gifted today (rolling 24h)."""
+    me_id = str(current_user["_id"])
+    since = datetime.utcnow() - timedelta(hours=24)
+    pipeline = [
+        {"$match": {"senderId": me_id, "createdAt": {"$gte": since}}},
+        {"$group": {"_id": None, "total": {"$sum": "$amount"}}},
+    ]
+    agg = await db.coin_gifts.aggregate(pipeline).to_list(1)
+    sent_today = agg[0]["total"] if agg else 0
+    return {
+        "sentToday": sent_today,
+        "dailyLimit": DAILY_COIN_GIFT_LIMIT,
+        "remainingToday": max(0, DAILY_COIN_GIFT_LIMIT - sent_today),
+        "minPerSend": MIN_COIN_GIFT,
+    }
+
+@api_router.post("/coins/send")
+async def send_coins(payload: SendCoinsPayload, current_user: dict = Depends(get_current_user)):
+    """Send coins to another user. Min 10, daily cap 1000 outgoing per sender."""
+    me_id = str(current_user["_id"])
+    if me_id == payload.receiverId:
+        raise HTTPException(status_code=400, detail="You can't send coins to yourself")
+    if payload.amount < MIN_COIN_GIFT:
+        raise HTTPException(status_code=400, detail=f"Minimum send is {MIN_COIN_GIFT} coins")
+    if current_user.get("coins", 0) < payload.amount:
+        raise HTTPException(status_code=400, detail="Not enough coins in your wallet")
+
+    if not ObjectId.is_valid(payload.receiverId):
+        raise HTTPException(status_code=400, detail="Invalid recipient")
+    receiver = await db.users.find_one({"_id": ObjectId(payload.receiverId)})
+    if not receiver:
+        raise HTTPException(status_code=404, detail="Recipient not found")
+
+    # Rolling 24h gift cap
+    since = datetime.utcnow() - timedelta(hours=24)
+    pipeline = [
+        {"$match": {"senderId": me_id, "createdAt": {"$gte": since}}},
+        {"$group": {"_id": None, "total": {"$sum": "$amount"}}},
+    ]
+    agg = await db.coin_gifts.aggregate(pipeline).to_list(1)
+    sent_today = agg[0]["total"] if agg else 0
+    if sent_today + payload.amount > DAILY_COIN_GIFT_LIMIT:
+        remaining = max(0, DAILY_COIN_GIFT_LIMIT - sent_today)
+        raise HTTPException(
+            status_code=400,
+            detail=f"Daily gift limit reached. You can send {remaining} more coins today.",
+        )
+
+    # Transfer
+    await add_coins(me_id, -payload.amount, "coins_sent", f"Sent {payload.amount} coins to {receiver['displayName']}")
+    await add_coins(payload.receiverId, payload.amount, "coins_received", f"Received {payload.amount} coins from {current_user['displayName']}")
+
+    # Log the gift
+    await db.coin_gifts.insert_one({
+        "senderId": me_id,
+        "receiverId": payload.receiverId,
+        "amount": payload.amount,
+        "message": (payload.message or "")[:200],
+        "createdAt": datetime.utcnow(),
+    })
+
+    # Notify recipient
+    await db.notifications.insert_one({
+        "userId": payload.receiverId,
+        "title": f"🪙 +{payload.amount} coins",
+        "body": f"{current_user['displayName']} sent you {payload.amount} coins" + (f": {payload.message}" if payload.message else ""),
+        "type": "coins_received",
+        "relatedUserId": me_id,
+        "createdAt": datetime.utcnow(),
+        "readStatus": False,
+    })
+
+    # Feed activities
+    await _create_activity(
+        user_id=payload.receiverId,
+        actor_id=me_id,
+        activity_type="coins_received",
+        message=f"received {payload.amount} coins from {current_user['displayName']}",
+        metadata={"amount": payload.amount, "senderName": current_user["displayName"]},
+        audience="friends",
+    )
+
+    return {
+        "message": f"Sent {payload.amount} coins to {receiver['displayName']}",
+        "amount": payload.amount,
+        "sentToday": sent_today + payload.amount,
+        "remainingToday": max(0, DAILY_COIN_GIFT_LIMIT - sent_today - payload.amount),
+    }
+
+# ==================== TOURNAMENTS ====================
+# Knockout tournament: 4 players, 2 rounds (semi + final + 3rd-place).
+# Top 3 rewarded: 1st VIP Pro tier + 800 coins, 2nd 400 coins, 3rd 200 coins.
+
+TOURNAMENT_SIZE = 4
+TOURNAMENT_ENTRY_FEE = 10
+TOURNAMENT_REWARDS = {
+    1: {"coins": 800, "points": 30, "vipTier": "pro", "vipDays": 30, "label": "Champion"},
+    2: {"coins": 400, "points": 20, "vipTier": None, "label": "Finalist"},
+    3: {"coins": 200, "points": 10, "vipTier": None, "label": "Third Place"},
+}
+
+class TournamentCreate(BaseModel):
+    gameType: str
+    name: Optional[str] = None
+
+def _serialize_tournament(t: dict) -> dict:
+    gt_cfg = GAME_TYPES.get(t["gameType"], {})
+    return {
+        "id": str(t["_id"]),
+        "roomId": t["roomId"],
+        "gameType": t["gameType"],
+        "gameTypeName": gt_cfg.get("name", t["gameType"]),
+        "image": gt_cfg.get("image"),
+        "icon": gt_cfg.get("icon", "trophy"),
+        "name": t.get("name") or f"{gt_cfg.get('name', 'Game')} Knockout",
+        "status": t["status"],
+        "size": t["size"],
+        "entryFee": t["entryFee"],
+        "pot": t.get("pot", 0),
+        "players": t.get("players", []),
+        "bracket": t.get("bracket", []),
+        "winners": t.get("winners", []),
+        "createdBy": t.get("createdBy"),
+        "createdByName": t.get("createdByName"),
+        "createdAt": t.get("createdAt"),
+        "completedAt": t.get("completedAt"),
+    }
+
+@api_router.get("/rooms/{room_id}/tournaments")
+async def list_room_tournaments(room_id: str, current_user: dict = Depends(get_current_user)):
+    cutoff = datetime.utcnow() - timedelta(hours=2)
+    tournaments = await db.tournaments.find({
+        "roomId": room_id,
+        "$or": [{"status": {"$in": ["lobby", "running"]}}, {"completedAt": {"$gte": cutoff}}],
+    }).sort("createdAt", -1).to_list(20)
+    return [_serialize_tournament(t) for t in tournaments]
+
+@api_router.post("/rooms/{room_id}/tournaments")
+async def create_tournament(room_id: str, payload: TournamentCreate, current_user: dict = Depends(get_current_user)):
+    if payload.gameType not in GAME_TYPES:
+        raise HTTPException(status_code=400, detail="Invalid game type")
+    if current_user.get("currentRoomId") != room_id:
+        raise HTTPException(status_code=403, detail="Join the room first")
+    if current_user.get("coins", 0) < TOURNAMENT_ENTRY_FEE:
+        raise HTTPException(status_code=400, detail=f"Need {TOURNAMENT_ENTRY_FEE} coins to host & enter")
+
+    me_id = str(current_user["_id"])
+    # Deduct entry fee from creator (auto-joined as first player)
+    await add_coins(me_id, -TOURNAMENT_ENTRY_FEE, "tournament", "Tournament entry fee")
+
+    gt_cfg = GAME_TYPES[payload.gameType]
+    doc = {
+        "roomId": room_id,
+        "gameType": payload.gameType,
+        "name": (payload.name or f"{gt_cfg['name']} Knockout"),
+        "status": "lobby",
+        "size": TOURNAMENT_SIZE,
+        "entryFee": TOURNAMENT_ENTRY_FEE,
+        "pot": TOURNAMENT_ENTRY_FEE,
+        "players": [{
+            "userId": me_id,
+            "username": current_user["username"],
+            "displayName": current_user["displayName"],
+            "photoUrl": current_user.get("photoUrl"),
+        }],
+        "bracket": [],
+        "winners": [],
+        "createdBy": me_id,
+        "createdByName": current_user["displayName"],
+        "createdAt": datetime.utcnow(),
+    }
+    res = await db.tournaments.insert_one(doc)
+    doc["_id"] = res.inserted_id
+
+    # System message in chat
+    await db.messages.insert_one({
+        "roomId": room_id,
+        "senderId": "system",
+        "senderName": "🏆 Tournament",
+        "senderPhoto": None,
+        "messageText": f"{current_user['displayName']} scheduled a {gt_cfg['name']} knockout! Tap the trophy to join · {TOURNAMENT_ENTRY_FEE} coins entry",
+        "createdAt": datetime.utcnow(),
+        "reactions": [],
+        "isSystem": True,
+    })
+    return _serialize_tournament(doc)
+
+@api_router.post("/tournaments/{tid}/join")
+async def join_tournament(tid: str, current_user: dict = Depends(get_current_user)):
+    t = await db.tournaments.find_one({"_id": ObjectId(tid)})
+    if not t:
+        raise HTTPException(status_code=404, detail="Tournament not found")
+    if t["status"] != "lobby":
+        raise HTTPException(status_code=400, detail="Tournament already started")
+    if current_user.get("currentRoomId") != t["roomId"]:
+        raise HTTPException(status_code=403, detail="Join the room first")
+
+    me_id = str(current_user["_id"])
+    if any(p["userId"] == me_id for p in t["players"]):
+        raise HTTPException(status_code=400, detail="Already joined")
+    if len(t["players"]) >= t["size"]:
+        raise HTTPException(status_code=400, detail="Tournament is full")
+    if current_user.get("coins", 0) < t["entryFee"]:
+        raise HTTPException(status_code=400, detail=f"Need {t['entryFee']} coins")
+
+    await add_coins(me_id, -t["entryFee"], "tournament", "Tournament entry fee")
+    new_player = {
+        "userId": me_id,
+        "username": current_user["username"],
+        "displayName": current_user["displayName"],
+        "photoUrl": current_user.get("photoUrl"),
+    }
+    await db.tournaments.update_one(
+        {"_id": ObjectId(tid)},
+        {"$push": {"players": new_player}, "$inc": {"pot": t["entryFee"]}},
+    )
+    updated = await db.tournaments.find_one({"_id": ObjectId(tid)})
+
+    # Auto-start when full
+    if len(updated["players"]) >= updated["size"]:
+        updated = await _run_tournament(updated)
+    return _serialize_tournament(updated)
+
+@api_router.post("/tournaments/{tid}/start")
+async def start_tournament(tid: str, current_user: dict = Depends(get_current_user)):
+    """Manual start (creator only) once at least 2 players joined."""
+    t = await db.tournaments.find_one({"_id": ObjectId(tid)})
+    if not t:
+        raise HTTPException(status_code=404, detail="Tournament not found")
+    if t["status"] != "lobby":
+        raise HTTPException(status_code=400, detail="Already started")
+    if str(current_user["_id"]) != t["createdBy"]:
+        raise HTTPException(status_code=403, detail="Only creator can start")
+    if len(t["players"]) < 2:
+        raise HTTPException(status_code=400, detail="Need at least 2 players")
+    t = await _run_tournament(t)
+    return _serialize_tournament(t)
+
+def _play_match(p1: dict, p2: dict, game_type: str) -> tuple:
+    """Returns (winner, loser, score_winner, score_loser). Reroll on ties."""
+    while True:
+        if game_type == "card_higher":
+            s1 = random.randint(1, 13)
+            s2 = random.randint(1, 13)
+        elif game_type == "dice_roll":
+            s1 = random.randint(1, 6) + random.randint(1, 6)
+            s2 = random.randint(1, 6) + random.randint(1, 6)
+        else:
+            s1 = random.randint(1, 100)
+            s2 = random.randint(1, 100)
+        if s1 != s2:
+            break
+    if s1 > s2:
+        return p1, p2, s1, s2
+    return p2, p1, s2, s1
+
+async def _award_tournament_placement(user_id: str, placement: int, tournament_name: str):
+    cfg = TOURNAMENT_REWARDS.get(placement)
+    if not cfg:
+        return
+    await add_coins(user_id, cfg["coins"], "tournament_win", f"#{placement} in {tournament_name}")
+    inc_fields = {"pointsEarned": cfg["points"]}
+    if placement == 1:
+        inc_fields["tournamentsWon"] = 1
+    await db.users.update_one({"_id": ObjectId(user_id)}, {"$inc": inc_fields})
+    if cfg.get("vipTier"):
+        # Grant VIP tier (or upgrade) for vipDays days. We store expiresAt for reference.
+        expires_at = datetime.utcnow() + timedelta(days=cfg.get("vipDays", 30))
+        await db.users.update_one(
+            {"_id": ObjectId(user_id)},
+            {"$set": {"vipTier": cfg["vipTier"], "vipExpiresAt": expires_at}},
+        )
+    await db.notifications.insert_one({
+        "userId": user_id,
+        "title": f"🏆 {cfg['label']}",
+        "body": f"+{cfg['coins']} coins · +{cfg['points']} points in {tournament_name}" + (" · VIP Pro unlocked!" if cfg.get("vipTier") else ""),
+        "type": "tournament",
+        "createdAt": datetime.utcnow(),
+        "readStatus": False,
+    })
+
+async def _run_tournament(t: dict) -> dict:
+    """Simulate the bracket and award rewards. Supports 2/3/4 players."""
+    players = list(t["players"])
+    game_type = t["gameType"]
+    tid = t["_id"]
+    name = t.get("name", "Tournament")
+    bracket: List[Dict[str, Any]] = []
+    winners_list: List[Dict[str, Any]] = []  # 1st, 2nd, 3rd
+
+    random.shuffle(players)
+
+    if len(players) == 2:
+        w, loser, sw, sl = _play_match(players[0], players[1], game_type)
+        bracket.append({"round": "final", "matches": [
+            {"p1": players[0], "p2": players[1], "winner": w["userId"], "scoreP1": sw if w == players[0] else sl, "scoreP2": sw if w == players[1] else sl},
+        ]})
+        winners_list = [
+            {**w, "placement": 1},
+            {**loser, "placement": 2},
+        ]
+    elif len(players) == 3:
+        # P1 vs P2 → winner faces P3 (bye). 3rd = loser of round 1.
+        w1, l1, sw1, sl1 = _play_match(players[0], players[1], game_type)
+        bracket.append({"round": "semifinal", "matches": [
+            {"p1": players[0], "p2": players[1], "winner": w1["userId"], "scoreP1": sw1 if w1 == players[0] else sl1, "scoreP2": sw1 if w1 == players[1] else sl1},
+        ]})
+        wf, lf, swf, slf = _play_match(w1, players[2], game_type)
+        bracket.append({"round": "final", "matches": [
+            {"p1": w1, "p2": players[2], "winner": wf["userId"], "scoreP1": swf if wf == w1 else slf, "scoreP2": swf if wf == players[2] else slf},
+        ]})
+        winners_list = [
+            {**wf, "placement": 1},
+            {**lf, "placement": 2},
+            {**l1, "placement": 3},
+        ]
+    else:  # 4 players
+        # Semifinals
+        w1, l1, sw1, sl1 = _play_match(players[0], players[1], game_type)
+        w2, l2, sw2, sl2 = _play_match(players[2], players[3], game_type)
+        bracket.append({"round": "semifinal", "matches": [
+            {"p1": players[0], "p2": players[1], "winner": w1["userId"], "scoreP1": sw1 if w1 == players[0] else sl1, "scoreP2": sw1 if w1 == players[1] else sl1},
+            {"p1": players[2], "p2": players[3], "winner": w2["userId"], "scoreP1": sw2 if w2 == players[2] else sl2, "scoreP2": sw2 if w2 == players[3] else sl2},
+        ]})
+        # Final
+        wf, lf, swf, slf = _play_match(w1, w2, game_type)
+        # Third place
+        w3, l3, sw3, sl3 = _play_match(l1, l2, game_type)
+        bracket.append({"round": "final", "matches": [
+            {"p1": w1, "p2": w2, "winner": wf["userId"], "scoreP1": swf if wf == w1 else slf, "scoreP2": swf if wf == w2 else slf},
+            {"p1": l1, "p2": l2, "winner": w3["userId"], "scoreP1": sw3 if w3 == l1 else sl3, "scoreP2": sw3 if w3 == l2 else sl3, "thirdPlace": True},
+        ]})
+        winners_list = [
+            {**wf, "placement": 1},
+            {**lf, "placement": 2},
+            {**w3, "placement": 3},
+        ]
+
+    # Award rewards
+    for entry in winners_list:
+        await _award_tournament_placement(entry["userId"], entry["placement"], name)
+
+    await db.tournaments.update_one(
+        {"_id": tid},
+        {"$set": {
+            "status": "completed",
+            "bracket": bracket,
+            "winners": winners_list,
+            "completedAt": datetime.utcnow(),
+        }},
+    )
+
+    # System message
+    champion_name = winners_list[0]["displayName"] if winners_list else "—"
+    await db.messages.insert_one({
+        "roomId": t["roomId"],
+        "senderId": "system",
+        "senderName": "🏆 Tournament",
+        "senderPhoto": None,
+        "messageText": f"🏆 {champion_name} won the {name}! VIP Pro + 800 coins awarded.",
+        "createdAt": datetime.utcnow(),
+        "reactions": [],
+        "isSystem": True,
+    })
+
+    return await db.tournaments.find_one({"_id": tid})
+
+@api_router.get("/tournaments/{tid}")
+async def get_tournament(tid: str, current_user: dict = Depends(get_current_user)):
+    t = await db.tournaments.find_one({"_id": ObjectId(tid)})
+    if not t:
+        raise HTTPException(status_code=404, detail="Tournament not found")
+    return _serialize_tournament(t)
+
 # ==================== BOARD POSTS ====================
 
 def _serialize_post(post: dict, current_user_id: str) -> dict:
@@ -2260,7 +2720,7 @@ async def get_room_posts(
             before_post = await db.board_posts.find_one({"_id": ObjectId(before)})
             if before_post:
                 query["createdAt"] = {"$lt": before_post["createdAt"]}
-        except:
+        except Exception:
             pass
     
     # Fetch posts sorted by newest first
@@ -2630,6 +3090,61 @@ async def get_coins_leaderboard(limit: int = 50):
             "level": user.get("level", 0)
         } for idx, user in enumerate(users)
     ]
+
+@api_router.get("/leaderboard/points")
+async def get_points_leaderboard(limit: int = 50):
+    """Points earned: +10 per game win, +5 per runner-up, +30/20/10 in tournaments."""
+    users = await db.users.find(
+        {"pointsEarned": {"$gt": 0}}
+    ).sort("pointsEarned", -1).limit(limit).to_list(limit)
+    return [
+        {
+            "rank": idx + 1,
+            "id": str(user["_id"]),
+            "username": user["username"],
+            "displayName": user["displayName"],
+            "photoUrl": user.get("photoUrl"),
+            "vipTier": user.get("vipTier"),
+            "pointsEarned": user.get("pointsEarned", 0),
+            "gameWins": user.get("gameWins", 0),
+            "gameRunnerUps": user.get("gameRunnerUps", 0),
+            "tournamentsWon": user.get("tournamentsWon", 0),
+        } for idx, user in enumerate(users)
+    ]
+
+@api_router.get("/leaderboard/coins-spent")
+async def get_coins_spent_leaderboard(limit: int = 50):
+    """Top spenders ranked by total coins spent (sum of negative coin_transactions)."""
+    # spend types are negative entries with these labels
+    pipeline = [
+        {"$match": {"amount": {"$lt": 0}}},
+        {"$group": {"_id": "$userId", "spent": {"$sum": "$amount"}}},
+        {"$project": {"_id": 1, "spent": {"$abs": "$spent"}}},
+        {"$sort": {"spent": -1}},
+        {"$limit": limit},
+    ]
+    results = await db.coin_transactions.aggregate(pipeline).to_list(limit)
+    leaderboard = []
+    rank = 0
+    for r in results:
+        try:
+            uid = ObjectId(r["_id"])
+        except Exception:
+            continue
+        u = await db.users.find_one({"_id": uid})
+        if not u:
+            continue
+        rank += 1
+        leaderboard.append({
+            "rank": rank,
+            "id": str(u["_id"]),
+            "username": u["username"],
+            "displayName": u["displayName"],
+            "photoUrl": u.get("photoUrl"),
+            "vipTier": u.get("vipTier"),
+            "coinsSpent": r["spent"],
+        })
+    return leaderboard
 
 @api_router.get("/leaderboard/active")
 async def get_active_leaderboard(limit: int = 50):

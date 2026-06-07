@@ -1,0 +1,37 @@
+{
+  "summary": "Backend-only testing of iteration 5 features: 2-game list (card_higher/dice_roll with image/icon/tagline), points & coins-spent leaderboards, user-to-user coin gifting (send-status + send happy/min/self/cap/insufficient), room join currentRoomId regression (ObjectId fix), full multiplayer game flow (70/30 pot split, +10/+5 points, gameWins/gameRunnerUps, placements), aborted solo game (refund), and full tournament lifecycle (create, list, join, auto-run at size=4, manual start, wrong-room 403, full/started 400). 18/18 pytest passed in 68s.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/tournaments/{tid}/join", "issue": "When tournament is full but not started, the join check order is `status != lobby` first — for an auto-completed tournament, this returns 400 'already started' rather than 'full'. Functionally fine but the test asserts on any of started/full/already; the request spec says 'full -> 400' specifically. Consider returning 'Tournament is full' when len(players) >= size even after auto-completion."}
+    ]
+  },
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_games_tournaments_gifting.py",
+    "/app/test_reports/pytest/games_tournaments_gifting.xml"
+  ],
+  "action_items": [
+    "(LOW) /api/tournaments/{tid}/join: order checks so that 'Tournament is full' wins over 'Already started' when player count == size, to match the spec wording.",
+    "(INFO/no-op) The two-game catalogue, gifting, leaderboards (points + coins-spent), and tournament rewards (800/30/VIP-Pro, 400/20, 200/10) all behave exactly as specified — main agent is clear to ship.",
+    "(LOW) Consider clamping vipExpiresAt math via UTC explicitly (datetime.utcnow + 30 days) and exposing it in /auth/me serializer so the frontend can show countdown — currently /auth/me does not return vipExpiresAt."
+  ],
+  "critical_code_review_comments": [
+    "server.py is 3293 lines now — needs splitting into routers (coins, tournaments, games, leaderboard, friends, profile) before it gets unmaintainable. Highlighted in prior iterations as well.",
+    "_resolve_game tie-break: uses stable-sort on identical results — fine for now, but document this in code, or reroll like _play_match does, so two identical 'higher card' draws don't silently give the host the win.",
+    "send-status & send-coins both run the same 24h aggregation independently — a small race window exists between status read and send write. Acceptable for current scale; flag for future locking.",
+    "TOURNAMENT_REWARDS hardcoded — fine for now, but moving to a `tournament_configs` collection (or settings file) would let admins tune coins/points without redeploy.",
+    "Tournament 'list' endpoint filters by completedAt within 2h — this is good, but a knockout that completes >2h later (e.g. someone leaves it in lobby) silently disappears. Consider exposing it via a `?include=all` flag for history screens.",
+    "/coins/send writes a notification but uses raw user_id string for the recipient — confirmed working; no _id leakage in responses."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_games_tournaments_gifting.py (NEW — 18 tests, includes cleanup fixture)"
+  ],
+  "success_rate": {"backend": "100% (18/18)", "frontend": "skipped"},
+  "test_credentials": "On-the-fly users created with timestamped emails (alice_g{ts}@t.com etc) with password 'pass1234'. Module-scoped autouse fixture deletes these users + their coin_transactions/coin_gifts/notifications/tournaments/game_sessions at end of run.",
+  "seed_data_creation": "5 throwaway users created and torn down (alice_g, bob_g, carol_g, dave_g, eve_g). No persistent state added. /api/init/rooms invoked (idempotent) to ensure default rooms exist.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Backend URL from /app/frontend/.env EXPO_PUBLIC_BACKEND_URL. Test file is fully self-cleaning and can be re-run. Game tests sleep ~22s each (GAME_TIMER_SECONDS=20) — full suite ~68s. Tournaments run synchronously when player count == size, so no sleep needed for tournament flow. To re-run only this iteration's tests: `pytest /app/backend/tests/test_games_tournaments_gifting.py -v`. Default password convention is 'pass1234' (see /app/memory/test_credentials.md). The bug from prior iteration (ObjectId vs str in join_room) is verified fixed — see TestRoomJoinCurrentRoomId.",
+  "rca_of_issue": "No bugs found in this iteration's scope. Verified the previously-reported regression: POST /api/rooms/{id}/join now correctly sets currentRoomId to the room id string, so subsequent /games and /tournaments endpoints pass the 'in-room' check. Tournament auto-resolution math verified: starting coins 200, all 4 paid 10 entry = 190; 1st +800=990, 2nd +400=590, 3rd +200=390, 4th 190 (no reward). Points: 1st +30, 2nd +20, 3rd +10, 4th 0. VIP Pro granted ONLY to 1st place with ~30 day vipExpiresAt. Full game flow math verified for 2-player pot=20: winner 14 (round(20*0.7)), runner 6 (20-14), +10 / +5 points, gameWins/gameRunnerUps counters incremented, placement 1/2 stored on player docs."
+}
