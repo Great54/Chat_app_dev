@@ -1,7 +1,8 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { router } from 'expo-router';
 import api from '../api/client';
 import { storage } from '@/src/utils/storage';
+import { playNotificationSound, playMessageSound } from '@/src/utils/sound';
 
 interface User {
   id: string;
@@ -46,6 +47,68 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     checkAuth();
   }, []);
+
+  // Global notification poll: as soon as we have a logged-in user, poll
+  // /notifications every 8s. When a new notification id appears (i.e. one
+  // that wasn't in the previous snapshot), play the notification sound.
+  // The very first poll just seeds the dedup set — silent — so history
+  // doesn't replay sounds on app launch.
+  //
+  // We also poll the global direct-messages unread counter every 6s and
+  // play the message sound when it strictly increases, so DMs that arrive
+  // while the user is anywhere in the app (not just inside a room) still
+  // produce an audible cue.
+  const seenNotificationIdsRef = useRef<Set<string> | null>(null);
+  const lastDmUnreadRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (!user) {
+      seenNotificationIdsRef.current = null;
+      lastDmUnreadRef.current = null;
+      return;
+    }
+    let cancelled = false;
+    const pollNotifications = async () => {
+      try {
+        const res = await api.get('/notifications');
+        if (cancelled) return;
+        const list: { id: string }[] = Array.isArray(res.data) ? res.data : [];
+        const ids = new Set(list.map((n) => n.id));
+        if (seenNotificationIdsRef.current === null) {
+          seenNotificationIdsRef.current = ids;
+          return;
+        }
+        const prev = seenNotificationIdsRef.current;
+        let fresh = 0;
+        for (const n of list) if (!prev.has(n.id)) fresh++;
+        seenNotificationIdsRef.current = ids;
+        if (fresh > 0) playNotificationSound();
+      } catch {
+        /* swallow */
+      }
+    };
+    const pollDmUnread = async () => {
+      try {
+        const res = await api.get('/messages/direct/unread/total');
+        if (cancelled) return;
+        const n = res.data?.unreadCount || 0;
+        if (lastDmUnreadRef.current !== null && n > lastDmUnreadRef.current) {
+          playMessageSound();
+        }
+        lastDmUnreadRef.current = n;
+      } catch {
+        /* swallow */
+      }
+    };
+    pollNotifications();
+    pollDmUnread();
+    const i1 = setInterval(pollNotifications, 8000);
+    const i2 = setInterval(pollDmUnread, 6000);
+    return () => {
+      cancelled = true;
+      clearInterval(i1);
+      clearInterval(i2);
+    };
+  }, [user?.id]);
 
   const checkAuth = async () => {
     try {

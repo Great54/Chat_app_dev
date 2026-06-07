@@ -31,6 +31,7 @@ import FeedTab from '@/src/components/FeedTab';
 import TournamentModal from '@/src/components/TournamentModal';
 import AvatarWithAura from '@/src/components/AvatarWithAura';
 import VipEliteWelcomeBanner from '@/src/components/VipEliteWelcomeBanner';
+import { playRoomEnterSound, playMessageSound } from '@/src/utils/sound';
 
 interface Message {
   id: string;
@@ -91,6 +92,11 @@ export default function RoomScreen() {
   const flatListRef = useRef<FlatList>(null);
   const gameRef = useRef<GamePanelHandle>(null);
 
+  // Refs to detect newly-arrived items between polls so we can play sounds.
+  // We seed them on first load so the very first hydration is silent.
+  const seenMemberIdsRef = useRef<Set<string> | null>(null);
+  const seenMessageIdsRef = useRef<Set<string> | null>(null);
+
   useEffect(() => {
     loadRoomData();
     loadDmUnread();
@@ -107,7 +113,8 @@ export default function RoomScreen() {
   const loadDmUnread = async () => {
     try {
       const res = await api.get('/messages/direct/unread/total');
-      setDmUnreadCount(res.data?.unreadCount || 0);
+      const n = res.data?.unreadCount || 0;
+      setDmUnreadCount(n);
     } catch {}
   };
 
@@ -120,8 +127,14 @@ export default function RoomScreen() {
       ]);
       const currentRoom = roomResponse.data.find((r: Room) => r.id === id);
       setRoom(currentRoom);
-      setMessages(Array.isArray(messagesResponse.data) ? messagesResponse.data : []);
-      setMembers(membersResponse.data);
+      const msgList: Message[] = Array.isArray(messagesResponse.data) ? messagesResponse.data : [];
+      const memList: Member[] = Array.isArray(membersResponse.data) ? membersResponse.data : [];
+      // Seed dedup sets silently on first load — no entry/message sounds for
+      // history that already existed when we joined the room.
+      seenMemberIdsRef.current = new Set(memList.map((m) => m.userId));
+      seenMessageIdsRef.current = new Set(msgList.map((m) => m.id));
+      setMessages(msgList);
+      setMembers(memList);
     } catch (error) {
       Alert.alert('Error', 'Failed to load room data');
     }
@@ -134,8 +147,36 @@ export default function RoomScreen() {
         api.get(`/rooms/${id}/members`),
         api.get('/rooms'),
       ]);
-      setMessages(Array.isArray(messagesResponse.data) ? messagesResponse.data : []);
-      setMembers(Array.isArray(membersResponse.data) ? membersResponse.data : []);
+      const msgList: Message[] = Array.isArray(messagesResponse.data) ? messagesResponse.data : [];
+      const memList: Member[] = Array.isArray(membersResponse.data) ? membersResponse.data : [];
+
+      // --- Detect new members and play the room-enter sound (excluding self).
+      if (seenMemberIdsRef.current) {
+        const prev = seenMemberIdsRef.current;
+        let newEntries = 0;
+        for (const m of memList) {
+          if (!prev.has(m.userId) && m.userId !== user?.id) newEntries++;
+        }
+        if (newEntries > 0) playRoomEnterSound();
+      }
+      seenMemberIdsRef.current = new Set(memList.map((m) => m.userId));
+
+      // --- Detect new messages and play the message sound (excluding ones
+      //     the current user just sent themselves).
+      if (seenMessageIdsRef.current) {
+        const prev = seenMessageIdsRef.current;
+        let newInbound = 0;
+        for (const msg of msgList) {
+          if (prev.has(msg.id)) continue;
+          if (msg.senderId === user?.id) continue;
+          newInbound++;
+        }
+        if (newInbound > 0) playMessageSound();
+      }
+      seenMessageIdsRef.current = new Set(msgList.map((m) => m.id));
+
+      setMessages(msgList);
+      setMembers(memList);
       const roomsData = Array.isArray(roomsResponse.data) ? roomsResponse.data : [];
       const currentRoom = roomsData.find((r: Room) => r.id === id);
       setRoom(currentRoom);
