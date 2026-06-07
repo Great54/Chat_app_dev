@@ -258,85 +258,96 @@ export default function BoardTab({ roomId, active }: BoardTabProps) {
   const renderPost = ({ item }: { item: BoardPost }) => {
     const vipStyle = getVipStyle(item.authorVipTier);
     const isOwn = item.authorId === user?.id;
+    // Image aspect ratio: prefer 1:1, fallback 4:5 — use 4/5 if user prefers tall
+    const imageAspectRatio = 1; // 1:1 — change to 4/5 for portrait
 
     return (
-      <View style={styles.postCard}>
-        {/* Author header */}
-        <View style={styles.postHeader}>
-          <TouchableOpacity 
-            style={styles.authorRow}
+      <View style={styles.postCard} testID={`post-${item.id}`}>
+        {/* Top row: avatar (left) + username column (right) */}
+        <View style={styles.postTopRow}>
+          <TouchableOpacity
             onPress={() => openProfile(item.authorId)}
+            activeOpacity={0.85}
+            testID={`post-avatar-${item.id}`}
           >
-            <View style={[styles.avatar, renderVipBorder(item.authorVipTier)]}>
+            <View style={[styles.postAvatar, vipStyle && { borderColor: vipStyle.borderColor, borderWidth: 2 }]}>
               {item.authorPhotoUrl ? (
-                <Image source={{ uri: item.authorPhotoUrl }} style={styles.avatarImage} />
+                <Image source={{ uri: item.authorPhotoUrl }} style={styles.postAvatarImage} />
               ) : (
-                <Ionicons name="person" size={20} color={COLORS.textSecondary} />
+                <Ionicons name="person" size={26} color="#7c3aed" />
               )}
             </View>
-            <View style={styles.authorInfo}>
-              <View style={styles.nameRow}>
-                <Text style={[styles.authorName, vipStyle && { color: vipStyle.nameColor }]}>
-                  {item.authorDisplayName}
-                </Text>
-                {vipStyle && (
-                  <Ionicons 
-                    name={vipStyle.badgeIcon === 'diamond' ? 'diamond' : 'star'} 
-                    size={12} 
-                    color={vipStyle.crownColor}
-                    style={styles.vipIcon}
-                  />
-                )}
-              </View>
-              <Text style={styles.timestamp}>{formatTimeAgo(item.createdAt)}</Text>
-            </View>
           </TouchableOpacity>
-          {isOwn && (
-            <TouchableOpacity 
-              style={styles.deleteButton}
-              onPress={() => handleDeletePost(item.id)}
-            >
-              <Ionicons name="trash-outline" size={18} color={COLORS.error} />
-            </TouchableOpacity>
-          )}
+          <View style={styles.postTextWrap}>
+            <View style={styles.postNameRow}>
+              <Text
+                style={[styles.postAuthorName, vipStyle && { color: vipStyle.nameColor }]}
+                onPress={() => openProfile(item.authorId)}
+              >
+                {item.authorDisplayName}
+              </Text>
+              {vipStyle && (
+                <Ionicons
+                  name={vipStyle.badgeIcon === 'diamond' ? 'diamond' : 'star'}
+                  size={12}
+                  color={vipStyle.crownColor}
+                  style={{ marginLeft: 4 }}
+                />
+              )}
+              <Text style={styles.postTimestamp}>{formatTimeAgo(item.createdAt)}</Text>
+              {isOwn && (
+                <TouchableOpacity
+                  style={styles.postDelete}
+                  onPress={() => handleDeletePost(item.id)}
+                  testID={`post-delete-${item.id}`}
+                >
+                  <Ionicons name="trash-outline" size={16} color={COLORS.error} />
+                </TouchableOpacity>
+              )}
+            </View>
+            <Text style={styles.postText}>{item.text || '(No text)'}</Text>
+          </View>
         </View>
 
-        {/* Post content */}
-        <Text style={styles.postText}>{item.text || '(No text)'}</Text>
-
-        {/* Post image */}
+        {/* Post image — 1:1 ratio, centered */}
         {item.imageBase64 && (
-          <View style={styles.postImageContainer}>
-            <Image 
-              source={{ uri: item.imageBase64 }} 
-              style={styles.postImage}
+          <View style={styles.postImageCenter}>
+            <Image
+              source={{ uri: item.imageBase64 }}
+              style={[styles.postImage, { aspectRatio: imageAspectRatio }]}
               contentFit="cover"
             />
           </View>
         )}
 
-        {/* Actions bar */}
+        {/* Actions on the right */}
         <View style={styles.actionsBar}>
-          <TouchableOpacity 
-            style={styles.actionButton}
+          <View style={{ flex: 1 }} />
+          <TouchableOpacity
+            style={styles.actionPill}
             onPress={() => handleLikePost(item.id)}
+            testID={`post-like-${item.id}`}
           >
-            <Ionicons 
-              name={item.likedByMe ? 'heart' : 'heart-outline'} 
-              size={22} 
-              color={item.likedByMe ? COLORS.error : COLORS.textSecondary}
+            <Ionicons
+              name={item.likedByMe ? 'heart' : 'heart-outline'}
+              size={20}
+              color={item.likedByMe ? COLORS.error : '#7c3aed'}
             />
-            <Text style={[styles.actionCount, item.likedByMe && styles.likedCount]}>
-              {item.likesCount}
-            </Text>
+            {item.likesCount > 0 && (
+              <Text style={[styles.actionCount, item.likedByMe && styles.likedCount]}>
+                {item.likesCount}
+              </Text>
+            )}
           </TouchableOpacity>
-
-          <TouchableOpacity 
-            style={styles.actionButton}
+          <TouchableOpacity
+            style={styles.actionPill}
             onPress={() => openComments(item)}
+            testID={`post-comment-${item.id}`}
           >
-            <Ionicons name="chatbubble-outline" size={20} color={COLORS.textSecondary} />
-            <Text style={styles.actionCount}>{item.commentsCount}</Text>
+            <Ionicons name="chatbubble-ellipses-outline" size={20} color="#7c3aed" />
+            {item.commentsCount > 0 && (
+              <Text style={styles.actionCount}>{item.commentsCount}</Text>
+            )}
           </TouchableOpacity>
         </View>
       </View>
@@ -553,7 +564,7 @@ export default function BoardTab({ roomId, active }: BoardTabProps) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: COLORS.background,
+    backgroundColor: '#fdf2f8',
   },
   loadingContainer: {
     flex: 1,
@@ -562,18 +573,19 @@ const styles = StyleSheet.create({
   },
   listContent: {
     paddingBottom: SPACING.xl,
+    paddingTop: SPACING.sm,
   },
   createPostButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: COLORS.cardBg,
+    backgroundColor: '#ffffff',
     marginHorizontal: SPACING.md,
     marginVertical: SPACING.sm,
     padding: SPACING.md,
-    borderRadius: SIZES.borderRadius,
+    borderRadius: 14,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: '#fbcfe8',
   },
   createPostInner: {
     flexDirection: 'row',
@@ -596,95 +608,107 @@ const styles = StyleSheet.create({
     borderRadius: 18,
   },
   createPlaceholder: {
-    color: COLORS.textSecondary,
+    color: '#9ca3af',
     fontSize: 14,
   },
   postCard: {
-    backgroundColor: COLORS.cardBg,
+    backgroundColor: '#ffffff',
     marginHorizontal: SPACING.md,
-    marginBottom: SPACING.sm,
-    borderRadius: SIZES.borderRadius,
-    padding: SPACING.md,
+    marginBottom: SPACING.md,
+    borderRadius: 14,
+    paddingHorizontal: SPACING.md,
+    paddingTop: SPACING.md,
+    paddingBottom: SPACING.sm,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: '#fbcfe8',
+    shadowColor: '#000',
+    shadowOpacity: 0.05,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 1,
   },
-  postHeader: {
+  postTopRow: {
     flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: SPACING.sm,
+    alignItems: 'flex-start',
   },
-  authorRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
-  },
-  avatar: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: COLORS.background,
+  postAvatar: {
+    width: 48,
+    height: 48,
+    backgroundColor: 'rgba(124,58,237,0.10)',
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: SPACING.sm,
     overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
   },
-  avatarImage: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+  postAvatarImage: {
+    width: 48,
+    height: 48,
   },
-  authorInfo: {
+  postTextWrap: {
     flex: 1,
     minWidth: 0,
   },
-  nameRow: {
+  postNameRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    flexWrap: 'wrap',
+    marginBottom: 2,
   },
-  authorName: {
-    color: COLORS.text,
+  postAuthorName: {
+    color: '#2563eb',
     fontSize: 15,
-    fontWeight: '700',
+    fontWeight: '800',
   },
-  vipIcon: {
-    marginLeft: 4,
+  postTimestamp: {
+    color: '#9ca3af',
+    fontSize: 11,
+    marginLeft: 8,
   },
-  timestamp: {
-    color: COLORS.textSecondary,
-    fontSize: 12,
-    marginTop: 2,
-  },
-  deleteButton: {
-    padding: SPACING.xs,
+  postDelete: {
+    marginLeft: 'auto',
+    padding: 2,
   },
   postText: {
-    color: COLORS.text,
+    color: '#1f2937',
     fontSize: 15,
     lineHeight: 22,
-    marginBottom: SPACING.sm,
+    marginTop: 2,
+  },
+  postImageCenter: {
+    alignSelf: 'center',
+    marginTop: SPACING.sm,
+    borderRadius: 10,
+    overflow: 'hidden',
+    width: '78%',
+    backgroundColor: '#f3f4f6',
+  },
+  postImage: {
+    width: '100%',
   },
   postImageContainer: {
     borderRadius: SIZES.borderRadius,
     overflow: 'hidden',
     marginBottom: SPACING.sm,
   },
-  postImage: {
-    width: '100%',
-    height: 200,
-  },
   actionsBar: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingTop: SPACING.sm,
-    borderTopWidth: 1,
-    borderTopColor: COLORS.border,
-    gap: SPACING.lg,
+    marginTop: SPACING.xs,
+    gap: SPACING.sm,
   },
-  actionButton: {
+  actionPill: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: SPACING.xs,
+    gap: 4,
+    backgroundColor: '#f5f3ff',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: '#ede9fe',
   },
   actionCount: {
     color: COLORS.textSecondary,
@@ -700,13 +724,13 @@ const styles = StyleSheet.create({
     paddingVertical: SPACING.xl * 2,
   },
   emptyTitle: {
-    color: COLORS.text,
+    color: '#1f2937',
     fontSize: 18,
     fontWeight: '700',
     marginTop: SPACING.md,
   },
   emptyText: {
-    color: COLORS.textSecondary,
+    color: '#6b7280',
     fontSize: 14,
     marginTop: SPACING.xs,
   },

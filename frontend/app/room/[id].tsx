@@ -274,9 +274,11 @@ export default function RoomScreen() {
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
         <View style={styles.headerLeft}>
-          <TouchableOpacity onPress={handleBack} style={styles.backButton} testID="room-back-btn">
-            <Ionicons name="arrow-back" size={24} color={COLORS.text} />
-          </TouchableOpacity>
+          {activeRoomTab !== 'board' && (
+            <TouchableOpacity onPress={handleBack} style={styles.backButton} testID="room-back-btn">
+              <Ionicons name="arrow-back" size={24} color={COLORS.text} />
+            </TouchableOpacity>
+          )}
           <TouchableOpacity
             onPress={() => setTournamentModalOpen(true)}
             style={styles.tournamentBtn}
