@@ -249,9 +249,8 @@ export default function RoomScreen() {
     setCurrentUserTarget({ x: x - 24, y: y - 24 });
   };
 
-  // Tap on another user's avatar → open profile popup
+  // Tap on any user's avatar (including your own) → open profile popup
   const handleAvatarPress = (member: Member) => {
-    if (member.userId === user?.id) return;
     openProfile(member.userId);
   };
 

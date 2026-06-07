@@ -270,17 +270,13 @@ export default function DraggableMember({
       ]}
       testID={`member-${member.userId}`}
     >
-      {isCurrentUser ? (
-        avatarVisual
-      ) : (
-        <TouchableOpacity
-          activeOpacity={0.7}
-          onPress={() => onAvatarPress?.(member)}
-          testID={`avatar-tap-${member.userId}`}
-        >
-          {avatarVisual}
-        </TouchableOpacity>
-      )}
+      <TouchableOpacity
+        activeOpacity={0.7}
+        onPress={() => onAvatarPress?.(member)}
+        testID={`avatar-tap-${member.userId}`}
+      >
+        {avatarVisual}
+      </TouchableOpacity>
       {vipStyle ? (
         <Text
           style={[
