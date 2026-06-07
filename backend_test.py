@@ -10,7 +10,7 @@ import time
 from typing import Dict, Optional
 
 # Backend URL
-BASE_URL = "https://posts-profile-ui.preview.emergentagent.com/api"
+BASE_URL = "https://game-stability-5.preview.emergentagent.com/api"
 
 # Test credentials
 TEST_USER = {
