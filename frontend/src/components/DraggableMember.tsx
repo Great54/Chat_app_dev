@@ -201,7 +201,6 @@ export default function DraggableMember({
           color={vipStyle?.crownColor || COLORS.primary}
         />
       )}
-      {member.onlineStatus && <View style={styles.onlineDot} />}
       {customBadge ? (
         <View
           style={[

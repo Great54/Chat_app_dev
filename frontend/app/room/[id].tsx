@@ -386,7 +386,7 @@ export default function RoomScreen() {
           <Ionicons
             name={activeRoomTab === 'feed' ? 'home' : 'home-outline'}
             size={16}
-            color={activeRoomTab === 'feed' ? COLORS.primary : COLORS.textSecondary}
+            color={activeRoomTab === 'feed' ? '#7c3aed' : '#f1f5f9'}
           />
           <Text style={[styles.roomTabText, activeRoomTab === 'feed' && styles.roomTabTextActive]}>
             Feed
@@ -401,7 +401,7 @@ export default function RoomScreen() {
           <Ionicons
             name={activeRoomTab === 'chat' ? 'chatbubbles' : 'chatbubbles-outline'}
             size={16}
-            color={activeRoomTab === 'chat' ? COLORS.primary : COLORS.textSecondary}
+            color={activeRoomTab === 'chat' ? '#7c3aed' : '#f1f5f9'}
           />
           <Text style={[styles.roomTabText, activeRoomTab === 'chat' && styles.roomTabTextActive]}>
             Chat
@@ -416,7 +416,7 @@ export default function RoomScreen() {
           <Ionicons
             name={activeRoomTab === 'board' ? 'clipboard' : 'clipboard-outline'}
             size={16}
-            color={activeRoomTab === 'board' ? COLORS.primary : COLORS.textSecondary}
+            color={activeRoomTab === 'board' ? '#7c3aed' : '#f1f5f9'}
           />
           <Text style={[styles.roomTabText, activeRoomTab === 'board' && styles.roomTabTextActive]}>
             Board
@@ -521,11 +521,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     marginHorizontal: SPACING.md,
     marginTop: SPACING.sm,
-    backgroundColor: '#15101f',
-    borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.16)',
+    borderRadius: 14,
     padding: 4,
     borderWidth: 1,
-    borderColor: '#2a2240',
+    borderColor: 'rgba(255,255,255,0.28)',
   },
   roomTab: {
     flex: 1,
@@ -534,18 +534,27 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 6,
     paddingVertical: 8,
-    borderRadius: 9,
+    borderRadius: 10,
   },
   roomTabActive: {
-    backgroundColor: '#1f1830',
+    backgroundColor: 'rgba(255,255,255,0.85)',
+    shadowColor: '#000',
+    shadowOpacity: 0.18,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
   },
   roomTabText: {
-    color: COLORS.textSecondary,
+    color: '#f1f5f9',
     fontSize: 13,
     fontWeight: '700',
+    textShadowColor: 'rgba(0,0,0,0.5)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
   },
   roomTabTextActive: {
-    color: COLORS.primary,
+    color: '#7c3aed',
+    textShadowColor: 'transparent',
   },
   boardWrap: {
     flex: 1,
