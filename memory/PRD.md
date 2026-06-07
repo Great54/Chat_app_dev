@@ -122,3 +122,18 @@
 
 ### Smart enhancement idea
 > Add an **avatar picker tile-grid** in Profile → Edit (3×3 of the same 9 astronauts + a 10th "Upload your own" tile). Lets users quickly switch their default to a different astronaut without uploading, gives them an instant identity moment, and the same 9-image set can later seed a **paid VIP avatar pack** (different art style, e.g. cyberpunk animals) — small build, real personalization upside.
+
+## Iteration 19 (Jun 2026) — Chat row layout (whitespace + vertical centering)
+
+### What shipped
+- Redesigned `renderMessage` in `app/room/[id].tsx`: replaced the 3-column layout (`avatar | senderCol(width=84) | messageCol(flex=1)`) — which produced an awkward white-space gap between username and message and left-anchored everything to the top of the row — with a clean 2-column layout:
+  - **left**: avatar (now bumped from 32 → 40 px so the cute astronaut PFP reads well),
+  - **right**: a single content column that stacks `senderName` (small, colored, single-line) above `messageText`.
+  Wrapped in `messageRow` with `alignItems: 'center'` and a `minHeight: 40` content col so name + text are vertically centered on the avatar baseline.
+- Made the existing legacy `.avatar` / `.avatarImg` styles circular (`borderRadius: 16`) for consistency.
+
+### Verified (manual)
+- Sent two messages from the host account in "World Vibez": both rows render the bunny astronaut avatar with sender name (`varr`) tightly above the message (`hello` / `Hi`) and no horizontal gap. Screenshot attached.
+
+### Smart enhancement idea
+> Add a **subtle hover/press highlight** on chat rows (light translucent purple at `rgba(124,58,237,0.05)`) plus a `time-ago` timestamp on the right that fades in on hover. Makes the chat feel more "live" without taking screen real estate from the avatars — a tiny polish lever that closes the gap between MVP-chat and a premium social product.

@@ -237,11 +237,11 @@ export default function RoomScreen() {
         onPress={() => openProfile(item.senderId)}
         testID={`msg-row-${item.id}`}
       >
-        <View testID={`msg-avatar-${item.senderId}`} style={{ marginRight: 8 }}>
+        <View testID={`msg-avatar-${item.senderId}`} style={styles.msgAvatarWrap}>
           <AvatarWithAura
             photoUrl={item.senderPhoto}
             displayName={item.senderName}
-            size={32}
+            size={40}
             vipTier={item.senderVipTier}
             vipBadgeId={item.senderVipBadgeId}
             auraType={item.senderAuraType}
@@ -250,18 +250,16 @@ export default function RoomScreen() {
             showBadge
           />
         </View>
-        <View style={styles.senderCol}>
+        <View style={styles.msgContentCol}>
           <Text
             style={[
               styles.senderName,
               item.senderUsernameColor ? { color: item.senderUsernameColor } : null,
             ]}
-            numberOfLines={0}
+            numberOfLines={1}
           >
             {item.senderName}
           </Text>
-        </View>
-        <View style={styles.messageCol}>
           <Text
             style={[
               styles.messageText,
@@ -724,14 +722,23 @@ const styles = StyleSheet.create({
   },
   messageRow: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
-    marginBottom: 8,
+    alignItems: 'center',          // vertically center name+text with the avatar
+    marginBottom: 10,
     paddingHorizontal: 2,
+  },
+  msgAvatarWrap: {
+    marginRight: 10,
+    alignSelf: 'center',           // keep the avatar visually anchored to the centerline
+  },
+  msgContentCol: {
+    flex: 1,
+    justifyContent: 'center',
+    minHeight: 40,                 // matches avatar height so name+text vertically center
   },
   avatar: {
     width: 32,
     height: 32,
-    borderRadius: 0,
+    borderRadius: 16,
     backgroundColor: 'rgba(124,58,237,0.12)',
     alignItems: 'center',
     justifyContent: 'center',
@@ -741,25 +748,19 @@ const styles = StyleSheet.create({
   avatarImg: {
     width: 32,
     height: 32,
-    borderRadius: 0,
-  },
-  senderCol: {
-    width: 84,
-    marginRight: 8,
+    borderRadius: 16,
   },
   senderName: {
-    fontSize: 15,
+    fontSize: 14,
     color: '#7c3aed',
     fontWeight: '700',
-    lineHeight: 19,
-  },
-  messageCol: {
-    flex: 1,
+    lineHeight: 18,
+    marginBottom: 1,
   },
   messageText: {
     fontSize: 15,
     color: '#1f2937',
-    lineHeight: 19,
+    lineHeight: 20,
   },
   emptyMessages: {
     alignItems: 'center',
