@@ -1,44 +1,72 @@
 # GenC Vibez — PRD
 
-## Problem Statement (verbatim, from this session)
-"in this repo now modify the existing private messaging in the flow, default when user signs in or sign up they should be placed in a room where they left earlier(if new user then place them in world vibes room, if that room is full then next room (whichever is fine). next in the room they will find private messaging, I have already implemented in the repo but just make changes like in this attached image. if a user presses that icon -> no of private messages received, on that a little pink or green dot stating they have unread it, next they can press on that and chat, let all these themes be light coloured. in th3 3rd image I attached you can see the options, those options also need to be updated and try to use same dimensions as present in image and also UI it is colourful bright"
+## Original problem statement (Jan 2026)
+> In the selected repository now make the changes, when pressed others profile/others press our profile, likes, friends, profile pic, name, background pic, coins available, posts, bio, if any vip badge that should also be displayed. follow the above attached image on how the profile section should look like, profile image left side name on middle something like this, use pleasant bright colours and cursive writing. In the tournament section, keep rules as if more than 4 people join then 2 winners will be there otherwise one winner, currently in repo there is 50/50 share of prize for both instead first person should get more coins than second. and in tournament section if a user creates a tournament it should be visible for 5 hours for everyone in the app, like this user has created the tournament, so others can join. tournament will be knockout based. each person will face other person, next if tournament is created others can join the tournament if they have the code. you can make public/private kind of tournaments. tournaments is already there in the repo. just make these changes.
 
-## User personas
-- **Returning chatter** — wants to land back in their last room instantly on login.
-- **New signup** — should be dropped into the busiest active community (World Vibez) without ceremony.
-- **DM user** — needs a fast, bright, mobile-style inbox with quick actions (View Profile, View Message, Report/Block, Delete) on any conversation.
+## Tech stack
+- Frontend: React Native + Expo Router (web build served on :3000)
+- Backend: FastAPI + Motor (Async Mongo) at :8001, prefix `/api`
+- Database: MongoDB local
 
-## Core requirements (static)
-1. Auto-join the room on login/signup. Returning users → last room; new users → World Vibez; fallback → next non-full room. Show a "Joining <room>…" indicator.
-2. The room screen's chatbox icon shows a pink dot when there are unread DMs.
-3. The Private Messages panel is light + colourful — Messages / Settings tabs, bright blue conversation rows, pink unread dot, tap-to-reveal options popup (View Profile / View Message / Report|Block / Delete) sized like the screenshot.
-4. Settings tab — allow messages from (Everyone / Friends / Nobody), notifications toggle, About card.
-5. Main chat room stays dark.
+## What's been implemented (this iteration — Jun 2026)
 
-## What's been implemented (this session — Jun 2026)
-**Backend (`/app/backend/server.py`)**
-- `POST /api/rooms/auto-join` — picks last room → World Vibez → first non-full; performs join atomically; returns `{ roomId, roomName, wasResumed }`.
-- `/rooms/{id}/join` now also writes `lastRoomId`; `/rooms/{id}/leave` clears `currentRoomId` but **preserves** `lastRoomId` so the user can be auto-resumed.
-- `GET /api/messages/direct/unread/total` — count of unread DMs for the badge dot.
-- `DELETE /api/messages/direct/conversation/{user_id}` — deletes the full DM thread.
-- `GET / PUT /api/users/me/dm-settings` — `allowMessagesFrom` (everyone|friends|nobody), `notificationsEnabled`, `blockedUserIds`.
-- Backend `.env` was missing; created with `MONGO_URL=mongodb://localhost:27017`, `DB_NAME=genc_vibez`.
+### Profile (popup + full page)
+- Redesigned `ProfilePopupModal` and `app/profile/[id].tsx` with the user's reference layout:
+  - Background banner image (top), profile picture on the LEFT of the banner, display name in CENTER in **cursive (Dancing Script / Great Vibes)**.
+  - Bright pastel theme (cream `#fffaf3` card, gold/peach banner, sky-blue / pink / mint / amber stat chips).
+  - Status pill, VIP badge crown on avatar, scallop divider, gradient "View Profile" CTA.
+  - 4-stat row: **Coins, Friends, Likes, Posts** (each a colored bordered chip with cursive value).
+  - Cursive **Bio** below stats.
+  - VIP Pro/Elite badge pills with ribbon for Elite users retained.
+- Backend `/api/users/{user_id}/profile-card` now returns `postsCount` and `likesCount` aggregated across rooms.
+- **Privacy:**
+  - `/api/users/{user_id}/friends` now returns **403** unless `user_id == current_user.id`. Only owners see their friends list.
+  - Profile page hides the **Friends tab** for non-self viewers; only counts remain visible.
+  - Likes count is shown but the list of likers is not exposed (already behavior — frontend never requested it for other users).
 
-**Frontend**
-- `AuthContext`: post-login/register navigates to `/(tabs)?autojoin=1` and exposes `autoJoin()`.
-- `app/(tabs)/index.tsx`: consumes `?autojoin=1`, shows the "Joining <RoomName>…" overlay (`data-testid="auto-join-indicator"`), then `router.replace('/room/<id>')`.
-- `app/room/[id].tsx`: polls `GET /messages/direct/unread/total` every 3s; renders `data-testid="dm-unread-dot"` on the chatbox icon.
-- `src/components/PrivateMessagesModal.tsx`: full redesign — light/bright theme, Messages/Settings tabs (yellow underline on active), blue conversation cards with avatar + message + `from <user>` + time + pink unread dot, tap-row reveals 2×2 options panel (View Profile / View Message / Report|Block / Delete), light chat view with composer and pink send button, Settings tab with allow-message chips + notifications toggle + about card.
-- `metro.config.js` + `package.json`: `CI=true` for Expo web (container's inotify limit is RO-fixed at 12288, so file-watching is disabled in supervisor).
+### Tournaments
+- Prize distribution rewritten in `_run_tournament` + new helpers (`_winners_count`, `_prize_split`):
+  - **≤4 players** → 1 winner takes 100% of the pot.
+  - **5–10 players** → 2 winners, 70% / 30%.
+  - **>10 players** → `ceil(0.30 × n)` winners, with ratios `n:(n-1):…:1` (e.g. 11p → 4 winners → 44/33/22/11 of pot 110).
+- All prize splits are integer math and always sum exactly to the pot (remainder → champion).
+- Placements are derived from the **knockout elimination round** (later elimination = higher placement). Champion never eliminated → 1st place.
+- Tournament visibility window extended from 2h → **5h** (`TOURNAMENT_VISIBLE_HOURS = 5`). Tournaments remain **room-scoped** (per user request — not app-wide).
+- **Public / Private tournaments:**
+  - `TournamentCreate` accepts `isPrivate: bool` (default `false`).
+  - Private tournaments get a random **6-character invite code** (alphabet `A-Z` minus `I,O` + digits `2-9`).
+  - `GET /api/rooms/{room_id}/tournaments` filters out private tournaments unless the viewer is the creator or already joined.
+  - `POST /api/tournaments/{tid}/join` rejects private tournaments with 403 unless the caller is the creator / already in the player list.
+  - New endpoint `POST /api/tournaments/join-by-code` lets anyone in the host's room join with the code.
+  - Join code is only returned to creator / joined players via the serializer (`viewer_id`-gated).
+- Frontend `TournamentModal`:
+  - Header now has a **Code** button (opens "Join with code" mini-modal) alongside **New**.
+  - Rewards banner updated to show the 3 tiers (≤4p / 5-10p / >10p).
+  - Each tournament card shows a **PUBLIC** / **PRIVATE** pill and the invite code badge (creator + joined players only).
+  - Create flow has a **Public / Private** chooser and a dynamic Reward preview that renders the exact list of winners + coin amounts using the same `prizeShares()` mirror function on the frontend.
+  - Detail screen displays a copy-friendly **Invite code** card while the tournament is in lobby (creator / joined players only) and renders variable-length winners table after completion.
 
-## Backlog (P0 / P1 / P2)
-- **P1** Append new sent DM to local state instead of refetching, to avoid the ~2s flash on send.
-- **P1** Switch back to React-style optimistic mark-as-read so the pink dot disappears the moment a user opens the chat view (instead of after the next poll).
-- **P2** Settings: surface the blocked-users list with unblock + report-history.
-- **P2** Replace polling with a WebSocket event (`dm:new`) so the badge updates in real time.
-- **P2** `PUT /dm-settings` should 422 on invalid `allowMessagesFrom` values instead of silently dropping them.
-- **P2** Migrate `props.pointerEvents` → `style.pointerEvents` (deprecated RN warning, pre-existing).
+### Test verification
+- 17 / 17 backend pytests passing (see `/app/test_reports/iteration_11.json`).
+- Manual end-to-end (curl): public tournament visible to all room members; private hidden; direct-id 403 for non-participants; join-by-code works; 2-player tournament awards full pot to the one winner; profile-card now includes postsCount + likesCount.
 
-## Verified flows (iteration 10)
-- Backend: 8/8 pytest cases PASS — auto-join (new + resume), join/leave preserving lastRoomId, DM unread total, delete conversation, dm-settings defaults + PUT persistence.
-- Frontend: auto-join indicator, room landing, unread dot, DM modal tabs, conversation row → options popup, View Message → chat view, Settings chips + toggle (persisted).
+## What's been implemented (history)
+- Authentication (JWT, email/username login, daily login reward, password reset token).
+- Rooms (9 default rooms seedable via `/api/init/rooms`), join/leave, room members listing.
+- Real-time chat (WebSocket broadcasting).
+- VIP Pro / Elite system: tiers, customizations (avatar aura/frame/badge/colors), monthly coin grant, priority Elite welcome.
+- Board posts + likes + comments per room (with feed and global user-posts view).
+- Friends (send/accept/remove), private messages, gifts catalog + send, send coins.
+- Notifications (in-app), activity feed (self + friends).
+- Knockout tournaments with the previous 50/50 split (now upgraded per this iteration).
+
+## Backlog / Next actions
+- **P1 — Tournament chat broadcast for private codes:** Currently private tournaments suppress the system message (since others can't join). Consider whispering the code to the creator's DM thread for sharing.
+- **P1 — Refactor `server.py` (4118 lines):** Split into modules (auth, profile, rooms, tournaments, board, vip) — code review feedback from testing agent.
+- **P2 — Move private-tournament filter into the Mongo query** (currently in-Python loop) for scale.
+- **P2 — Tournament XP / leaderboard view** that aggregates winners across all rooms.
+- **P3 — Share sheet** in the invite-code card (auto-copy to clipboard with a toast).
+- **P3 — Animated podium reveal** on tournament completion.
+
+## Smart enhancement idea
+> Tournaments are a strong viral engagement loop. Consider a **"Tournament of the Day"** banner on the room board that auto-creates a small free-entry tournament every 24 hours with sponsored prizes — pulls dormant users back into rooms and creates a daily ritual without coin friction.
