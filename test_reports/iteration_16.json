@@ -1,0 +1,25 @@
+{
+  "summary": "Comprehensive test of the new default-avatar feature (3x3 grid of 9 astronaut animal PNGs). Backend: 14/14 pytest cases PASS. All 9 PNG assets are served (HTTP 200, image/png, PNG magic header valid, file size > 100KB each). Newly registered users get a random default avatar (10 fresh registrations produced 8 distinct URLs — randomization confirmed) and GET /api/auth/me returns that URL. Existing seeded users (avatar-tester-1, hosttest1780846544, scatter1, scatter2) all have valid non-null photoUrls — backfill ran successfully and NO stale filenames (shiba/cat/dog/owl/frog/hamster) remain. Frontend: logged in as avatar-tester-1 via Expo web bundle, navigated to /profile, observed 3 <img> elements (header avatar + ProfilePopupModal + nav-bar chip) all with src=/api/static/avatars/default-6-bunny.png and naturalWidth=naturalHeight=418 — confirming the correct cute astronaut bunny PNG renders (NOT a leaderboard-screenshot crop). Screenshot confirms visually.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_default_avatars.py",
+    "/app/test_reports/pytest/avatar_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "DEFAULT_AVATAR_FILES list, pick_random_default_avatar(), register endpoint setting photoUrl=pick_random_default_avatar(), and on_event('startup') _backfill_default_avatars() are all wired correctly in /app/backend/server.py.",
+    "Backfill query (server.py ~line 3380) correctly targets users with NULL/missing/empty photoUrl OR any legacy default-* filename via regex /^/api/static/avatars/default-/, so stale URLs from a prior filename set are auto-fixed on startup. Verified no stale names remain.",
+    "Static PNGs are 418x418, ~260-290KB each — appropriately sized. Served with content-type image/png through K8s ingress on /api/static/avatars/*.",
+    "Frontend uses relative URLs (e.g. /api/static/avatars/default-6-bunny.png) which the browser resolves against page origin — works on web. resolveAssetUrl() helper in /app/frontend/src/api/client.ts is in place for future native compatibility.",
+    "Note: register schema requires `displayName` (not `fullName`). Backend regex/randomization shows uniform distribution over 10 trials (8 distinct → entropy is fine)."
+  ],
+  "updated_files": ["/app/backend/tests/test_default_avatars.py"],
+  "success_rate": {"backend": "100% (14/14 pytest)", "frontend": "100% (profile page renders bunny astronaut 418x418 default avatar)"},
+  "test_credentials": "avatar-tester-1@test.com / TestPass123! (verified, bunny astronaut). hosttest1780846544@test.com / TestPass123! (verified, used for /rooms/.../members regression). scatter1@test.com, scatter2@test.com (TestPass123!) still seeded.",
+  "seed_data_creation": "Created 11 ephemeral TEST_ prefixed users via /api/auth/register during the randomization test (TEST_avatar_<hex>_0..9 and TEST_resolve_<hex>). They have no other data and can be safely ignored or cleaned up by a later cleanup pass — they don't affect any seeded room or leaderboard.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Default avatar feature is verified end-to-end. Backend pytest at /app/backend/tests/test_default_avatars.py (14 cases, all green). For frontend verification of any user's avatar, log in as that user, navigate to /profile (NOT /(tabs)/profile — the public URL is just /profile), wait ~6s for Expo bundle, then query img tags — all default avatars render as 418x418. Sign In button is React-Native-Web (role=button div), use page.query_selector('text=Sign In') to click. /login redirects to /?autojoin=1 on success.",
+  "rca of the issue": "No bugs found. Iteration 15's reported leaderboard-screenshot avatar issue has been fully resolved: the correct 1254x1254 master image was re-sliced into nine 418x418 cute astronaut PNGs, backfill ran on startup ('assigned default avatars to 2 users'), and avatar-tester-1's profile renders the bunny astronaut at full 418x418 native resolution. No stale filenames remain in the DB."
+}

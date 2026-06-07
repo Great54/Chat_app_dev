@@ -33,6 +33,27 @@ function getApiBaseUrl(): string {
 
 const API_BASE_URL = getApiBaseUrl();
 
+export { API_BASE_URL };
+
+/**
+ * Resolve an asset URL coming from the backend. Backend may return either:
+ *   - a fully-qualified URL (https://...) — used as-is
+ *   - a server-relative URL like "/api/static/avatars/default-1-panda.png"
+ *     — prefixed with API_BASE_URL so native Image components can load it.
+ *
+ * Returns null/undefined unchanged so callers can keep their fallback logic.
+ */
+export function resolveAssetUrl(url?: string | null): string | null | undefined {
+  if (!url) return url;
+  if (/^https?:\/\//i.test(url)) return url;
+  if (url.startsWith('/')) {
+    // On web with no API_BASE_URL we just use the relative path (same origin).
+    if (!API_BASE_URL) return url;
+    return `${API_BASE_URL}${url}`;
+  }
+  return url;
+}
+
 export const api = axios.create({
   baseURL: `${API_BASE_URL}/api`,
   headers: {
