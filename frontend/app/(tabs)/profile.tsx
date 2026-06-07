@@ -20,42 +20,67 @@ import { useAuth } from '@/src/contexts/AuthContext';
 import { VIP_STYLES } from '@/src/utils/vip';
 import VipShopModal from '@/src/components/VipShopModal';
 import api from '@/src/api/client';
-import { COLORS, SPACING } from '@/src/constants/theme';
-import { getAuraStyle, findBadge, VIP_PRO_AVATAR_SCALE } from '@/src/utils/vipProCustomization';
+import { SPACING } from '@/src/constants/theme';
 import type { ProfileCard } from '@/src/types/profile';
 
-// Cursive font stack matching the profile popup look
+// Cursive font stack for the dreamy display name
 const CURSIVE_FONT = Platform.select({
   web: '"Dancing Script", "Great Vibes", "Brush Script MT", cursive',
   default: 'System',
 }) as string;
+
+// Light-themed pastel palette (matches the reference mock)
+const PALETTE = {
+  bg: '#fdf4ff',          // soft lavender page background
+  card: '#ffffff',
+  cardSubtle: '#fdf7ff',
+  border: '#f3e8ff',
+  borderStrong: '#e9d5ff',
+  text: '#1f1d2b',
+  textSub: '#6b7280',
+  pink: '#ec4899',
+  pinkSoft: '#fdf2f8',
+  purple: '#a855f7',
+  purpleSoft: '#f5f3ff',
+  blue: '#3b82f6',
+  blueSoft: '#eff6ff',
+  green: '#22c55e',
+  greenSoft: '#f0fdf4',
+  gold: '#f59e0b',
+  goldSoft: '#fffbeb',
+  amber: '#fbbf24',
+};
+
+const showAlert = (title: string, message: string) => {
+  if (Platform.OS === 'web' && typeof window !== 'undefined') {
+    window.alert(`${title}\n\n${message}`);
+  } else {
+    Alert.alert(title, message);
+  }
+};
 
 export default function ProfileScreen() {
   const { user, logout, refreshUser } = useAuth();
   const [editing, setEditing] = useState(false);
   const [displayName, setDisplayName] = useState(user?.displayName || '');
   const [bio, setBio] = useState(user?.bio || '');
-  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [vipModalOpen, setVipModalOpen] = useState(false);
   const [postsOpen, setPostsOpen] = useState(false);
   const [card, setCard] = useState<ProfileCard | null>(null);
   const vipStyle = user?.vipTier ? VIP_STYLES[user.vipTier] : null;
 
-  // Fetch the profile-card for the logged-in user so we can show likes /
-  // friends / posts counts on the own profile screen (same data the popup uses).
   const loadCard = useCallback(async () => {
     if (!user?.id) return;
     try {
       const res = await api.get(`/users/${user.id}/profile-card`);
       setCard(res.data);
     } catch (e) {
-      // soft-fail — the rest of the profile UI still works without these stats
+      // soft-fail — rest of UI still renders without remote stats
     }
   }, [user?.id]);
 
-  useEffect(() => {
-    loadCard();
-  }, [loadCard]);
+  useEffect(() => { loadCard(); }, [loadCard]);
 
   useEffect(() => {
     if (editing && user) {
@@ -65,12 +90,11 @@ export default function ProfileScreen() {
   }, [editing, user]);
 
   const pickImage = async (target: 'photoUrl' | 'bannerUrl') => {
-    const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!permissionResult.granted) {
-      Alert.alert('Permission Required', 'Please allow access to your photos');
+    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!perm.granted) {
+      showAlert('Permission Required', 'Please allow access to your photos');
       return;
     }
-
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsEditing: true,
@@ -78,28 +102,27 @@ export default function ProfileScreen() {
       quality: 0.5,
       base64: true,
     });
-
     if (!result.canceled && result.assets[0].base64) {
       const base64Image = `data:image/jpeg;base64,${result.assets[0].base64}`;
       try {
         await api.put('/users/profile', { [target]: base64Image });
         await refreshUser();
-      } catch (error) {
-        Alert.alert('Error', 'Failed to update image');
+      } catch (e) {
+        showAlert('Error', 'Failed to update image');
       }
     }
   };
 
   const handleSave = async () => {
-    setLoading(true);
+    setSaving(true);
     try {
       await api.put('/users/profile', { displayName, bio });
       await refreshUser();
       setEditing(false);
-    } catch (error) {
-      Alert.alert('Error', 'Failed to update profile');
+    } catch (e) {
+      showAlert('Error', 'Failed to update profile');
     } finally {
-      setLoading(false);
+      setSaving(false);
     }
   };
 
@@ -116,351 +139,364 @@ export default function ProfileScreen() {
 
   if (!user) return null;
 
+  const memberSince = (() => {
+    const c: any = (card as any) || {};
+    const raw = c.createdAt || (user as any)?.createdAt;
+    if (!raw) return null;
+    try {
+      return new Date(raw).toLocaleDateString(undefined, { year: 'numeric', month: 'long' });
+    } catch { return null; }
+  })();
+
+  const tierLabel = user.vipTier === 'elite' ? 'Elite Member' : user.vipTier === 'pro' ? 'Pro Member' : 'Member';
+  const tierColor = user.vipTier === 'elite' ? '#dc2626' : user.vipTier === 'pro' ? '#7c3aed' : PALETTE.gold;
+  const tierBg    = user.vipTier === 'elite' ? '#fff1f2' : user.vipTier === 'pro' ? PALETTE.purpleSoft : PALETTE.goldSoft;
+
   return (
     <SafeAreaView style={styles.container} edges={[]}>
-      <ScrollView contentContainerStyle={styles.scroll}>
-        {/* Banner / Background Image Section */}
-        <View style={styles.bannerSection}>
+      <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+        {/* ============ BANNER + HEADER CARD ============ */}
+        <View style={styles.bannerWrap}>
           {user.bannerUrl ? (
-            <Image source={{ uri: user.bannerUrl }} style={styles.banner} contentFit="cover" />
+            <Image source={{ uri: user.bannerUrl }} style={styles.bannerImg} contentFit="cover" />
           ) : (
             <LinearGradient
-              colors={[COLORS.primary, COLORS.accent, COLORS.secondary]}
-              style={styles.banner}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
+              colors={['#fbcfe8', '#e9d5ff', '#bfdbfe']}
+              start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
+              style={StyleSheet.absoluteFillObject}
             />
           )}
-          <LinearGradient
-            colors={['transparent', 'rgba(0,0,0,0.5)', COLORS.background]}
-            style={styles.bannerGradient}
-          />
+          {/* Top action chips */}
           <TouchableOpacity
-            style={styles.bannerEditButton}
             onPress={() => pickImage('bannerUrl')}
+            style={styles.bannerEditPill}
             testID="edit-banner-btn"
           >
-            <Ionicons name="image" size={16} color={COLORS.text} />
+            <Ionicons name="image" size={14} color="#fff" />
             <Text style={styles.bannerEditText}>Edit Banner</Text>
           </TouchableOpacity>
           {!editing && (
             <TouchableOpacity
-              style={styles.headerEditButton}
               onPress={() => setEditing(true)}
+              style={styles.pencilBtn}
               testID="edit-profile-btn"
             >
-              <Ionicons name="pencil" size={18} color={COLORS.text} />
+              <Ionicons name="pencil" size={16} color={PALETTE.text} />
             </TouchableOpacity>
           )}
         </View>
 
-        {/* Popup-style peek card: avatar LEFT + identity RIGHT (matches ProfilePopupModal graphics) */}
-        <View style={styles.peekCard} testID="profile-peek-card">
-          <View style={styles.peekRow}>
-            {/* Avatar — LEFT (tap to change photo) */}
+        {/* Floating identity card overlapping banner */}
+        <View style={styles.identityCard}>
+          <View style={styles.identityRow}>
+            {/* Avatar with glowing aura */}
             <TouchableOpacity
-              activeOpacity={0.85}
+              activeOpacity={0.9}
               onPress={() => pickImage('photoUrl')}
+              style={styles.avatarHalo}
               testID="edit-avatar-btn"
-              style={[
-                styles.peekAvatarWrap,
-                user?.enlargedAvatar && { transform: [{ scale: VIP_PRO_AVATAR_SCALE }] },
-                getAuraStyle(user?.auraType, user?.auraColor, 116),
-              ]}
             >
-              {vipStyle ? (
-                <LinearGradient
-                  colors={vipStyle.borderColors as [string, string, ...string[]]}
-                  style={styles.avatarFrame}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 1 }}
-                >
-                  <View style={styles.avatarFrameInner}>
-                    {user.photoUrl ? (
-                      <Image source={{ uri: user.photoUrl }} style={styles.peekAvatarImg} />
-                    ) : (
-                      <Ionicons name="person" size={42} color="#9ca3af" />
-                    )}
-                  </View>
-                </LinearGradient>
-              ) : (
-                <View style={[styles.avatarFrame, styles.avatarFramePlain]}>
-                  <View style={styles.avatarFrameInner}>
-                    {user.photoUrl ? (
-                      <Image source={{ uri: user.photoUrl }} style={styles.peekAvatarImg} />
-                    ) : (
-                      <Ionicons name="person" size={42} color="#9ca3af" />
-                    )}
-                  </View>
+              <View style={styles.avatarRing}>
+                <View style={styles.avatarInner}>
+                  {user.photoUrl ? (
+                    <Image source={{ uri: user.photoUrl }} style={styles.avatarImg} />
+                  ) : (
+                    <Ionicons name="person" size={56} color="#c4b5fd" />
+                  )}
                 </View>
-              )}
-              {/* Online dot */}
-              <View
-                style={[
-                  styles.onlineDot,
-                  { backgroundColor: user.onlineStatus ? '#22c55e' : '#94a3b8' },
-                ]}
-              />
-              {/* Camera affordance */}
-              <View style={styles.peekCameraIcon}>
-                <Ionicons name="camera" size={12} color={COLORS.text} />
+              </View>
+              <View style={styles.avatarCam}>
+                <Ionicons name="camera" size={12} color="#fff" />
               </View>
             </TouchableOpacity>
 
-            {/* Identity — RIGHT side */}
-            <View style={styles.peekIdentity}>
+            {/* Identity stack */}
+            <View style={styles.identityCol}>
+              {/* VIP ribbon */}
               {user.vipTier === 'elite' && (
-                <View style={styles.eliteRibbon} testID="elite-ribbon">
+                <View style={styles.vipRibbon}>
                   <LinearGradient
-                    colors={['#fde68a', '#fbbf24', '#dc2626'] as [string, string, ...string[]]}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 0 }}
-                    style={styles.eliteRibbonGrad}
+                    colors={['#fde68a', '#fbbf24', '#dc2626']}
+                    start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
+                    style={styles.vipRibbonGrad}
                   >
                     <Ionicons name="diamond" size={10} color="#1a0f2e" />
-                    <Text style={styles.eliteRibbonText}>VIP ELITE</Text>
+                    <Text style={styles.vipRibbonText}>VIP ELITE</Text>
                     <Ionicons name="star" size={9} color="#1a0f2e" />
                   </LinearGradient>
                 </View>
               )}
-              <Text
-                style={[
-                  styles.peekName,
-                  user.usernameColor ? { color: user.usernameColor } : null,
-                ]}
-                numberOfLines={1}
-              >
-                {user.displayName}
-              </Text>
-              <Text style={styles.peekUsername} numberOfLines={1}>@{user.username}</Text>
+              {user.vipTier === 'pro' && (
+                <View style={[styles.vipRibbon]}>
+                  <LinearGradient
+                    colors={['#c4b5fd', '#8b5cf6', '#4c1d95']}
+                    start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
+                    style={styles.vipRibbonGrad}
+                  >
+                    <Ionicons name="star" size={10} color="#fff" />
+                    <Text style={[styles.vipRibbonText, { color: '#fff' }]}>VIP PRO</Text>
+                  </LinearGradient>
+                </View>
+              )}
 
-              {/* VIP badge pill (mirrors popup) */}
-              {(() => {
-                const customBadge = findBadge(user.vipBadgeId);
-                if (customBadge) {
-                  return (
-                    <TouchableOpacity
-                      onPress={() => setVipModalOpen(true)}
-                      activeOpacity={0.85}
-                      style={styles.peekBadgesRow}
-                      testID="profile-vip-badge"
-                    >
-                      <View style={[styles.badgePill, { backgroundColor: customBadge.bg }]}>
-                        <Text style={{ fontSize: 11 }}>{customBadge.emoji}</Text>
-                        <Text style={styles.badgeText}>VIP</Text>
-                      </View>
-                    </TouchableOpacity>
-                  );
-                }
-                if (vipStyle) {
-                  return (
-                    <TouchableOpacity
-                      onPress={() => setVipModalOpen(true)}
-                      activeOpacity={0.85}
-                      style={styles.peekBadgesRow}
-                      testID="profile-vip-badge"
-                    >
-                      <View style={[styles.badgePill, { backgroundColor: vipStyle.crownColor }]}>
-                        <Ionicons name={vipStyle.badgeIcon} size={10} color="#fff" />
-                        <Text style={styles.badgeText}>{(user.vipTier || '').toUpperCase()}</Text>
-                      </View>
-                    </TouchableOpacity>
-                  );
-                }
-                return null;
-              })()}
-
-              {/* Coins pill */}
-              <View style={styles.peekCoinsPill} testID="profile-peek-coins">
-                <Ionicons name="logo-bitcoin" size={14} color="#a16207" />
-                <Text style={styles.peekCoinsValue}>{user.coins}</Text>
-                <Text style={styles.peekCoinsLabel}>coins</Text>
+              <View style={styles.nameLine}>
+                <Text
+                  style={[
+                    styles.cursiveName,
+                    user.usernameColor ? { color: user.usernameColor } : null,
+                  ]}
+                  numberOfLines={1}
+                >
+                  {user.displayName}
+                </Text>
+                <Ionicons name="checkmark-circle" size={16} color={PALETTE.blue} style={{ marginLeft: 4 }} />
               </View>
+
+              <View style={styles.usernameRow}>
+                <Text style={styles.username} numberOfLines={1}>@{user.username}</Text>
+                {vipStyle && (
+                  <TouchableOpacity onPress={() => setVipModalOpen(true)} style={[styles.vipPill, { backgroundColor: vipStyle.crownColor }]}>
+                    <Ionicons name={vipStyle.badgeIcon} size={10} color="#fff" />
+                    <Text style={styles.vipPillText}>VIP</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+
+              {!!user.bio && <Text style={styles.bioInline} numberOfLines={3}>{user.bio}</Text>}
+            </View>
+          </View>
+
+          {/* Status chips row: tier / level / active */}
+          <View style={styles.chipsRow}>
+            <View style={[styles.chip, { backgroundColor: tierBg, borderColor: tierColor + '55' }]}>
+              <Ionicons name="medal" size={12} color={tierColor} />
+              <Text style={[styles.chipText, { color: tierColor }]}>{tierLabel}</Text>
+            </View>
+            <View style={[styles.chip, { backgroundColor: PALETTE.purpleSoft, borderColor: PALETTE.purple + '55' }]}>
+              <Ionicons name="trophy" size={12} color={PALETTE.purple} />
+              <Text style={[styles.chipText, { color: PALETTE.purple }]}>Level {(card as any)?.level ?? 1}</Text>
+            </View>
+            <View style={[styles.chip, { backgroundColor: PALETTE.greenSoft, borderColor: PALETTE.green + '55' }]}>
+              <View style={[styles.greenDot, { backgroundColor: user.onlineStatus ? PALETTE.green : '#9ca3af' }]} />
+              <Text style={[styles.chipText, { color: PALETTE.green }]}>{user.onlineStatus ? 'Active Now' : 'Offline'}</Text>
             </View>
           </View>
         </View>
 
-        {/* Stats row: Likes / Friends / Posts — mirrors the View Profile page */}
-        <View style={styles.statsCirclesRow}>
-          <View style={[styles.statCircle, styles.statCircleLikes]} testID="profile-stat-likes">
-            <Ionicons name="heart" size={16} color="#9d174d" />
-            <Text style={[styles.statCircleValue, { color: '#9d174d' }]}>{card?.likesCount ?? 0}</Text>
-            <Text style={[styles.statCircleLabel, { color: '#9d174d' }]}>Likes</Text>
-          </View>
-          <View style={[styles.statCircle, styles.statCircleFriends]} testID="profile-stat-friends">
-            <Ionicons name="people" size={16} color="#1e40af" />
-            <Text style={[styles.statCircleValue, { color: '#1e40af' }]}>{card?.friendCount ?? 0}</Text>
-            <Text style={[styles.statCircleLabel, { color: '#1e40af' }]}>Friends</Text>
-          </View>
-          <TouchableOpacity
+        {/* ============ STATS CARD ============ */}
+        <View style={styles.statsCard}>
+          <StatItem
+            icon="heart"
+            color={PALETTE.pink}
+            value={card?.likesCount ?? 0}
+            label="Likes"
+            testID="profile-stat-likes"
+          />
+          <View style={styles.statDivider} />
+          <StatItem
+            icon="people"
+            color={PALETTE.blue}
+            value={card?.friendCount ?? 0}
+            label="Friends"
+            testID="profile-stat-friends"
+          />
+          <View style={styles.statDivider} />
+          <StatItem
+            icon="newspaper"
+            color={PALETTE.green}
+            value={card?.postsCount ?? 0}
+            label="Posts"
             onPress={() => setPostsOpen(true)}
-            activeOpacity={0.85}
-            style={[styles.statCircle, styles.statCirclePosts]}
             testID="profile-stat-posts"
-          >
-            <Ionicons name="newspaper" size={16} color="#166534" />
-            <Text style={[styles.statCircleValue, { color: '#166534' }]}>{card?.postsCount ?? 0}</Text>
-            <Text style={[styles.statCircleLabel, { color: '#166534' }]}>Posts</Text>
-          </TouchableOpacity>
+          />
+          <View style={styles.statDivider} />
+          <StatItem
+            icon="logo-bitcoin"
+            color={PALETTE.gold}
+            value={user.coins}
+            label="Coins"
+            testID="profile-stat-coins"
+          />
         </View>
 
-        {/* View Posts pill — opens a modal listing this user's posts */}
+        {/* ============ VIP ELITE BANNER ============ */}
+        <TouchableOpacity
+          onPress={() => setVipModalOpen(true)}
+          activeOpacity={0.92}
+          style={styles.vipBanner}
+          testID="profile-vip-cta"
+        >
+          <LinearGradient
+            colors={
+              user.vipTier === 'elite'
+                ? ['#2a0e2e', '#7c2d12', '#fbbf24']
+                : user.vipTier === 'pro'
+                  ? ['#1e1b4b', '#4c1d95', '#a78bfa']
+                  : ['#3b0764', '#7c3aed', '#fbbf24']
+            }
+            start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
+            style={styles.vipBannerGrad}
+          >
+            <View style={styles.vipDiamond}>
+              <Ionicons name="diamond" size={22} color="#fde68a" />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.vipBannerTitle}>
+                {user.vipTier === 'elite' ? 'VIP Elite' : user.vipTier === 'pro' ? 'VIP Pro' : 'Unlock VIP'}
+                <Text style={styles.vipBannerStatus}>{user.vipTier ? ' — Active' : ''}</Text>
+              </Text>
+              <Text style={styles.vipBannerSub} numberOfLines={2}>
+                {user.vipTier
+                  ? 'Enjoy all premium perks and exclusive benefits.'
+                  : 'Custom aura, badges, name color, larger avatar and more.'}
+              </Text>
+            </View>
+            <LinearGradient
+              colors={['#f472b6', '#ec4899']}
+              start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
+              style={styles.vipManageBtn}
+            >
+              <Text style={styles.vipManageText}>{user.vipTier ? 'Manage' : 'Subscribe'}</Text>
+            </LinearGradient>
+          </LinearGradient>
+        </TouchableOpacity>
+
+        {/* ============ VIEW POSTS PILL ============ */}
         <TouchableOpacity
           onPress={() => setPostsOpen(true)}
+          activeOpacity={0.85}
           style={styles.viewPostsPill}
           testID="profile-view-posts"
-          activeOpacity={0.85}
         >
-          <Ionicons name="newspaper" size={15} color="#fde68a" />
+          <Ionicons name="newspaper" size={15} color="#fff" />
           <Text style={styles.viewPostsText}>View Posts</Text>
           <View style={styles.viewPostsCount}>
             <Text style={styles.viewPostsCountText}>{card?.postsCount ?? 0}</Text>
           </View>
         </TouchableOpacity>
 
-        {/* VIP subscription CTA — drives conversions */}
-        <TouchableOpacity
-          onPress={() => setVipModalOpen(true)}
-          activeOpacity={0.9}
-          style={styles.vipCtaWrap}
-          testID="profile-vip-cta"
-        >
-          <LinearGradient
-            colors={
-              user.vipTier === 'elite'
-                ? (['#fde68a', '#fbbf24', '#dc2626'] as [string, string, ...string[]])
-                : user.vipTier === 'pro'
-                  ? (['#a78bfa', '#7c3aed', '#4c1d95'] as [string, string, ...string[]])
-                  : (['#f472b6', '#fb7185', '#fbbf24'] as [string, string, ...string[]])
-            }
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={styles.vipCtaGradient}
-          >
-            <View style={styles.vipCtaIcon}>
-              <Ionicons
-                name={user.vipTier === 'elite' ? 'diamond' : user.vipTier === 'pro' ? 'star' : 'sparkles'}
-                size={22}
-                color="#1a0f2e"
-              />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.vipCtaTitle}>
-                {user.vipTier === 'elite'
-                  ? 'VIP Elite — active'
-                  : user.vipTier === 'pro'
-                    ? 'VIP Pro — active'
-                    : 'Unlock VIP'}
-              </Text>
-              <Text style={styles.vipCtaSubtitle}>
-                {user.vipTier
-                  ? 'Manage your subscription, perks & customizations'
-                  : 'Custom aura, badges, name color, larger avatar and more'}
-              </Text>
-            </View>
-            <View style={styles.vipCtaBadge}>
-              <Text style={styles.vipCtaBadgeText}>
-                {user.vipTier ? 'Manage' : 'Subscribe'}
-              </Text>
-              <Ionicons name="chevron-forward" size={14} color="#1a0f2e" />
-            </View>
-          </LinearGradient>
-        </TouchableOpacity>
-
-        {editing ? (
-          <View style={styles.form}>
-            {/* Prominent banner change CTA inside the edit form */}
+        {/* ============ EDIT MODE FORM ============ */}
+        {editing && (
+          <View style={styles.editCard}>
+            <Text style={styles.cardHeading}>Edit Profile</Text>
             <TouchableOpacity
               onPress={() => pickImage('bannerUrl')}
               activeOpacity={0.85}
               style={styles.changeBannerCta}
               testID="change-banner-cta"
             >
-              <Ionicons name="image" size={18} color="#fde68a" />
+              <Ionicons name="image" size={18} color={PALETTE.pink} />
               <View style={{ flex: 1 }}>
                 <Text style={styles.changeBannerTitle}>Change Banner</Text>
-                <Text style={styles.changeBannerSubtitle}>Upload any image from your gallery</Text>
+                <Text style={styles.changeBannerSub}>Upload any image from your gallery</Text>
               </View>
-              <Ionicons name="chevron-forward" size={16} color="#fde68a" />
+              <Ionicons name="chevron-forward" size={16} color={PALETTE.textSub} />
             </TouchableOpacity>
 
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>Display Name</Text>
-              <TextInput
-                style={styles.input}
-                value={displayName}
-                onChangeText={setDisplayName}
-                placeholderTextColor={COLORS.textSecondary}
-                testID="display-name-input"
-              />
-            </View>
+            <Text style={styles.fieldLabel}>Display Name</Text>
+            <TextInput
+              style={styles.editInput}
+              value={displayName}
+              onChangeText={setDisplayName}
+              placeholderTextColor={PALETTE.textSub}
+              testID="display-name-input"
+            />
 
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>Bio</Text>
-              <TextInput
-                style={[styles.input, styles.textArea]}
-                value={bio}
-                onChangeText={setBio}
-                multiline
-                numberOfLines={4}
-                placeholderTextColor={COLORS.textSecondary}
-                placeholder="Tell us about yourself..."
-                testID="bio-input"
-              />
-            </View>
+            <Text style={styles.fieldLabel}>Bio</Text>
+            <TextInput
+              style={[styles.editInput, styles.textArea]}
+              value={bio}
+              onChangeText={setBio}
+              multiline
+              numberOfLines={4}
+              placeholder="Tell us about yourself..."
+              placeholderTextColor={PALETTE.textSub}
+              testID="bio-input"
+            />
 
-            <View style={styles.buttonRow}>
+            <View style={styles.editBtnRow}>
               <TouchableOpacity
-                style={[styles.button, styles.buttonSecondary]}
+                style={[styles.editBtn, styles.editBtnSecondary]}
                 onPress={() => setEditing(false)}
               >
-                <Text style={styles.buttonSecondaryText}>Cancel</Text>
+                <Text style={styles.editBtnSecondaryText}>Cancel</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={[styles.button, styles.buttonPrimary]}
+                style={[styles.editBtn, styles.editBtnPrimary]}
                 onPress={handleSave}
-                disabled={loading}
+                disabled={saving}
                 testID="save-profile-btn"
               >
-                {loading ? (
-                  <ActivityIndicator color={COLORS.text} />
+                {saving ? (
+                  <ActivityIndicator color="#fff" />
                 ) : (
-                  <Text style={styles.buttonText}>Save</Text>
+                  <Text style={styles.editBtnPrimaryText}>Save</Text>
                 )}
               </TouchableOpacity>
             </View>
           </View>
-        ) : (
-          <View style={styles.infoSection}>
-            <View style={styles.infoBox}>
-              <Text style={styles.infoLabel}>Bio</Text>
-              <Text style={styles.infoValue}>{user.bio || 'No bio yet'}</Text>
+        )}
+
+        {/* ============ ABOUT ME (read-only mode) ============ */}
+        {!editing && (
+          <View style={styles.infoCard}>
+            <View style={styles.infoHeaderRow}>
+              <View style={styles.infoIcon}>
+                <Ionicons name="person" size={14} color={PALETTE.pink} />
+              </View>
+              <Text style={styles.cardHeading}>About Me</Text>
             </View>
-            <View style={styles.infoBox}>
-              <Text style={styles.infoLabel}>Email</Text>
-              <Text style={styles.infoValue}>{user.email}</Text>
-            </View>
+            <Text style={styles.aboutBio}>{user.bio || 'I love meeting new people and having fun conversations. Let\'s vibe together! 💜'}</Text>
+
+            <InfoLine label="Email" value={user.email} />
+            {memberSince && <InfoLine label="Member Since" value={memberSince} />}
+            <InfoLine label="ID" value={`#GCV-${user.id.slice(-6).toUpperCase()}`} />
           </View>
         )}
 
-        <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
-          <Ionicons name="log-out-outline" size={20} color={COLORS.error} />
+        {/* ============ MY BADGES ============ */}
+        {!!card?.badges?.length && (
+          <View style={styles.infoCard}>
+            <View style={styles.infoHeaderRow}>
+              <View style={[styles.infoIcon, { backgroundColor: PALETTE.purpleSoft }]}>
+                <Ionicons name="ribbon" size={14} color={PALETTE.purple} />
+              </View>
+              <Text style={styles.cardHeading}>My Badges</Text>
+              <View style={{ flex: 1 }} />
+              <Text style={styles.viewAll}>View All</Text>
+            </View>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.badgesScroll}>
+              {card.badges.map((b) => (
+                <View key={b.id} style={styles.badgeTile}>
+                  <LinearGradient
+                    colors={[(b.color || PALETTE.purple) + 'cc', (b.color || PALETTE.purple)]}
+                    start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
+                    style={styles.badgeShield}
+                  >
+                    <Ionicons name={b.icon as any} size={28} color="#fff" />
+                  </LinearGradient>
+                  <Text style={styles.badgeLabel} numberOfLines={1}>{b.label}</Text>
+                </View>
+              ))}
+            </ScrollView>
+          </View>
+        )}
+
+        {/* Logout (soft, secondary) */}
+        <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout}>
+          <Ionicons name="log-out-outline" size={18} color="#ef4444" />
           <Text style={styles.logoutText}>Logout</Text>
         </TouchableOpacity>
       </ScrollView>
 
       <VipShopModal visible={vipModalOpen} onClose={() => setVipModalOpen(false)} />
 
-      {/* Posts sub-page — slide-up modal listing this user's posts */}
+      {/* Posts modal */}
       <Modal visible={postsOpen} animationType="slide" onRequestClose={() => setPostsOpen(false)}>
-        <SafeAreaView style={styles.container} edges={['top']}>
+        <SafeAreaView style={[styles.container, { backgroundColor: PALETTE.bg }]} edges={['top']}>
           <View style={styles.postsTopBar}>
-            <TouchableOpacity
-              onPress={() => setPostsOpen(false)}
-              style={styles.postsBackBtn}
-              testID="profile-posts-back"
-            >
-              <Ionicons name="arrow-back" size={22} color={COLORS.text} />
+            <TouchableOpacity onPress={() => setPostsOpen(false)} style={styles.postsBackBtn} testID="profile-posts-back">
+              <Ionicons name="arrow-back" size={22} color={PALETTE.text} />
             </TouchableOpacity>
             <Text style={styles.postsTopTitle} numberOfLines={1}>My Posts</Text>
             <View style={styles.postsBackBtn} />
@@ -474,7 +510,35 @@ export default function ProfileScreen() {
   );
 }
 
-// Lightweight posts list for the own-profile Posts modal
+/* ---------- Helpers ---------- */
+function StatItem({
+  icon, color, value, label, onPress, testID,
+}: { icon: any; color: string; value: number | string; label: string; onPress?: () => void; testID?: string }) {
+  const Container: any = onPress ? TouchableOpacity : View;
+  return (
+    <Container
+      activeOpacity={0.85}
+      onPress={onPress}
+      style={styles.statItem}
+      testID={testID}
+    >
+      <Ionicons name={icon} size={22} color={color} />
+      <Text style={[styles.statValue, { color: PALETTE.text }]}>{value}</Text>
+      <Text style={styles.statLabel}>{label}</Text>
+    </Container>
+  );
+}
+
+function InfoLine({ label, value }: { label: string; value: string }) {
+  return (
+    <View style={styles.infoLine}>
+      <Text style={styles.infoLineLabel}>{label}</Text>
+      <View style={styles.infoLineDots} />
+      <Text style={styles.infoLineValue} numberOfLines={1}>{value}</Text>
+    </View>
+  );
+}
+
 function MyPostsList({ userId }: { userId: string }) {
   const [posts, setPosts] = useState<any[]>([]);
   const [loadingPosts, setLoadingPosts] = useState(true);
@@ -496,20 +560,14 @@ function MyPostsList({ userId }: { userId: string }) {
   }, [userId]);
 
   if (loadingPosts) {
-    return (
-      <View style={styles.postsPlaceholder}>
-        <ActivityIndicator color={COLORS.primary} />
-      </View>
-    );
+    return <View style={styles.postsPlaceholder}><ActivityIndicator color={PALETTE.pink} /></View>;
   }
   if (posts.length === 0) {
     return (
       <View style={styles.postsPlaceholder}>
-        <Ionicons name="newspaper-outline" size={48} color={COLORS.textSecondary} />
+        <Ionicons name="newspaper-outline" size={48} color={PALETTE.textSub} />
         <Text style={styles.postsPlaceholderTitle}>No posts yet</Text>
-        <Text style={styles.postsPlaceholderText}>
-          Posts you share on a Board will show up here.
-        </Text>
+        <Text style={styles.postsPlaceholderText}>Posts you share on a Board will show up here.</Text>
       </View>
     );
   }
@@ -517,17 +575,15 @@ function MyPostsList({ userId }: { userId: string }) {
     <View style={styles.postsList}>
       {posts.map((p) => (
         <View key={p.id} style={styles.postCard} testID={`my-post-${p.id}`}>
-          {p.imageUrl ? (
-            <Image source={{ uri: p.imageUrl }} style={styles.postImage} contentFit="cover" />
-          ) : null}
+          {p.imageUrl ? <Image source={{ uri: p.imageUrl }} style={styles.postImage} contentFit="cover" /> : null}
           {p.text ? <Text style={styles.postText}>{p.text}</Text> : null}
           <View style={styles.postMetaRow}>
             <View style={styles.postMetaItem}>
-              <Ionicons name="heart" size={14} color="#ec4899" />
+              <Ionicons name="heart" size={14} color={PALETTE.pink} />
               <Text style={styles.postMetaText}>{p.likeCount ?? 0}</Text>
             </View>
             <View style={styles.postMetaItem}>
-              <Ionicons name="chatbubble" size={14} color="#7c3aed" />
+              <Ionicons name="chatbubble" size={14} color={PALETTE.purple} />
               <Text style={styles.postMetaText}>{p.commentCount ?? 0}</Text>
             </View>
             <Text style={styles.postMetaTime}>
@@ -540,649 +596,321 @@ function MyPostsList({ userId }: { userId: string }) {
   );
 }
 
-const BANNER_HEIGHT = 180;
+/* ---------- Styles ---------- */
+const BANNER_HEIGHT = 200;
 const AVATAR_SIZE = 110;
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: COLORS.background,
-  },
-  scroll: {
-    paddingBottom: SPACING.lg,
-  },
-  bannerSection: {
+  container: { flex: 1, backgroundColor: PALETTE.bg },
+  scroll: { paddingBottom: SPACING.xl * 2 },
+
+  /* Banner */
+  bannerWrap: {
     width: '100%',
     height: BANNER_HEIGHT,
-    position: 'relative',
-    backgroundColor: COLORS.cardBg,
+    backgroundColor: '#fbcfe8',
+    overflow: 'hidden',
   },
-  banner: {
-    width: '100%',
-    height: '100%',
-  },
-  bannerGradient: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    height: '60%',
-  },
-  bannerEditButton: {
+  bannerImg: { width: '100%', height: '100%' },
+  bannerEditPill: {
     position: 'absolute',
     top: SPACING.sm,
     left: SPACING.sm,
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(0,0,0,0.6)',
-    paddingHorizontal: SPACING.sm,
+    gap: 6,
+    paddingHorizontal: 10,
     paddingVertical: 6,
-    borderRadius: 8,
-    gap: 4,
+    borderRadius: 999,
+    backgroundColor: 'rgba(31,29,43,0.55)',
   },
-  bannerEditText: {
-    color: COLORS.text,
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  headerEditButton: {
+  bannerEditText: { color: '#fff', fontSize: 12, fontWeight: '700' },
+  pencilBtn: {
     position: 'absolute',
     top: SPACING.sm,
     right: SPACING.sm,
-    backgroundColor: 'rgba(0,0,0,0.6)',
     width: 36,
     height: 36,
     borderRadius: 18,
+    backgroundColor: '#fff',
     alignItems: 'center',
     justifyContent: 'center',
+    // @ts-ignore
+    boxShadow: '0 4px 12px rgba(15,23,42,0.15)',
   },
-  avatarSection: {
-    alignItems: 'center',
-    marginTop: -AVATAR_SIZE / 2,
-    paddingHorizontal: SPACING.md,
-  },
-  // ---- Popup-style peek card (mirrors ProfilePopupModal graphics) ----
-  peekCard: {
-    marginTop: -AVATAR_SIZE / 2 - 10,
+
+  /* Identity card overlapping the banner */
+  identityCard: {
+    marginTop: -56,
     marginHorizontal: SPACING.md,
-    backgroundColor: '#fffaf3',
+    backgroundColor: PALETTE.card,
     borderRadius: 22,
-    borderWidth: 1,
-    borderColor: '#fde68a',
     padding: SPACING.md,
-    // @ts-ignore RN web shadow
-    boxShadow: '0 18px 50px rgba(244,114,182,0.30), 0 8px 16px rgba(0,0,0,0.20)',
+    borderWidth: 1,
+    borderColor: PALETTE.border,
+    // @ts-ignore
+    boxShadow: '0 18px 40px rgba(168,85,247,0.18), 0 4px 12px rgba(15,23,42,0.06)',
   },
-  peekRow: {
+  identityRow: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     gap: SPACING.md,
   },
-  peekAvatarWrap: {
+  avatarHalo: {
+    width: AVATAR_SIZE + 14,
+    height: AVATAR_SIZE + 14,
+    borderRadius: (AVATAR_SIZE + 14) / 2,
+    alignItems: 'center',
+    justifyContent: 'center',
     position: 'relative',
-    width: 120,
-    height: 120,
+  },
+  avatarRing: {
+    width: AVATAR_SIZE + 10,
+    height: AVATAR_SIZE + 10,
+    borderRadius: (AVATAR_SIZE + 10) / 2,
+    padding: 4,
+    backgroundColor: '#fff',
     alignItems: 'center',
     justifyContent: 'center',
+    borderWidth: 3,
+    borderColor: '#f0abfc',
+    // @ts-ignore — soft purple/pink aura glow
+    boxShadow: '0 0 0 3px rgba(244,114,182,0.25), 0 0 28px rgba(168,85,247,0.45)',
   },
-  avatarFrame: {
-    width: 120,
-    height: 120,
-    borderRadius: 16,
-    padding: 3,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  avatarFramePlain: {
-    backgroundColor: '#ffffff',
-    padding: 3,
-    borderRadius: 14,
-    // @ts-ignore
-    boxShadow: '0 4px 12px rgba(0,0,0,0.18)',
-  },
-  avatarFrameInner: {
-    width: '100%',
-    height: '100%',
-    borderRadius: 11,
-    backgroundColor: '#fff7ed',
+  avatarInner: {
+    width: AVATAR_SIZE,
+    height: AVATAR_SIZE,
+    borderRadius: AVATAR_SIZE / 2,
+    backgroundColor: PALETTE.cardSubtle,
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
-    borderWidth: 3,
-    borderColor: '#ffffff',
   },
-  peekAvatarImg: {
-    width: '100%',
-    height: '100%',
-    borderRadius: 8,
-  },
-  onlineDot: {
+  avatarImg: { width: '100%', height: '100%', borderRadius: AVATAR_SIZE / 2 },
+  avatarCam: {
     position: 'absolute',
     bottom: 4,
-    right: 4,
-    width: 14,
-    height: 14,
-    borderRadius: 7,
-    borderWidth: 3,
-    borderColor: '#ffffff',
-  },
-  peekCameraIcon: {
-    position: 'absolute',
-    top: 4,
-    right: 4,
-    backgroundColor: COLORS.primary,
-    width: 26,
-    height: 26,
-    borderRadius: 13,
+    alignSelf: 'center',
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: PALETTE.purple,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 2,
-    borderColor: '#ffffff',
+    borderColor: '#fff',
   },
-  peekIdentity: {
-    flex: 1,
-    minWidth: 0,
-    gap: 4,
-  },
-  peekName: {
-    color: '#1f2937',
-    fontFamily: CURSIVE_FONT,
-    fontSize: 30,
-    fontWeight: '700',
-    lineHeight: 34,
-    // @ts-ignore — RN web textShadow
-    textShadow: '0 2px 6px rgba(255,255,255,0.85), 0 4px 10px rgba(244,114,182,0.25)',
-  },
-  peekUsername: {
-    color: '#7c2d12',
-    fontSize: 12,
-    fontWeight: '700',
-    opacity: 0.8,
-  },
-  peekBadgesRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 6,
-    marginTop: 4,
-    alignSelf: 'flex-start',
-  },
-  badgePill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 999,
-  },
-  badgeText: {
-    color: '#ffffff',
-    fontSize: 10,
-    fontWeight: '800',
-    letterSpacing: 0.6,
-  },
-  peekCoinsPill: {
-    alignSelf: 'flex-start',
+  identityCol: { flex: 1, minWidth: 0, gap: 4 },
+  vipRibbon: { alignSelf: 'flex-start', borderRadius: 999, overflow: 'hidden', marginBottom: 4 },
+  vipRibbonGrad: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 5,
     paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 999,
-    backgroundColor: '#fef3c7',
-    borderWidth: 1.5,
-    borderColor: '#facc15',
-    marginTop: 6,
+    paddingVertical: 4,
   },
-  peekCoinsValue: {
-    color: '#92400e',
-    fontSize: 14,
-    fontWeight: '900',
+  vipRibbonText: { color: '#1a0f2e', fontSize: 10, fontWeight: '900', letterSpacing: 1 },
+  nameLine: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap' },
+  cursiveName: {
+    color: PALETTE.pink,
     fontFamily: CURSIVE_FONT,
+    fontSize: 30,
+    fontWeight: '700',
+    lineHeight: 34,
   },
-  peekCoinsLabel: {
-    color: '#92400e',
-    fontSize: 11,
-    fontWeight: '800',
-    letterSpacing: 0.4,
-    textTransform: 'uppercase',
+  usernameRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 2 },
+  username: { color: PALETTE.textSub, fontSize: 13, fontWeight: '700' },
+  vipPill: {
+    flexDirection: 'row', alignItems: 'center', gap: 3,
+    paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999,
   },
-  eliteRibbon: {
-    marginBottom: 4,
-    borderRadius: 10,
-    overflow: 'hidden',
-    alignSelf: 'flex-start',
-    // @ts-ignore
-    boxShadow: '0 2px 10px rgba(251,191,36,0.55)',
-  },
-  eliteRibbonGrad: {
+  vipPillText: { color: '#fff', fontSize: 10, fontWeight: '900', letterSpacing: 0.4 },
+  bioInline: { color: PALETTE.text, fontSize: 13, lineHeight: 18, marginTop: 6 },
+
+  chipsRow: {
     flexDirection: 'row',
-    alignItems: 'center',
+    flexWrap: 'wrap',
     gap: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 3,
-  },
-  eliteRibbonText: {
-    color: '#1a0f2e',
-    fontSize: 10,
-    fontWeight: '900',
-    letterSpacing: 1.2,
-  },
-  // ---- New: stats circles row (Likes / Friends / Posts) ----
-  statsCirclesRow: {
-    flexDirection: 'row',
-    paddingHorizontal: SPACING.md,
-    marginTop: SPACING.md,
-    gap: 8,
-  },
-  statCircle: {
-    flex: 1,
-    minWidth: 0,
-    height: 78,
-    borderRadius: 18,
-    borderWidth: 2.5,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 4,
-    gap: 2,
-  },
-  statCircleLikes: {
-    backgroundColor: '#fce7f3',
-    borderColor: '#f472b6',
-  },
-  statCircleFriends: {
-    backgroundColor: '#dbeafe',
-    borderColor: '#60a5fa',
-  },
-  statCirclePosts: {
-    backgroundColor: '#dcfce7',
-    borderColor: '#4ade80',
-  },
-  statCircleValue: {
-    fontSize: 18,
-    fontWeight: '900',
-    lineHeight: 22,
-  },
-  statCircleLabel: {
-    fontSize: 11,
-    fontWeight: '800',
-    letterSpacing: 0.4,
-    textTransform: 'uppercase',
-  },
-  // ---- View Posts pill ----
-  viewPostsPill: {
-    flexDirection: 'row',
-    alignSelf: 'center',
-    alignItems: 'center',
-    gap: 8,
-    paddingHorizontal: 16,
-    paddingVertical: 9,
-    marginTop: SPACING.md,
-    backgroundColor: '#1f1226',
-    borderRadius: 999,
-    borderWidth: 1.5,
-    borderColor: '#fbbf24',
-    // @ts-ignore RN web shadow
-    boxShadow: '0 6px 18px rgba(251,191,36,0.45)',
-  },
-  viewPostsText: {
-    color: '#fde68a',
-    fontSize: 13,
-    fontWeight: '800',
-    letterSpacing: 0.4,
-  },
-  viewPostsCount: {
-    paddingHorizontal: 8,
-    paddingVertical: 1,
-    borderRadius: 999,
-    backgroundColor: '#fbbf24',
-    minWidth: 24,
-    alignItems: 'center',
-  },
-  viewPostsCountText: { color: '#1f1226', fontSize: 11, fontWeight: '900' },
-  // ---- VIP subscription CTA ----
-  vipCtaWrap: {
-    marginTop: SPACING.md,
-    marginHorizontal: SPACING.md,
-    borderRadius: 18,
-    overflow: 'hidden',
-    // @ts-ignore RN web shadow
-    boxShadow: '0 10px 24px rgba(251,191,36,0.35)',
-  },
-  vipCtaGradient: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.md,
-    paddingHorizontal: SPACING.md,
-    paddingVertical: 14,
-  },
-  vipCtaIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: 'rgba(255,255,255,0.6)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  vipCtaTitle: {
-    color: '#1a0f2e',
-    fontSize: 15,
-    fontWeight: '900',
-    letterSpacing: 0.3,
-  },
-  vipCtaSubtitle: {
-    color: '#1a0f2e',
-    fontSize: 12,
-    fontWeight: '600',
-    opacity: 0.85,
-    marginTop: 2,
-  },
-  vipCtaBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 2,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.85)',
-  },
-  vipCtaBadgeText: {
-    color: '#1a0f2e',
-    fontSize: 12,
-    fontWeight: '900',
-    letterSpacing: 0.3,
-  },
-  // ---- Posts modal ----
-  postsTopBar: {
-    height: 48,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: SPACING.sm,
-  },
-  postsBackBtn: {
-    width: 40,
-    height: 40,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  postsTopTitle: {
-    color: COLORS.text,
-    fontSize: 16,
-    fontWeight: '700',
-    flex: 1,
-    textAlign: 'center',
-  },
-  postsList: {
-    gap: SPACING.sm,
-    paddingHorizontal: SPACING.md,
-    paddingTop: SPACING.sm,
-  },
-  postCard: {
-    backgroundColor: '#ffffff',
-    borderRadius: 14,
-    padding: SPACING.md,
-    borderWidth: 1,
-    borderColor: '#e5e7eb',
-    gap: SPACING.sm,
-  },
-  postImage: {
-    width: '100%',
-    height: 200,
-    borderRadius: 10,
-    backgroundColor: '#f1f5f9',
-  },
-  postText: {
-    color: '#1f2937',
-    fontSize: 15,
-    lineHeight: 21,
-  },
-  postMetaRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 14,
-  },
-  postMetaItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  postMetaText: {
-    color: '#475569',
-    fontSize: 13,
-    fontWeight: '700',
-  },
-  postMetaTime: {
-    color: '#94a3b8',
-    fontSize: 12,
-    marginLeft: 'auto',
-  },
-  postsPlaceholder: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: SPACING.xl * 2,
-  },
-  postsPlaceholderTitle: {
-    color: COLORS.text,
-    fontSize: 16,
-    fontWeight: '700',
     marginTop: SPACING.sm,
   },
-  postsPlaceholderText: {
-    color: COLORS.textSecondary,
-    fontSize: 13,
-    textAlign: 'center',
-    marginTop: 4,
-    paddingHorizontal: SPACING.lg,
+  chip: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    paddingHorizontal: 10, paddingVertical: 5,
+    borderRadius: 999, borderWidth: 1,
   },
-  avatarContainer: {
-    position: 'relative',
-    marginBottom: SPACING.sm,
-  },
-  avatarImg: {
-    width: AVATAR_SIZE,
-    height: AVATAR_SIZE,
-    borderRadius: AVATAR_SIZE / 2,
-    borderWidth: 4,
-    borderColor: COLORS.background,
-  },
-  avatarPlaceholder: {
-    width: AVATAR_SIZE,
-    height: AVATAR_SIZE,
-    borderRadius: AVATAR_SIZE / 2,
-    backgroundColor: COLORS.cardBg,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 4,
-    borderColor: COLORS.background,
-  },
-  cameraIcon: {
-    position: 'absolute',
-    bottom: 4,
-    right: 4,
-    backgroundColor: COLORS.primary,
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 2,
-    borderColor: COLORS.background,
-  },
-  vipCrownOnAvatar: {
-    position: 'absolute',
-    top: -2,
-    right: -2,
-    width: 26,
-    height: 26,
-    borderRadius: 13,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 2,
-    borderColor: COLORS.background,
-  },
-  vipTagPill: {
+  chipText: { fontSize: 11, fontWeight: '800', letterSpacing: 0.2 },
+  greenDot: { width: 6, height: 6, borderRadius: 3 },
+
+  /* Stats card */
+  statsCard: {
+    marginTop: SPACING.md,
+    marginHorizontal: SPACING.md,
+    backgroundColor: PALETTE.card,
+    borderRadius: 18,
+    paddingVertical: SPACING.md,
+    paddingHorizontal: SPACING.sm,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
-    borderWidth: 1.5,
-    paddingHorizontal: 10,
-    paddingVertical: 3,
-    borderRadius: 12,
-    marginTop: 6,
+    borderWidth: 1,
+    borderColor: PALETTE.border,
+    // @ts-ignore
+    boxShadow: '0 8px 22px rgba(168,85,247,0.10)',
   },
-  vipTagText: {
-    fontSize: 11,
-    fontWeight: '800',
-    letterSpacing: 0.5,
+  statItem: { flex: 1, alignItems: 'center', gap: 2 },
+  statValue: { fontSize: 18, fontWeight: '900', marginTop: 2 },
+  statLabel: { color: PALETTE.textSub, fontSize: 11, fontWeight: '700' },
+  statDivider: { width: 1, height: 28, backgroundColor: PALETTE.border },
+
+  /* VIP banner */
+  vipBanner: {
+    marginTop: SPACING.md,
+    marginHorizontal: SPACING.md,
+    borderRadius: 18,
+    overflow: 'hidden',
+    // @ts-ignore
+    boxShadow: '0 14px 30px rgba(124,45,18,0.30)',
   },
-  displayName: {
-    fontSize: 22,
-    fontWeight: '700',
-    color: COLORS.text,
-    marginTop: 4,
+  vipBannerGrad: {
+    flexDirection: 'row', alignItems: 'center', gap: SPACING.md,
+    paddingHorizontal: SPACING.md, paddingVertical: 14,
   },
-  username: {
-    fontSize: 14,
-    color: COLORS.textSecondary,
-    marginTop: 2,
+  vipDiamond: {
+    width: 46, height: 46, borderRadius: 12,
+    backgroundColor: 'rgba(253,230,138,0.18)',
+    alignItems: 'center', justifyContent: 'center',
+    borderWidth: 1, borderColor: 'rgba(253,230,138,0.45)',
   },
-  statsRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    paddingHorizontal: SPACING.md,
-    marginTop: SPACING.lg,
+  vipBannerTitle: { color: '#fde68a', fontSize: 15, fontWeight: '900', letterSpacing: 0.3 },
+  vipBannerStatus: { color: '#fff', fontWeight: '800' },
+  vipBannerSub: { color: '#ffe4e6', fontSize: 11, opacity: 0.92, marginTop: 2 },
+  vipManageBtn: { paddingHorizontal: 14, paddingVertical: 9, borderRadius: 999 },
+  vipManageText: { color: '#fff', fontSize: 12, fontWeight: '900', letterSpacing: 0.3 },
+
+  /* View posts pill */
+  viewPostsPill: {
+    flexDirection: 'row', alignSelf: 'center', alignItems: 'center', gap: 8,
+    marginTop: SPACING.md,
+    paddingHorizontal: 16, paddingVertical: 9,
+    borderRadius: 999,
+    backgroundColor: PALETTE.purple,
+    // @ts-ignore
+    boxShadow: '0 8px 18px rgba(168,85,247,0.40)',
+  },
+  viewPostsText: { color: '#fff', fontSize: 13, fontWeight: '800' },
+  viewPostsCount: {
+    paddingHorizontal: 8, paddingVertical: 1, borderRadius: 999,
+    backgroundColor: '#fff', minWidth: 24, alignItems: 'center',
+  },
+  viewPostsCountText: { color: PALETTE.purple, fontSize: 11, fontWeight: '900' },
+
+  /* Info / About card */
+  infoCard: {
+    marginTop: SPACING.md, marginHorizontal: SPACING.md,
+    backgroundColor: PALETTE.card,
+    borderRadius: 18, padding: SPACING.md,
+    borderWidth: 1, borderColor: PALETTE.border,
+    // @ts-ignore
+    boxShadow: '0 6px 16px rgba(15,23,42,0.06)',
+  },
+  infoHeaderRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 },
+  infoIcon: {
+    width: 24, height: 24, borderRadius: 8,
+    alignItems: 'center', justifyContent: 'center',
+    backgroundColor: PALETTE.pinkSoft,
+  },
+  cardHeading: { color: PALETTE.text, fontSize: 14, fontWeight: '800' },
+  viewAll: { color: PALETTE.purple, fontSize: 12, fontWeight: '800' },
+  aboutBio: { color: PALETTE.text, fontSize: 13, lineHeight: 19, marginBottom: 10 },
+  infoLine: {
+    flexDirection: 'row', alignItems: 'center',
+    paddingVertical: 7,
+    borderTopWidth: 1, borderTopColor: PALETTE.border,
     gap: 8,
   },
-  statBox: {
-    backgroundColor: COLORS.cardBg,
-    padding: SPACING.md,
-    borderRadius: 12,
-    alignItems: 'center',
-    flex: 1,
+  infoLineLabel: { color: PALETTE.textSub, fontSize: 12, fontWeight: '700' },
+  infoLineDots: { flex: 1, borderBottomWidth: 1, borderBottomColor: PALETTE.border, borderStyle: 'dotted', height: 1 },
+  infoLineValue: { color: PALETTE.text, fontSize: 12, fontWeight: '700' },
+
+  /* Badges */
+  badgesScroll: { gap: 10, paddingVertical: 4 },
+  badgeTile: { alignItems: 'center', width: 78, gap: 6 },
+  badgeShield: {
+    width: 64, height: 70,
+    borderRadius: 16,
+    alignItems: 'center', justifyContent: 'center',
+    // @ts-ignore
+    boxShadow: '0 6px 14px rgba(0,0,0,0.12)',
   },
-  statValue: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: COLORS.text,
-    marginTop: 4,
-  },
-  statLabel: {
-    fontSize: 11,
-    color: COLORS.textSecondary,
-    marginTop: 2,
-  },
-  form: {
-    gap: SPACING.md,
-    paddingHorizontal: SPACING.md,
-    marginTop: SPACING.lg,
+  badgeLabel: { color: PALETTE.text, fontSize: 10, fontWeight: '800', textAlign: 'center' },
+
+  /* Edit card */
+  editCard: {
+    marginTop: SPACING.md, marginHorizontal: SPACING.md,
+    backgroundColor: PALETTE.card,
+    borderRadius: 18, padding: SPACING.md,
+    borderWidth: 1, borderColor: PALETTE.border,
+    // @ts-ignore
+    boxShadow: '0 6px 16px rgba(15,23,42,0.06)',
   },
   changeBannerCta: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.sm,
-    paddingHorizontal: SPACING.md,
-    paddingVertical: 12,
+    flexDirection: 'row', alignItems: 'center', gap: SPACING.sm,
+    paddingHorizontal: 12, paddingVertical: 12,
     borderRadius: 14,
-    backgroundColor: '#1f1226',
-    borderWidth: 1.5,
-    borderColor: '#fbbf24',
-    // @ts-ignore web shadow
-    boxShadow: '0 6px 18px rgba(251,191,36,0.30)',
+    backgroundColor: PALETTE.pinkSoft,
+    borderWidth: 1.5, borderColor: PALETTE.pink + '55',
+    marginVertical: 8,
   },
-  changeBannerTitle: {
-    color: '#fde68a',
+  changeBannerTitle: { color: PALETTE.pink, fontSize: 13, fontWeight: '900' },
+  changeBannerSub: { color: PALETTE.textSub, fontSize: 11, marginTop: 2 },
+  fieldLabel: { color: PALETTE.text, fontSize: 13, fontWeight: '800', marginTop: 8, marginBottom: 6 },
+  editInput: {
+    backgroundColor: PALETTE.cardSubtle,
+    borderRadius: 12,
+    padding: SPACING.md,
+    color: PALETTE.text,
     fontSize: 14,
-    fontWeight: '800',
-    letterSpacing: 0.3,
-  },
-  changeBannerSubtitle: {
-    color: '#fde68a',
-    fontSize: 11,
-    opacity: 0.8,
-    marginTop: 2,
-  },
-  inputGroup: {
-    gap: SPACING.xs,
-  },
-  label: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: COLORS.text,
-  },
-  input: {
-    backgroundColor: COLORS.cardBg,
-    borderRadius: 12,
-    padding: SPACING.md,
-    color: COLORS.text,
-    fontSize: 16,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: PALETTE.border,
+    // @ts-ignore
+    outlineStyle: 'none',
   },
-  textArea: {
-    height: 100,
-    textAlignVertical: 'top',
+  textArea: { height: 100, textAlignVertical: 'top' },
+  editBtnRow: { flexDirection: 'row', gap: SPACING.sm, marginTop: SPACING.md },
+  editBtn: { flex: 1, paddingVertical: 12, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  editBtnPrimary: { backgroundColor: PALETTE.purple },
+  editBtnSecondary: { backgroundColor: PALETTE.cardSubtle, borderWidth: 1, borderColor: PALETTE.border },
+  editBtnPrimaryText: { color: '#fff', fontSize: 14, fontWeight: '800' },
+  editBtnSecondaryText: { color: PALETTE.textSub, fontSize: 14, fontWeight: '800' },
+
+  /* Logout */
+  logoutBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 6, paddingVertical: 12,
+    marginTop: SPACING.md, marginHorizontal: SPACING.md,
+    borderRadius: 14,
+    backgroundColor: '#fff', borderWidth: 1, borderColor: '#fee2e2',
   },
-  buttonRow: {
-    flexDirection: 'row',
-    gap: SPACING.sm,
+  logoutText: { color: '#ef4444', fontSize: 14, fontWeight: '800' },
+
+  /* Posts modal */
+  postsTopBar: {
+    height: 48, flexDirection: 'row', alignItems: 'center',
+    justifyContent: 'space-between', paddingHorizontal: SPACING.sm,
   },
-  button: {
-    flex: 1,
-    paddingVertical: SPACING.md,
-    borderRadius: 12,
-    alignItems: 'center',
+  postsBackBtn: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
+  postsTopTitle: { color: PALETTE.text, fontSize: 16, fontWeight: '800', flex: 1, textAlign: 'center' },
+  postsList: { gap: SPACING.sm, paddingHorizontal: SPACING.md, paddingTop: SPACING.sm },
+  postCard: {
+    backgroundColor: '#fff', borderRadius: 14, padding: SPACING.md,
+    borderWidth: 1, borderColor: PALETTE.border, gap: SPACING.sm,
   },
-  buttonPrimary: {
-    backgroundColor: COLORS.primary,
-  },
-  buttonSecondary: {
-    backgroundColor: COLORS.cardBg,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  buttonText: {
-    color: COLORS.text,
-    fontSize: 16,
-    fontWeight: '700',
-  },
-  buttonSecondaryText: {
-    color: COLORS.textSecondary,
-    fontSize: 16,
-    fontWeight: '700',
-  },
-  infoSection: {
-    gap: SPACING.md,
-    paddingHorizontal: SPACING.md,
-    marginTop: SPACING.lg,
-  },
-  infoBox: {
-    backgroundColor: COLORS.cardBg,
-    padding: SPACING.md,
-    borderRadius: 12,
-  },
-  infoLabel: {
-    fontSize: 12,
-    color: COLORS.textSecondary,
-    marginBottom: 4,
-  },
-  infoValue: {
-    fontSize: 16,
-    color: COLORS.text,
-  },
-  logoutButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: COLORS.cardBg,
-    padding: SPACING.md,
-    borderRadius: 12,
-    marginTop: SPACING.lg,
-    marginHorizontal: SPACING.md,
-    gap: SPACING.xs,
-  },
-  logoutText: {
-    color: COLORS.error,
-    fontSize: 16,
-    fontWeight: '700',
-  },
+  postImage: { width: '100%', height: 200, borderRadius: 10, backgroundColor: '#f1f5f9' },
+  postText: { color: PALETTE.text, fontSize: 15, lineHeight: 21 },
+  postMetaRow: { flexDirection: 'row', alignItems: 'center', gap: 14 },
+  postMetaItem: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  postMetaText: { color: PALETTE.textSub, fontSize: 13, fontWeight: '700' },
+  postMetaTime: { color: '#94a3b8', fontSize: 12, marginLeft: 'auto' },
+  postsPlaceholder: { alignItems: 'center', justifyContent: 'center', paddingVertical: SPACING.xl * 2 },
+  postsPlaceholderTitle: { color: PALETTE.text, fontSize: 16, fontWeight: '700', marginTop: SPACING.sm },
+  postsPlaceholderText: { color: PALETTE.textSub, fontSize: 13, textAlign: 'center', marginTop: 4, paddingHorizontal: SPACING.lg },
 });
