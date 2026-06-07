@@ -22,6 +22,8 @@ export interface ProfileCard {
   level: number;
   badges: ProfileBadge[];
   friendCount: number;
+  postsCount?: number;
+  likesCount?: number;
   friendStatus: FriendStatus;
   friendRequestId?: string | null;
   isBlocked: boolean;

@@ -1,0 +1,34 @@
+{
+  "summary": "Backend-only testing for profile redesign (postsCount/likesCount + private friends list) and tournament redesign (room-scoped, public/private, tiered prize split). 17/17 pytest tests passed including unit-level checks on _winners_count, _prize_split, _generate_join_code, and the TOURNAMENT_VISIBLE_HOURS=5 constant, plus end-to-end flows hitting the public preview URL.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_profile_tournament_v2.py",
+    "/app/test_reports/pytest/iter11_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "/app/backend/server.py is now 4118 lines — strongly recommend splitting into modules (auth, tournaments, posts, profile, rooms). Maintenance/readability risk.",
+    "Tournament join-by-code matches only status=='lobby'; that's correct behavior. Confirmed no _id leakage in serialized responses.",
+    "_prize_split with k>=3 uses ratios n:(n-1):...:1 where n is the winners_count (k), not n_players. Tests confirmed this matches the spec given in the request ('ceil(0.3*n) winners with ratios k:(k-1):...:1' where the comment in code says 'k'). For 11 players → 4 winners → [4,3,2,1] weights → pot 110 → [44,33,22,11]. Matches expected.",
+    "list_room_tournaments performs an in-Python loop to filter private tournaments — fine at small scale but could be pushed to the Mongo query for efficiency at higher volume.",
+    "Endpoint name discrepancy: review_request mentions POST /api/board-posts/{id}/like — actual endpoint is POST /api/posts/{post_id}/like. Tests used the actual endpoint."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_profile_tournament_v2.py (new)"
+  ],
+  "success_rate": {"backend": "100%", "frontend": "skipped"},
+  "test_credentials": "Fresh users registered per-test (alice*, bob*, carol*, p0..p6, q0..q9). Pre-seeded users in /app/memory/test_credentials.md were not used — module-scoped fixtures create fresh accounts.",
+  "seed_data_creation": "Called POST /api/init/rooms (idempotent) to seed default rooms. ~20 throwaway TEST users created across the suite (alice/bob/carol + p0-p6 + q0-q9). One board post + one like persisted in default room A by Alice→Bob.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "All backend tournament + profile changes verified. Helper functions _winners_count/_prize_split are pure and importable from /app/backend/server.py. If you re-run, the test suite registers fresh users each run so it is safe to run repeatedly. Tournament auto-completion on size-fill works; manual /start with <size players also works for ≤4 tier.",
+  "rca of the issue": "N/A — no failures. All assertions on status codes, response shapes, privacy gating (403 friends + private tournament join), join-code format (6 chars from A-Z\\{I,O} + 2-9), room scoping, and tiered prize math passed."
+}

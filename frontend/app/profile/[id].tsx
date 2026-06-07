@@ -26,14 +26,14 @@ import { useAuth } from '@/src/contexts/AuthContext';
 import GiftSendModal from '@/src/components/GiftSendModal';
 import PrivateMessagesModal from '@/src/components/PrivateMessagesModal';
 
-const TABS = [
+const ALL_TABS = [
   { id: 'about',   label: 'About',   icon: 'information-circle-outline' as const },
   { id: 'friends', label: 'Friends', icon: 'people-outline' as const },
   { id: 'photos',  label: 'Photos',  icon: 'images-outline' as const },
   { id: 'posts',   label: 'Posts',   icon: 'newspaper-outline' as const },
 ];
 
-type TabId = typeof TABS[number]['id'];
+type TabId = typeof ALL_TABS[number]['id'];
 
 interface FriendListItem {
   id: string;
@@ -177,6 +177,9 @@ export default function ProfileViewScreen() {
   const tabTranslate = tabAnim.interpolate({ inputRange: [0, 1], outputRange: [16, 0] });
   const contentTranslate = contentAnim.interpolate({ inputRange: [0, 1], outputRange: [16, 0] });
 
+  // Privacy: only the profile owner can see the Friends list tab.
+  const TABS = profile.isSelf ? ALL_TABS : ALL_TABS.filter((t) => t.id !== 'friends');
+
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.topBar}>
@@ -262,27 +265,21 @@ export default function ProfileViewScreen() {
             <Text style={styles.username}>@{profile.username}</Text>
 
             <View style={styles.statsRow}>
-              <View style={styles.statCircle}>
-                <Text style={styles.statCircleValue}>{profile.friendCount}</Text>
-                <Text style={styles.statCircleLabel}>Friends</Text>
+              <View style={[styles.statCircle, styles.statCircleCoins]} testID="profile-stat-coins">
+                <Text style={[styles.statCircleValue, { color: '#a16207' }]}>{profile.coins}</Text>
+                <Text style={[styles.statCircleLabel, { color: '#a16207' }]}>Coins</Text>
               </View>
-              <View style={styles.statCircleGreen}>
-                <Text style={styles.statCircleValueGreen}>{profile.level || 0}</Text>
-                <Text style={styles.statCircleLabelGreen}>Level</Text>
+              <View style={[styles.statCircle, styles.statCircleFriends]} testID="profile-stat-friends">
+                <Text style={[styles.statCircleValue, { color: '#1e40af' }]}>{profile.friendCount}</Text>
+                <Text style={[styles.statCircleLabel, { color: '#1e40af' }]}>Friends</Text>
               </View>
-              <View style={styles.statCirclePink}>
-                <View style={styles.statValueRow}>
-                  <View
-                    style={[
-                      styles.smallStatusDot,
-                      { backgroundColor: profile.onlineStatus ? COLORS.success : '#666' },
-                    ]}
-                  />
-                  <Text style={styles.statCircleValueSmall}>
-                    {profile.onlineStatus ? 'On' : 'Off'}
-                  </Text>
-                </View>
-                <Text style={styles.statCircleLabelPink}>Status</Text>
+              <View style={[styles.statCircle, styles.statCircleLikes]} testID="profile-stat-likes">
+                <Text style={[styles.statCircleValue, { color: '#9d174d' }]}>{profile.likesCount ?? 0}</Text>
+                <Text style={[styles.statCircleLabel, { color: '#9d174d' }]}>Likes</Text>
+              </View>
+              <View style={[styles.statCircle, styles.statCirclePosts]} testID="profile-stat-posts">
+                <Text style={[styles.statCircleValue, { color: '#166534' }]}>{profile.postsCount ?? 0}</Text>
+                <Text style={[styles.statCircleLabel, { color: '#166534' }]}>Posts</Text>
               </View>
             </View>
 
@@ -709,87 +706,52 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.sm,
     justifyContent: 'space-around',
     alignItems: 'center',
-    gap: 12,
+    gap: 8,
   },
   statCircle: {
-    width: 92,
-    height: 92,
-    borderRadius: 46,
-    backgroundColor: '#fef3c7',
-    borderWidth: 4,
-    borderColor: '#facc15',
+    flex: 1,
+    minWidth: 0,
+    height: 78,
+    borderRadius: 18,
+    borderWidth: 2.5,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#f59e0b',
-    shadowOpacity: 0.35,
+    paddingHorizontal: 4,
+    shadowOpacity: 0.25,
     shadowRadius: 8,
     shadowOffset: { width: 0, height: 3 },
-    elevation: 4,
+    elevation: 3,
+  },
+  statCircleCoins: {
+    backgroundColor: '#fef3c7',
+    borderColor: '#facc15',
+    shadowColor: '#f59e0b',
+  },
+  statCircleFriends: {
+    backgroundColor: '#dbeafe',
+    borderColor: '#60a5fa',
+    shadowColor: '#3b82f6',
+  },
+  statCircleLikes: {
+    backgroundColor: '#fce7f3',
+    borderColor: '#f472b6',
+    shadowColor: '#ec4899',
+  },
+  statCirclePosts: {
+    backgroundColor: '#dcfce7',
+    borderColor: '#4ade80',
+    shadowColor: '#22c55e',
   },
   statCircleValue: {
-    color: '#a16207',
-    fontSize: 26,
+    fontSize: 22,
     fontWeight: '900',
-    lineHeight: 28,
+    lineHeight: 26,
   },
   statCircleLabel: {
-    color: '#a16207',
     fontSize: 11,
-    fontWeight: '700',
+    fontWeight: '800',
     marginTop: 2,
-  },
-  statCircleGreen: {
-    width: 92,
-    height: 92,
-    borderRadius: 46,
-    backgroundColor: '#dcfce7',
-    borderWidth: 4,
-    borderColor: '#22c55e',
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#22c55e',
-    shadowOpacity: 0.35,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 3 },
-    elevation: 4,
-  },
-  statCircleValueGreen: {
-    color: '#166534',
-    fontSize: 26,
-    fontWeight: '900',
-    lineHeight: 28,
-  },
-  statCircleLabelGreen: {
-    color: '#166534',
-    fontSize: 11,
-    fontWeight: '700',
-    marginTop: 2,
-  },
-  statCirclePink: {
-    width: 92,
-    height: 92,
-    borderRadius: 46,
-    backgroundColor: '#fce7f3',
-    borderWidth: 4,
-    borderColor: '#ec4899',
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#ec4899',
-    shadowOpacity: 0.35,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 3 },
-    elevation: 4,
-  },
-  statCircleValueSmall: {
-    color: '#9f1239',
-    fontSize: 18,
-    fontWeight: '900',
-  },
-  statCircleLabelPink: {
-    color: '#9f1239',
-    fontSize: 11,
-    fontWeight: '700',
-    marginTop: 2,
+    letterSpacing: 0.4,
   },
   statBox: {
     flex: 1,

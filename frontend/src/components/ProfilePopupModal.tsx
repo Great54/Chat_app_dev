@@ -27,11 +27,12 @@ import PrivateMessagesModal from '@/src/components/PrivateMessagesModal';
 import SendCoinsModal from '@/src/components/SendCoinsModal';
 import { getAuraStyle, findBadge, VIP_PRO_AVATAR_SCALE } from '@/src/utils/vipProCustomization';
 
-// Cursive font stack for VIP Elite premium look (loaded in +html.tsx on web)
-const ELITE_SCRIPT_FONT = Platform.select({
-  web: '"Dancing Script", "Brush Script MT", cursive',
+// Cursive font stack for premium/cursive look (loaded in +html.tsx on web)
+const CURSIVE_FONT = Platform.select({
+  web: '"Dancing Script", "Great Vibes", "Brush Script MT", cursive',
   default: 'System',
 }) as string;
+const ELITE_SCRIPT_FONT = CURSIVE_FONT;
 
 interface Props {
   visible: boolean;
@@ -267,146 +268,179 @@ export default function ProfilePopupModal({ visible, userId, onClose }: Props) {
             </View>
           ) : (
             <>
-              {/* Banner */}
-              <View style={styles.banner}>
-                {profile.bannerUrl ? (
-                  <Image source={{ uri: profile.bannerUrl }} style={StyleSheet.absoluteFillObject} contentFit="cover" />
-                ) : (
-                  <LinearGradient
-                    colors={vipStyle ? (vipStyle.borderColors as [string, string, ...string[]]) : [COLORS.primary, COLORS.accent, COLORS.secondary]}
-                    style={StyleSheet.absoluteFillObject}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 1 }}
-                  />
-                )}
-                <LinearGradient
-                  colors={['transparent', 'rgba(0,0,0,0.7)']}
-                  style={StyleSheet.absoluteFillObject}
-                />
-                <TouchableOpacity onPress={onClose} style={styles.closeBtn} testID="profile-popup-close">
-                  <Ionicons name="close" size={20} color={COLORS.text} />
-                </TouchableOpacity>
-              </View>
-
-              {/* Avatar + frame */}
-              <View
-                style={[
-                  styles.avatarWrap,
-                  profile.enlargedAvatar && { transform: [{ scale: VIP_PRO_AVATAR_SCALE }] },
-                  getAuraStyle(profile.auraType, profile.auraColor, 96),
-                ]}
-              >
-                {vipStyle ? (
-                  <LinearGradient
-                    colors={vipStyle.borderColors as [string, string, ...string[]]}
-                    style={styles.avatarFrame}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 1 }}
-                  >
-                    <View style={styles.avatarFrameInner}>
-                      {profile.photoUrl ? (
-                        <Image source={{ uri: profile.photoUrl }} style={styles.avatarImg} />
-                      ) : (
-                        <Ionicons name="person" size={48} color={COLORS.textSecondary} />
-                      )}
-                    </View>
-                  </LinearGradient>
-                ) : (
-                  <View style={[styles.avatarFrame, { backgroundColor: COLORS.cardBg, padding: 3 }]}>
-                    <View style={styles.avatarFrameInner}>
-                      {profile.photoUrl ? (
-                        <Image source={{ uri: profile.photoUrl }} style={styles.avatarImg} />
-                      ) : (
-                        <Ionicons name="person" size={48} color={COLORS.textSecondary} />
-                      )}
-                    </View>
-                  </View>
-                )}
-                {/* Online status dot */}
-                <View
-                  style={[
-                    styles.onlineDot,
-                    { backgroundColor: profile.onlineStatus ? COLORS.success : '#666' },
-                  ]}
-                />
-                {/* Custom VIP Pro badge (overrides crown) */}
-                {(() => {
-                  const customBadge = findBadge(profile.vipBadgeId);
-                  if (customBadge) {
-                    return (
-                      <View style={[styles.crown, { backgroundColor: customBadge.bg, width: 30, height: 30, borderRadius: 15 }]}>
-                        <Text style={{ fontSize: 18 }}>{customBadge.emoji}</Text>
-                      </View>
-                    );
-                  }
-                  if (vipStyle) {
-                    return (
-                      <View style={[styles.crown, { backgroundColor: vipStyle.crownColor }]}>
-                        <Ionicons name={vipStyle.badgeIcon} size={14} color={COLORS.background} />
-                      </View>
-                    );
-                  }
-                  return null;
-                })()}
-              </View>
-
-              {/* Name + badges */}
-              <View style={styles.identityBlock}>
-                {isElite && (
-                  <View style={styles.eliteRibbon} testID="elite-ribbon">
+              {/* Banner with avatar LEFT + name CENTER overlay */}
+              <View style={styles.bannerWrap}>
+                <View style={styles.banner}>
+                  {profile.bannerUrl ? (
+                    <Image source={{ uri: profile.bannerUrl }} style={StyleSheet.absoluteFillObject} contentFit="cover" />
+                  ) : (
                     <LinearGradient
-                      colors={['#fde68a', '#fbbf24', '#dc2626'] as [string, string, ...string[]]}
+                      colors={['#a7f3d0', '#fde68a', '#fbcfe8'] as [string, string, ...string[]]}
+                      style={StyleSheet.absoluteFillObject}
                       start={{ x: 0, y: 0 }}
-                      end={{ x: 1, y: 0 }}
-                      style={styles.eliteRibbonGrad}
-                    >
-                      <Ionicons name="diamond" size={11} color="#1a0f2e" />
-                      <Text style={styles.eliteRibbonText}>VIP ELITE</Text>
-                      <Ionicons name="star" size={10} color="#1a0f2e" />
-                    </LinearGradient>
-                  </View>
-                )}
-                <View style={styles.nameRow}>
-                  <Text
+                      end={{ x: 1, y: 1 }}
+                    />
+                  )}
+                  {/* Soft pastel veil for legibility */}
+                  <LinearGradient
+                    colors={['rgba(255,255,255,0.0)', 'rgba(255,255,255,0.35)']}
+                    style={StyleSheet.absoluteFillObject}
+                  />
+
+                  {/* Avatar — LEFT */}
+                  <View
                     style={[
-                      styles.displayName,
-                      vipStyle && { color: vipStyle.nameColor },
-                      profile.usernameColor ? { color: profile.usernameColor } : null,
-                      isElite && {
-                        fontFamily: ELITE_SCRIPT_FONT,
-                        fontSize: 26,
-                        // @ts-ignore - RN web textShadow
-                        textShadow: '0 1px 8px rgba(251,191,36,0.55)',
-                      },
+                      styles.avatarOverlayLeft,
+                      profile.enlargedAvatar && { transform: [{ scale: VIP_PRO_AVATAR_SCALE }] },
+                      getAuraStyle(profile.auraType, profile.auraColor, 84),
                     ]}
-                    numberOfLines={1}
                   >
-                    {profile.displayName}
-                  </Text>
+                    {vipStyle ? (
+                      <LinearGradient
+                        colors={vipStyle.borderColors as [string, string, ...string[]]}
+                        style={styles.avatarFrame}
+                        start={{ x: 0, y: 0 }}
+                        end={{ x: 1, y: 1 }}
+                      >
+                        <View style={styles.avatarFrameInner}>
+                          {profile.photoUrl ? (
+                            <Image source={{ uri: profile.photoUrl }} style={styles.avatarImg} />
+                          ) : (
+                            <Ionicons name="person" size={40} color="#9ca3af" />
+                          )}
+                        </View>
+                      </LinearGradient>
+                    ) : (
+                      <View style={[styles.avatarFrame, styles.avatarFramePlain]}>
+                        <View style={styles.avatarFrameInner}>
+                          {profile.photoUrl ? (
+                            <Image source={{ uri: profile.photoUrl }} style={styles.avatarImg} />
+                          ) : (
+                            <Ionicons name="person" size={40} color="#9ca3af" />
+                          )}
+                        </View>
+                      </View>
+                    )}
+                    {/* Online dot */}
+                    <View
+                      style={[
+                        styles.onlineDot,
+                        { backgroundColor: profile.onlineStatus ? '#22c55e' : '#94a3b8' },
+                      ]}
+                    />
+                    {/* VIP badge */}
+                    {(() => {
+                      const customBadge = findBadge(profile.vipBadgeId);
+                      if (customBadge) {
+                        return (
+                          <View style={[styles.crown, { backgroundColor: customBadge.bg }]}>
+                            <Text style={{ fontSize: 16 }}>{customBadge.emoji}</Text>
+                          </View>
+                        );
+                      }
+                      if (vipStyle) {
+                        return (
+                          <View style={[styles.crown, { backgroundColor: vipStyle.crownColor }]}>
+                            <Ionicons name={vipStyle.badgeIcon} size={13} color="#fff" />
+                          </View>
+                        );
+                      }
+                      return null;
+                    })()}
+                  </View>
+
+                  {/* Cursive name — CENTER overlay */}
+                  <View style={styles.nameOverlay} pointerEvents="none">
+                    {isElite && (
+                      <View style={styles.eliteRibbon} testID="elite-ribbon">
+                        <LinearGradient
+                          colors={['#fde68a', '#fbbf24', '#dc2626'] as [string, string, ...string[]]}
+                          start={{ x: 0, y: 0 }}
+                          end={{ x: 1, y: 0 }}
+                          style={styles.eliteRibbonGrad}
+                        >
+                          <Ionicons name="diamond" size={10} color="#1a0f2e" />
+                          <Text style={styles.eliteRibbonText}>VIP ELITE</Text>
+                          <Ionicons name="star" size={9} color="#1a0f2e" />
+                        </LinearGradient>
+                      </View>
+                    )}
+                    <Text
+                      style={[
+                        styles.cursiveName,
+                        profile.usernameColor ? { color: profile.usernameColor } : null,
+                      ]}
+                      numberOfLines={1}
+                      testID="profile-popup-name"
+                    >
+                      {profile.displayName}
+                    </Text>
+                    <Text style={styles.usernameOverlay} numberOfLines={1}>
+                      @{profile.username}
+                    </Text>
+                  </View>
+
+                  <TouchableOpacity onPress={onClose} style={styles.closeBtn} testID="profile-popup-close">
+                    <Ionicons name="close" size={18} color="#1f2937" />
+                  </TouchableOpacity>
+                </View>
+
+                {/* Decorative scallop divider (matches reference) */}
+                <View style={styles.scallopRow}>
+                  {Array.from({ length: 14 }).map((_, i) => (
+                    <View key={i} style={styles.scallopDot} />
+                  ))}
+                </View>
+              </View>
+
+              {/* Identity block: badges row + bio */}
+              <View style={styles.identityBlock}>
+                <View style={styles.badgesRow}>
                   {profile.badges.map((b) => (
                     <View key={b.id} style={[styles.badgePill, { backgroundColor: b.color }]}>
-                      <Ionicons name={b.icon as any} size={10} color={COLORS.background} />
+                      <Ionicons name={b.icon as any} size={10} color="#fff" />
                       <Text style={styles.badgeText}>{b.label}</Text>
                     </View>
                   ))}
+                  <View style={styles.statusInlineRow}>
+                    <View
+                      style={[
+                        styles.statusDot,
+                        { backgroundColor: profile.onlineStatus ? '#22c55e' : '#94a3b8' },
+                      ]}
+                    />
+                    <Text style={styles.statusText}>
+                      {profile.onlineStatus ? 'Online' : 'Offline'}
+                    </Text>
+                  </View>
                 </View>
-                <Text style={styles.username}>@{profile.username}</Text>
-                <View style={styles.statusRow}>
-                  <View
-                    style={[
-                      styles.statusDot,
-                      { backgroundColor: profile.onlineStatus ? COLORS.success : '#666' },
-                    ]}
-                  />
-                  <Text style={styles.statusText}>
-                    {profile.onlineStatus ? 'Online now' : 'Offline'}
-                  </Text>
-                  <Text style={styles.dotSeparator}>·</Text>
-                  <Ionicons name="people" size={12} color={COLORS.textSecondary} />
-                  <Text style={styles.statusText}>{profile.friendCount} friends</Text>
+
+                {/* Stats row: Coins / Friends / Likes / Posts */}
+                <View style={styles.statsRow} testID="profile-popup-stats">
+                  <View style={[styles.statChip, styles.statCoins]} testID="stat-coins">
+                    <Ionicons name="logo-bitcoin" size={14} color="#a16207" />
+                    <Text style={styles.statValue}>{profile.coins}</Text>
+                    <Text style={styles.statLabel}>Coins</Text>
+                  </View>
+                  <View style={[styles.statChip, styles.statFriends]} testID="stat-friends">
+                    <Ionicons name="people" size={14} color="#1d4ed8" />
+                    <Text style={[styles.statValue, { color: '#1e3a8a' }]}>{profile.friendCount}</Text>
+                    <Text style={[styles.statLabel, { color: '#1e3a8a' }]}>Friends</Text>
+                  </View>
+                  <View style={[styles.statChip, styles.statLikes]} testID="stat-likes">
+                    <Ionicons name="heart" size={14} color="#be185d" />
+                    <Text style={[styles.statValue, { color: '#9d174d' }]}>{profile.likesCount ?? 0}</Text>
+                    <Text style={[styles.statLabel, { color: '#9d174d' }]}>Likes</Text>
+                  </View>
+                  <View style={[styles.statChip, styles.statPosts]} testID="stat-posts">
+                    <Ionicons name="newspaper" size={14} color="#15803d" />
+                    <Text style={[styles.statValue, { color: '#166534' }]}>{profile.postsCount ?? 0}</Text>
+                    <Text style={[styles.statLabel, { color: '#166534' }]}>Posts</Text>
+                  </View>
                 </View>
+
                 {profile.bio ? (
-                  <Text style={styles.bio} numberOfLines={2}>
+                  <Text style={styles.bio} numberOfLines={3} testID="profile-popup-bio">
                     {profile.bio}
                   </Text>
                 ) : null}
@@ -419,12 +453,12 @@ export default function ProfilePopupModal({ visible, userId, onClose }: Props) {
                 testID="profile-popup-view"
               >
                 <LinearGradient
-                  colors={[COLORS.primary, COLORS.accent]}
+                  colors={['#f472b6', '#fb7185', '#fbbf24'] as [string, string, ...string[]]}
                   start={{ x: 0, y: 0 }}
                   end={{ x: 1, y: 1 }}
                   style={styles.viewProfileGradient}
                 >
-                  <Ionicons name="person-circle" size={18} color={COLORS.text} />
+                  <Ionicons name="person-circle" size={18} color="#fff" />
                   <Text style={styles.viewProfileText}>View Profile</Text>
                 </LinearGradient>
               </TouchableOpacity>
@@ -449,14 +483,14 @@ export default function ProfilePopupModal({ visible, userId, onClose }: Props) {
                   <ActionButton
                     label="Gift"
                     icon="gift"
-                    color={COLORS.accent}
+                    color="#ec4899"
                     onPress={handleGift}
                     testID="profile-popup-gift"
                   />
                   <ActionButton
-                    label="Send Coins"
+                    label="Coins"
                     icon="cash"
-                    color={COLORS.coin}
+                    color="#f59e0b"
                     onPress={() => setSendCoinsOpen(true)}
                     testID="profile-popup-send-coins"
                   />
@@ -564,17 +598,17 @@ function ActionButton({
         onPressOut={handlePressOut}
         style={[
           actionBtnStyles.btn,
-          active && { backgroundColor: '#1f2a1f', borderColor: COLORS.success },
+          active && { backgroundColor: '#dcfce7', borderColor: '#22c55e' },
         ]}
         testID={testID}
         disabled={loading}
       >
         {loading ? (
-          <ActivityIndicator size="small" color={COLORS.text} />
+          <ActivityIndicator size="small" color="#7c2d12" />
         ) : (
-          <Ionicons name={icon} size={20} color={color || (active ? COLORS.success : COLORS.text)} />
+          <Ionicons name={icon} size={20} color={color || (active ? '#15803d' : '#7c2d12')} />
         )}
-        <Text style={[actionBtnStyles.label, active && { color: COLORS.success }]} numberOfLines={1}>
+        <Text style={[actionBtnStyles.label, active && { color: '#15803d' }]} numberOfLines={1}>
           {label}
         </Text>
       </TouchableOpacity>
@@ -584,26 +618,26 @@ function ActionButton({
 
 const actionBtnStyles = StyleSheet.create({
   btn: {
-    backgroundColor: '#1a1226',
-    borderRadius: 12,
+    backgroundColor: '#fff7ed',
+    borderRadius: 14,
     paddingVertical: 12,
     alignItems: 'center',
     justifyContent: 'center',
     gap: 4,
-    borderWidth: 1,
-    borderColor: '#2a2240',
+    borderWidth: 1.5,
+    borderColor: '#fde68a',
   },
   label: {
-    color: COLORS.text,
+    color: '#7c2d12',
     fontSize: 12,
-    fontWeight: '600',
+    fontWeight: '700',
   },
 });
 
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.75)',
+    backgroundColor: 'rgba(15,11,25,0.55)',
     alignItems: 'center',
     justifyContent: 'center',
     padding: SPACING.md,
@@ -611,29 +645,91 @@ const styles = StyleSheet.create({
   card: {
     width: '100%',
     maxWidth: 380,
-    backgroundColor: '#15101f',
-    borderRadius: 22,
+    backgroundColor: '#fffaf3',
+    borderRadius: 26,
     overflow: 'hidden',
     borderWidth: 1,
-    borderColor: '#2a2240',
+    borderColor: '#fde68a',
     paddingBottom: SPACING.md,
+    // @ts-ignore RN web shadow
+    boxShadow: '0 18px 50px rgba(244,114,182,0.30), 0 8px 16px rgba(0,0,0,0.20)',
   },
   cardElite: {
-    borderWidth: 1.5,
+    borderWidth: 2,
     borderColor: '#fbbf24',
-    // Premium gold halo around the entire profile card
-    // @ts-ignore – RN web supports boxShadow
-    boxShadow: '0 0 0 1px rgba(251,191,36,0.45), 0 12px 40px rgba(251,191,36,0.30), 0 0 60px rgba(220,38,38,0.25)',
+    // @ts-ignore – RN web boxShadow
+    boxShadow: '0 0 0 2px rgba(251,191,36,0.55), 0 18px 60px rgba(251,191,36,0.35), 0 0 90px rgba(220,38,38,0.25)',
     shadowColor: '#fbbf24',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.55,
-    shadowRadius: 24,
-    elevation: 14,
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.6,
+    shadowRadius: 26,
+    elevation: 16,
+  },
+  bannerWrap: {
+    backgroundColor: '#fef3c7',
+  },
+  banner: {
+    height: 150,
+    backgroundColor: '#fde68a',
+    position: 'relative',
+  },
+  avatarOverlayLeft: {
+    position: 'absolute',
+    left: 14,
+    bottom: -8,
+  },
+  nameOverlay: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 110,
+  },
+  cursiveName: {
+    color: '#1f2937',
+    fontFamily: CURSIVE_FONT,
+    fontSize: 40,
+    fontWeight: '700',
+    lineHeight: 46,
+    textAlign: 'center',
+    textShadowColor: 'rgba(255,255,255,0.85)',
+    textShadowOffset: { width: 0, height: 2 },
+    textShadowRadius: 6,
+    // @ts-ignore
+    textShadow: '0 2px 6px rgba(255,255,255,0.85), 0 4px 14px rgba(244,114,182,0.35)',
+  },
+  usernameOverlay: {
+    color: '#7c2d12',
+    fontSize: 12,
+    fontWeight: '700',
+    marginTop: 2,
+    backgroundColor: 'rgba(255,255,255,0.55)',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 999,
+    overflow: 'hidden',
+  },
+  scallopRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    paddingHorizontal: 12,
+    paddingTop: 6,
+    paddingBottom: 4,
+    backgroundColor: '#fffaf3',
+  },
+  scallopDot: {
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    backgroundColor: '#fbbf24',
+    // @ts-ignore RN web shadow
+    boxShadow: '0 1px 3px rgba(0,0,0,0.15)',
   },
   eliteRibbon: {
-    alignSelf: 'center',
-    marginTop: 4,
-    marginBottom: 6,
+    marginBottom: 4,
     borderRadius: 10,
     overflow: 'hidden',
     // @ts-ignore
@@ -644,11 +740,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 6,
     paddingHorizontal: 12,
-    paddingVertical: 4,
+    paddingVertical: 3,
   },
   eliteRibbonText: {
     color: '#1a0f2e',
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: '900',
     letterSpacing: 1.2,
   },
@@ -656,114 +752,108 @@ const styles = StyleSheet.create({
     padding: SPACING.xl * 2,
     alignItems: 'center',
   },
-  banner: {
-    height: 100,
-    backgroundColor: COLORS.cardBg,
-    position: 'relative',
-  },
   closeBtn: {
     position: 'absolute',
     top: SPACING.sm,
     right: SPACING.sm,
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: 'rgba(0,0,0,0.55)',
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: 'rgba(255,255,255,0.85)',
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  avatarWrap: {
-    marginTop: -50,
-    alignSelf: 'center',
-    position: 'relative',
+    // @ts-ignore
+    boxShadow: '0 2px 6px rgba(0,0,0,0.15)',
   },
   avatarFrame: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
-    padding: 4,
+    width: 96,
+    height: 96,
+    borderRadius: 48,
+    padding: 3,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  avatarFramePlain: {
+    backgroundColor: '#ffffff',
+    padding: 3,
+    // @ts-ignore
+    boxShadow: '0 4px 12px rgba(0,0,0,0.18)',
   },
   avatarFrameInner: {
     width: '100%',
     height: '100%',
-    borderRadius: 48,
-    backgroundColor: COLORS.background,
+    borderRadius: 46,
+    backgroundColor: '#fff7ed',
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
     borderWidth: 3,
-    borderColor: '#15101f',
+    borderColor: '#ffffff',
   },
   avatarImg: {
     width: '100%',
     height: '100%',
-    borderRadius: 48,
+    borderRadius: 46,
   },
   onlineDot: {
     position: 'absolute',
-    bottom: 8,
-    right: 8,
+    bottom: 6,
+    right: 6,
     width: 16,
     height: 16,
     borderRadius: 8,
     borderWidth: 3,
-    borderColor: '#15101f',
+    borderColor: '#ffffff',
   },
   crown: {
     position: 'absolute',
-    top: -2,
-    right: -2,
-    width: 28,
-    height: 28,
-    borderRadius: 14,
+    top: -4,
+    right: -4,
+    width: 30,
+    height: 30,
+    borderRadius: 15,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 2,
-    borderColor: '#15101f',
+    borderColor: '#ffffff',
   },
   identityBlock: {
-    alignItems: 'center',
     paddingHorizontal: SPACING.lg,
     marginTop: SPACING.sm,
-  },
-  nameRow: {
-    flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    flexWrap: 'wrap',
-    justifyContent: 'center',
   },
-  displayName: {
-    color: COLORS.text,
-    fontSize: 20,
-    fontWeight: '800',
+  badgesRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: 2,
   },
   badgePill: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 3,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 8,
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 999,
   },
   badgeText: {
-    color: COLORS.background,
-    fontSize: 9,
+    color: '#ffffff',
+    fontSize: 10,
     fontWeight: '800',
-    letterSpacing: 0.5,
+    letterSpacing: 0.6,
   },
-  username: {
-    color: COLORS.textSecondary,
-    fontSize: 13,
-    marginTop: 2,
-  },
-  statusRow: {
+  statusInlineRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    marginTop: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 999,
+    backgroundColor: '#ffffff',
+    borderWidth: 1,
+    borderColor: '#fde68a',
   },
   statusDot: {
     width: 8,
@@ -771,46 +861,90 @@ const styles = StyleSheet.create({
     borderRadius: 4,
   },
   statusText: {
-    color: COLORS.textSecondary,
-    fontSize: 12,
-    fontWeight: '600',
+    color: '#9a3412',
+    fontSize: 11,
+    fontWeight: '700',
   },
-  dotSeparator: {
-    color: COLORS.textSecondary,
-    fontSize: 12,
-    marginHorizontal: 2,
+  statsRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: SPACING.md,
+    alignSelf: 'stretch',
+  },
+  statChip: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 4,
+    borderRadius: 14,
+    borderWidth: 1.5,
+    gap: 2,
+  },
+  statCoins: {
+    backgroundColor: '#fef3c7',
+    borderColor: '#facc15',
+  },
+  statFriends: {
+    backgroundColor: '#dbeafe',
+    borderColor: '#60a5fa',
+  },
+  statLikes: {
+    backgroundColor: '#fce7f3',
+    borderColor: '#f472b6',
+  },
+  statPosts: {
+    backgroundColor: '#dcfce7',
+    borderColor: '#4ade80',
+  },
+  statValue: {
+    color: '#92400e',
+    fontSize: 16,
+    fontWeight: '900',
+    fontFamily: CURSIVE_FONT,
+    lineHeight: 18,
+  },
+  statLabel: {
+    color: '#92400e',
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 0.4,
+    textTransform: 'uppercase',
   },
   bio: {
-    color: COLORS.text,
-    fontSize: 13,
+    color: '#7c2d12',
+    fontSize: 18,
+    fontFamily: CURSIVE_FONT,
+    lineHeight: 24,
     textAlign: 'center',
-    marginTop: SPACING.sm,
+    marginTop: SPACING.md,
     paddingHorizontal: SPACING.sm,
-    opacity: 0.85,
   },
   viewProfileBtn: {
     marginHorizontal: SPACING.lg,
     marginTop: SPACING.md,
-    borderRadius: 12,
+    borderRadius: 14,
     overflow: 'hidden',
+    // @ts-ignore
+    boxShadow: '0 6px 14px rgba(244,114,182,0.40)',
   },
   viewProfileGradient: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 6,
+    gap: 8,
     paddingVertical: 12,
   },
   viewProfileText: {
-    color: COLORS.text,
-    fontSize: 14,
+    color: '#ffffff',
+    fontSize: 15,
     fontWeight: '800',
+    letterSpacing: 0.3,
   },
   actionRow: {
     flexDirection: 'row',
-    gap: SPACING.sm,
+    gap: 8,
     marginHorizontal: SPACING.lg,
-    marginTop: SPACING.sm,
+    marginTop: SPACING.md,
   },
   secondaryRow: {
     flexDirection: 'row',
@@ -828,11 +962,11 @@ const styles = StyleSheet.create({
   },
   secondaryText: {
     fontSize: 12,
-    fontWeight: '600',
+    fontWeight: '700',
   },
   secondaryDivider: {
     width: 1,
     height: 14,
-    backgroundColor: '#2a2240',
+    backgroundColor: '#fbcfe8',
   },
 });

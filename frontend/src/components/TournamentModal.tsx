@@ -22,6 +22,7 @@ interface Tournament {
   pot: number;
   winnerShare?: number;
   runnerShare?: number;
+  prizeShares?: number[];
   players: { userId: string; displayName: string; photoUrl?: string }[];
   bracket: any[];
   winners: { userId: string; displayName: string; placement: number; coinsWon?: number }[];
@@ -29,6 +30,8 @@ interface Tournament {
   createdByName: string;
   createdAt?: string;
   completedAt?: string;
+  isPrivate?: boolean;
+  joinCode?: string | null;
 }
 
 interface GameType {
@@ -41,6 +44,30 @@ interface GameType {
 
 const TOURNAMENT_SIZE_PRESETS = [2, 4, 8, 16, 32];
 const TOURNAMENT_FEE_PRESETS = [10, 25, 50, 100, 250, 500];
+
+// Mirror of backend: how many players are paid out based on tournament size.
+function winnersCount(n: number): number {
+  if (n <= 4) return 1;
+  if (n <= 10) return 2;
+  return Math.max(3, Math.ceil(0.3 * n));
+}
+
+// Mirror of backend: prize split shares (in coins) given pot & number of players.
+function prizeShares(pot: number, n: number): number[] {
+  const k = winnersCount(n);
+  if (pot <= 0 || k <= 0) return new Array(Math.max(k, 1)).fill(0);
+  if (k === 1) return [pot];
+  if (k === 2) {
+    const runner = Math.floor((pot * 30) / 100);
+    return [pot - runner, runner];
+  }
+  const weights: number[] = [];
+  for (let i = k; i >= 1; i--) weights.push(i);
+  const totalW = weights.reduce((a, b) => a + b, 0);
+  const shares = weights.map((w) => Math.floor((pot * w) / totalW));
+  shares[0] += pot - shares.reduce((a, b) => a + b, 0);
+  return shares;
+}
 
 interface Props {
   visible: boolean;
@@ -69,6 +96,10 @@ export default function TournamentModal({
   const [createSize, setCreateSize] = useState('4');
   const [createFee, setCreateFee] = useState('10');
   const [createName, setCreateName] = useState('');
+  const [createPrivate, setCreatePrivate] = useState(false);
+  const [showJoinCode, setShowJoinCode] = useState(false);
+  const [joinCodeInput, setJoinCodeInput] = useState('');
+  const [joiningCode, setJoiningCode] = useState(false);
 
   const loadAll = useCallback(async () => {
     setLoading(true);
@@ -124,10 +155,12 @@ export default function TournamentModal({
         size: sizeN,
         entryFee: feeN,
         name: createName.trim() || undefined,
+        isPrivate: createPrivate,
       });
       setShowCreate(false);
       setPickedGame(null);
       setCreateName('');
+      setCreatePrivate(false);
       await loadAll();
       onUserUpdate();
       setOpenTournament(res.data);
@@ -135,6 +168,27 @@ export default function TournamentModal({
       showAlert('Cannot create', e.response?.data?.detail || 'Failed to create tournament');
     } finally {
       setCreating(false);
+    }
+  };
+
+  const handleJoinByCode = async () => {
+    const code = joinCodeInput.trim().toUpperCase();
+    if (code.length < 4) {
+      showAlert('Invalid code', 'Enter the 6-character tournament code shared by the creator');
+      return;
+    }
+    setJoiningCode(true);
+    try {
+      const res = await api.post('/tournaments/join-by-code', { code });
+      setShowJoinCode(false);
+      setJoinCodeInput('');
+      await loadAll();
+      onUserUpdate();
+      setOpenTournament(res.data);
+    } catch (e: any) {
+      showAlert('Cannot join', e.response?.data?.detail || 'Invalid or expired code');
+    } finally {
+      setJoiningCode(false);
     }
   };
 
@@ -170,8 +224,16 @@ export default function TournamentModal({
           </TouchableOpacity>
           <View style={styles.headerCenter}>
             <Text style={styles.headerTitle}>Tournaments</Text>
-            <Text style={styles.headerSub}>Knockout · Top 3 win VIP & coins</Text>
+            <Text style={styles.headerSub}>Knockout · Top {`>10p:30%`} of players win</Text>
           </View>
+          <TouchableOpacity
+            onPress={() => setShowJoinCode(true)}
+            style={styles.codeBtn}
+            testID="open-join-code-btn"
+          >
+            <Ionicons name="key" size={16} color="#7c3aed" />
+            <Text style={styles.codeBtnText}>Code</Text>
+          </TouchableOpacity>
           <TouchableOpacity
             onPress={() => setShowCreate(true)}
             style={styles.createBtn}
@@ -185,9 +247,9 @@ export default function TournamentModal({
 
         {/* Rewards banner */}
         <View style={styles.rewardsBanner}>
-          <View style={styles.rewardItem}><Text style={styles.rewardEmoji}>🥇</Text><Text style={styles.rewardText}>50% pot + VIP Pro + 30pts</Text></View>
-          <View style={styles.rewardItem}><Text style={styles.rewardEmoji}>🥈</Text><Text style={styles.rewardText}>50% pot + 20pts</Text></View>
-          <View style={styles.rewardItem}><Text style={styles.rewardEmoji}>🥉</Text><Text style={styles.rewardText}>+10 pts</Text></View>
+          <View style={styles.rewardItem}><Text style={styles.rewardEmoji}>🏆</Text><Text style={styles.rewardText}>≤4p · 1 winner takes all</Text></View>
+          <View style={styles.rewardItem}><Text style={styles.rewardEmoji}>🥈</Text><Text style={styles.rewardText}>5-10p · 70 / 30 split</Text></View>
+          <View style={styles.rewardItem}><Text style={styles.rewardEmoji}>🎖</Text><Text style={styles.rewardText}>{`>10p · 30% win (k:k-1:…)`}</Text></View>
         </View>
 
         {loading && tournaments.length === 0 ? (
@@ -225,8 +287,28 @@ export default function TournamentModal({
                     </View>
                   </View>
                   <View style={styles.cardBody}>
-                    <Text style={styles.cardTitle}>{t.name}</Text>
+                    <View style={styles.cardTitleRow}>
+                      <Text style={styles.cardTitle} numberOfLines={1}>{t.name}</Text>
+                      {t.isPrivate ? (
+                        <View style={styles.privatePill}>
+                          <Ionicons name="lock-closed" size={10} color="#fff" />
+                          <Text style={styles.privatePillText}>PRIVATE</Text>
+                        </View>
+                      ) : (
+                        <View style={styles.publicPill}>
+                          <Ionicons name="globe" size={10} color="#fff" />
+                          <Text style={styles.privatePillText}>PUBLIC</Text>
+                        </View>
+                      )}
+                    </View>
                     <Text style={styles.cardSub}>by {t.createdByName} · {t.players.length}/{t.size} players · Pot {t.pot}🪙</Text>
+                    {/* Show join code to creator/joined */}
+                    {t.joinCode && (currentUserId === t.createdBy || t.players.some((p) => p.userId === currentUserId)) ? (
+                      <View style={styles.codeBadge} testID={`tournament-code-${t.id}`}>
+                        <Ionicons name="key" size={12} color="#7c3aed" />
+                        <Text style={styles.codeBadgeText}>Invite code: {t.joinCode}</Text>
+                      </View>
+                    ) : null}
                     <View style={styles.cardActions}>
                       {t.status === 'lobby' && !joined && (
                         <TouchableOpacity
@@ -361,18 +443,52 @@ export default function TournamentModal({
                     const sz = parseInt(createSize, 10) || 0;
                     const fee = parseInt(createFee, 10) || 0;
                     const pot = sz * fee;
-                    const each = Math.floor(pot / 2);
-                    const remainder = pot - each;
+                    const shares = prizeShares(pot, sz);
+                    const medals = ['🏆', '🥈', '🥉'];
                     return (
                       <View style={styles.previewBox}>
-                        <Text style={styles.previewTitle}>Reward preview</Text>
+                        <Text style={styles.previewTitle}>Reward preview · {shares.length} winner{shares.length > 1 ? 's' : ''}</Text>
                         <Text style={styles.previewLine}>Max pot · <Text style={styles.previewStrong}>{pot}🪙</Text> ({sz} × {fee})</Text>
-                        <Text style={styles.previewLine}>🏆 Winner · <Text style={styles.previewStrong}>{remainder}🪙 + VIP Pro 30 days + 30 pts</Text></Text>
-                        <Text style={styles.previewLine}>🥈 Runner-up · <Text style={styles.previewStrong}>{each}🪙 + 20 pts</Text></Text>
-                        <Text style={styles.previewSub}>Pot is split equally — pot dynamically recalculated if not all seats are filled.</Text>
+                        {shares.map((s, i) => {
+                          const medal = i < 3 ? medals[i] : `#${i + 1}`;
+                          const extras = i === 0 ? ' + VIP Pro 30 days + 30 pts'
+                                       : i === 1 ? ' + 20 pts'
+                                       : i === 2 ? ' + 10 pts'
+                                       : ` + ${Math.max(5, 35 - (i + 1) * 5)} pts`;
+                          return (
+                            <Text key={i} style={styles.previewLine}>
+                              {medal} #{i + 1} · <Text style={styles.previewStrong}>{s}🪙{extras}</Text>
+                            </Text>
+                          );
+                        })}
+                        <Text style={styles.previewSub}>
+                          {sz <= 4 && 'Winner takes the entire pot.'}
+                          {sz > 4 && sz <= 10 && 'Top 2 share the pot · 70 / 30.'}
+                          {sz > 10 && `Top ${shares.length} win, ratios ${shares.length}:${shares.length - 1}:…:1.`}
+                        </Text>
                       </View>
                     );
                   })()}
+
+                  {/* Public / Private toggle */}
+                  <View style={styles.visibilityRow}>
+                    <TouchableOpacity
+                      onPress={() => setCreatePrivate(false)}
+                      style={[styles.visibilityChip, !createPrivate && styles.visibilityChipActive]}
+                      testID="visibility-public"
+                    >
+                      <Ionicons name="globe" size={14} color={!createPrivate ? '#fff' : '#7c3aed'} />
+                      <Text style={[styles.visibilityText, !createPrivate && styles.visibilityTextActive]}>Public — anyone can join</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={() => setCreatePrivate(true)}
+                      style={[styles.visibilityChip, createPrivate && styles.visibilityChipActive]}
+                      testID="visibility-private"
+                    >
+                      <Ionicons name="lock-closed" size={14} color={createPrivate ? '#fff' : '#7c3aed'} />
+                      <Text style={[styles.visibilityText, createPrivate && styles.visibilityTextActive]}>Private — invite code only</Text>
+                    </TouchableOpacity>
+                  </View>
 
                   <TouchableOpacity
                     style={[styles.createSubmit, (creating || userCoins < (parseInt(createFee, 10) || 0)) && { opacity: 0.5 }]}
@@ -405,6 +521,42 @@ export default function TournamentModal({
               onStart={() => handleStart(openTournament)}
             />
           )}
+        </Modal>
+
+        {/* Join by code modal */}
+        <Modal visible={showJoinCode} transparent animationType="fade" onRequestClose={() => setShowJoinCode(false)}>
+          <TouchableOpacity style={styles.overlay} activeOpacity={1} onPress={() => setShowJoinCode(false)}>
+            <TouchableOpacity activeOpacity={1} style={[styles.createCard, { maxWidth: 360 }]}>
+              <View style={styles.createHeader}>
+                <Text style={styles.createTitle}>Join with code</Text>
+                <TouchableOpacity onPress={() => setShowJoinCode(false)} testID="close-join-code"><Ionicons name="close" size={22} color="#1f2937" /></TouchableOpacity>
+              </View>
+              <Text style={styles.createSub}>Enter the 6-character invite code shared by the tournament host.</Text>
+              <TextInput
+                value={joinCodeInput}
+                onChangeText={(t) => setJoinCodeInput(t.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6))}
+                placeholder="ABC123"
+                placeholderTextColor="#9ca3af"
+                style={[styles.input, { fontSize: 22, fontWeight: '900', textAlign: 'center', letterSpacing: 6 }]}
+                autoCapitalize="characters"
+                maxLength={6}
+                testID="join-code-input"
+              />
+              <TouchableOpacity
+                style={[styles.createSubmit, (joiningCode || joinCodeInput.length < 4) && { opacity: 0.5 }]}
+                onPress={handleJoinByCode}
+                disabled={joiningCode || joinCodeInput.length < 4}
+                testID="confirm-join-code"
+              >
+                {joiningCode ? <ActivityIndicator color="#fff" /> : (
+                  <>
+                    <Ionicons name="enter" size={18} color="#fff" />
+                    <Text style={styles.createSubmitText}>Join tournament</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            </TouchableOpacity>
+          </TouchableOpacity>
         </Modal>
       </View>
     </Modal>
@@ -449,27 +601,48 @@ function TournamentDetail({
 
         {tournament.status === 'completed' && tournament.winners.length > 0 && (
           <View style={detailStyles.podium}>
-            <Text style={detailStyles.sectionLabel}>Final Standings</Text>
+            <Text style={detailStyles.sectionLabel}>Final Standings · {tournament.winners.length} winner{tournament.winners.length > 1 ? 's' : ''}</Text>
             {tournament.winners.map((w: any) => {
               const isMe = w.userId === currentUserId;
-              const medal = w.placement === 1 ? '🥇' : w.placement === 2 ? '🥈' : '🥉';
-              const reward = w.placement === 1
-                ? `+${w.coinsWon || tournament.winnerShare || 0}🪙 + VIP Pro + 30pts`
+              const medal = w.placement === 1 ? '🏆' : w.placement === 2 ? '🥈' : w.placement === 3 ? '🥉' : `#${w.placement}`;
+              const extras = w.placement === 1
+                ? ' + VIP Pro 30d + 30pts'
                 : w.placement === 2
-                ? `+${w.coinsWon || tournament.runnerShare || 0}🪙 + 20pts`
-                : '+10pts';
+                ? ' + 20pts'
+                : w.placement === 3
+                ? ' + 10pts'
+                : ` + ${Math.max(5, 35 - w.placement * 5)}pts`;
               return (
                 <View key={w.userId} style={[detailStyles.podiumRow, isMe && detailStyles.podiumRowMe]}>
                   <Text style={detailStyles.podiumMedal}>{medal}</Text>
                   <View style={{ flex: 1 }}>
                     <Text style={detailStyles.podiumName}>{w.displayName}{isMe ? ' (you)' : ''}</Text>
-                    <Text style={detailStyles.podiumReward}>{reward}</Text>
+                    <Text style={detailStyles.podiumReward}>+{w.coinsWon || 0}🪙{extras}</Text>
                   </View>
                 </View>
               );
             })}
           </View>
         )}
+
+        {/* Invite code section (creator + joined players only) */}
+        {tournament.status === 'lobby' && tournament.joinCode && (currentUserId === tournament.createdBy || tournament.players.some((p) => p.userId === currentUserId)) ? (
+          <View style={detailStyles.codeCard} testID="tournament-detail-code">
+            <View style={detailStyles.codeIconWrap}>
+              <Ionicons name="key" size={18} color="#7c3aed" />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={detailStyles.codeCardLabel}>Share this invite code</Text>
+              <Text style={detailStyles.codeCardValue} selectable>{tournament.joinCode}</Text>
+            </View>
+            {tournament.isPrivate && (
+              <View style={detailStyles.privateBadge}>
+                <Ionicons name="lock-closed" size={10} color="#fff" />
+                <Text style={detailStyles.privateBadgeText}>PRIVATE</Text>
+              </View>
+            )}
+          </View>
+        ) : null}
 
         <Text style={detailStyles.sectionLabel}>Players</Text>
         {tournament.players.map((p) => (
@@ -554,6 +727,36 @@ const styles = StyleSheet.create({
     backgroundColor: '#7c3aed', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 999,
   },
   createBtnText: { color: '#fff', fontWeight: '800', fontSize: 13 },
+  codeBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    backgroundColor: '#ede9fe', paddingHorizontal: 10, paddingVertical: 8, borderRadius: 999,
+    borderWidth: 1, borderColor: '#c4b5fd',
+  },
+  codeBtnText: { color: '#5b21b6', fontWeight: '800', fontSize: 12 },
+  cardTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  privatePill: {
+    flexDirection: 'row', alignItems: 'center', gap: 3,
+    backgroundColor: '#7c3aed', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 8,
+  },
+  publicPill: {
+    flexDirection: 'row', alignItems: 'center', gap: 3,
+    backgroundColor: '#10b981', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 8,
+  },
+  privatePillText: { color: '#fff', fontSize: 9, fontWeight: '900', letterSpacing: 0.5 },
+  codeBadge: {
+    flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 6, alignSelf: 'flex-start',
+    backgroundColor: '#ede9fe', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8,
+    borderWidth: 1, borderColor: '#c4b5fd',
+  },
+  codeBadgeText: { color: '#5b21b6', fontSize: 11, fontWeight: '800', letterSpacing: 1 },
+  visibilityRow: { gap: 6, marginTop: SPACING.md },
+  visibilityChip: {
+    flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 12, paddingVertical: 10,
+    borderRadius: 12, borderWidth: 1.5, borderColor: '#c4b5fd', backgroundColor: '#f5f3ff',
+  },
+  visibilityChipActive: { backgroundColor: '#7c3aed', borderColor: '#7c3aed' },
+  visibilityText: { color: '#5b21b6', fontSize: 13, fontWeight: '700' },
+  visibilityTextActive: { color: '#ffffff' },
   rewardsBanner: {
     flexDirection: 'row', justifyContent: 'space-around',
     backgroundColor: '#fffbeb', borderColor: '#fde68a', borderWidth: 1, borderRadius: 12,
@@ -638,6 +841,23 @@ const detailStyles = StyleSheet.create({
   podiumMedal: { fontSize: 22 },
   podiumName: { fontSize: 15, fontWeight: '800', color: '#1f2937' },
   podiumReward: { fontSize: 11, color: '#92400e', fontWeight: '700', marginTop: 1 },
+  codeCard: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    backgroundColor: '#ede9fe', borderColor: '#c4b5fd', borderWidth: 1.5,
+    borderRadius: 14, padding: 12, marginTop: SPACING.sm,
+  },
+  codeIconWrap: {
+    width: 36, height: 36, borderRadius: 18,
+    backgroundColor: '#ffffff', alignItems: 'center', justifyContent: 'center',
+    borderWidth: 1, borderColor: '#c4b5fd',
+  },
+  codeCardLabel: { color: '#5b21b6', fontSize: 11, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.6 },
+  codeCardValue: { color: '#1f2937', fontSize: 22, fontWeight: '900', letterSpacing: 4, marginTop: 2 },
+  privateBadge: {
+    flexDirection: 'row', alignItems: 'center', gap: 3,
+    backgroundColor: '#7c3aed', paddingHorizontal: 6, paddingVertical: 3, borderRadius: 8,
+  },
+  privateBadgeText: { color: '#fff', fontSize: 9, fontWeight: '900', letterSpacing: 0.5 },
   playerRow: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: '#ffffff', padding: 10, borderRadius: 10, marginBottom: 4, borderWidth: 1, borderColor: '#f3f4f6' },
   playerAvatar: { width: 28, height: 28, borderRadius: 14, backgroundColor: '#ede9fe', alignItems: 'center', justifyContent: 'center' },
   playerName: { flex: 1, fontSize: 13, color: '#1f2937', fontWeight: '600' },
