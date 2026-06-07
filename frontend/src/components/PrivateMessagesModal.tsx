@@ -80,6 +80,7 @@ export default function PrivateMessagesModal({ visible, onClose, initialUserId }
   const [loading, setLoading] = useState(false);
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [optionsFor, setOptionsFor] = useState<string | null>(null); // conversation userId showing options panel
+  const [expanded, setExpanded] = useState(false); // false = half-height (default), true = full-screen
   const [allowMessagesFrom, setAllowMessagesFrom] = useState<'everyone' | 'friends' | 'nobody'>('everyone');
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const flatListRef = useRef<FlatList>(null);
@@ -94,6 +95,7 @@ export default function PrivateMessagesModal({ visible, onClose, initialUserId }
       setSelectedConversation(null);
       setOptionsFor(null);
       setActiveTab('messages');
+      setExpanded(false);
     }
   }, [visible]);
 
@@ -379,8 +381,18 @@ export default function PrivateMessagesModal({ visible, onClose, initialUserId }
   };
 
   return (
-    <Modal visible={visible} animationType="slide" transparent={false}>
-      <View style={styles.container}>
+    <Modal visible={visible} animationType="fade" transparent={true}>
+      <View style={styles.backdrop}>
+        {/* Tap area above the panel — closes the modal so the user can return to the room fully */}
+        {!expanded && (
+          <TouchableOpacity
+            style={styles.backdropTopTap}
+            activeOpacity={1}
+            onPress={onClose}
+            testID="dm-backdrop-dismiss"
+          />
+        )}
+        <View style={[styles.container, expanded ? styles.containerFull : styles.containerHalf]}>
         {/* Top blue tab bar (Messages / Settings) */}
         <View style={styles.topBar}>
           <View style={styles.tabsWrap}>
@@ -416,7 +428,18 @@ export default function PrivateMessagesModal({ visible, onClose, initialUserId }
             </TouchableOpacity>
           </View>
           <View style={styles.topBarActions}>
-            <Ionicons name="resize" size={22} color="#f59e0b" />
+            <TouchableOpacity
+              onPress={() => setExpanded((v) => !v)}
+              testID="dm-resize-btn"
+              style={styles.resizeBtn}
+              hitSlop={8}
+            >
+              <Ionicons
+                name={expanded ? 'contract' : 'expand'}
+                size={22}
+                color="#f59e0b"
+              />
+            </TouchableOpacity>
             <TouchableOpacity onPress={onClose} testID="dm-close-btn" style={{ marginLeft: 14 }}>
               <Ionicons name="close" size={26} color="#ef4444" />
             </TouchableOpacity>
@@ -578,6 +601,7 @@ export default function PrivateMessagesModal({ visible, onClose, initialUserId }
             </View>
           </ScrollView>
         )}
+        </View>
       </View>
     </Modal>
   );
@@ -589,9 +613,42 @@ const ROW_BLUE_DARK = '#2d8fc9';
 const SEP_GREY = '#e5e7eb';
 
 const styles = StyleSheet.create({
-  container: {
+  backdrop: {
     flex: 1,
+    backgroundColor: 'transparent',
+  },
+  backdropTopTap: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'transparent',
+  },
+  container: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
     backgroundColor: '#ffffff',
+    overflow: 'hidden',
+    borderTopLeftRadius: 14,
+    borderTopRightRadius: 14,
+    // Subtle shadow so the panel reads as floating above the room
+    shadowColor: '#000',
+    shadowOpacity: 0.25,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: -4 },
+    elevation: 12,
+  },
+  containerHalf: {
+    height: '50%',
+  },
+  containerFull: {
+    top: 0,
+    height: '100%',
+    borderTopLeftRadius: 0,
+    borderTopRightRadius: 0,
   },
 
   // Top bar
@@ -633,6 +690,9 @@ const styles = StyleSheet.create({
   topBarActions: {
     flexDirection: 'row',
     alignItems: 'center',
+  },
+  resizeBtn: {
+    padding: 2,
   },
 
   // List
