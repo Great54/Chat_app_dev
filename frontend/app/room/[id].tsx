@@ -175,15 +175,13 @@ export default function RoomScreen() {
           {item.senderPhoto ? (
             <Image source={{ uri: item.senderPhoto }} style={styles.avatarImg} />
           ) : (
-            <Ionicons name="person" size={16} color={COLORS.textSecondary} />
+            <Ionicons name="person" size={12} color="#7c3aed" />
           )}
         </View>
-        <View style={styles.messageLineWrap}>
-          <Text style={styles.messageLine}>
-            <Text style={styles.senderName}>{item.senderName}</Text>
-            <Text style={styles.messageText}>{'  '}{item.messageText}</Text>
-          </Text>
-        </View>
+        <Text style={styles.messageLine} numberOfLines={0}>
+          <Text style={styles.senderName}>{item.senderName}</Text>
+          <Text style={styles.messageText}>{'  '}{item.messageText}</Text>
+        </Text>
       </TouchableOpacity>
     );
   };
@@ -377,7 +375,7 @@ export default function RoomScreen() {
           {/* Messages section - TOP (matte aesthetic) */}
           <View style={styles.messagesWrap}>
             <LinearGradient
-              colors={['#0e0a17', '#15101f', '#1a1226']}
+              colors={['#fff7ed', '#fef3c7', '#fde6d3']}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 1 }}
               style={StyleSheet.absoluteFill}
@@ -576,7 +574,7 @@ const styles = StyleSheet.create({
   },
   matteVeil: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.35)',
+    backgroundColor: 'rgba(255,255,255,0.20)',
   },
   messagesContainer: {
     flex: 1,
@@ -588,42 +586,41 @@ const styles = StyleSheet.create({
   },
   messageRow: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
-    marginBottom: 6,
+    alignItems: 'center',
+    marginBottom: 4,
     paddingHorizontal: 2,
   },
   avatar: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: 'rgba(255,255,255,0.08)',
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: 'rgba(124,58,237,0.12)',
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: SPACING.xs,
+    marginRight: 6,
     overflow: 'hidden',
   },
   avatarImg: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
+    width: 20,
+    height: 20,
+    borderRadius: 10,
   },
   messageLineWrap: {
     flex: 1,
-    paddingTop: 4,
   },
   messageLine: {
+    flex: 1,
     fontSize: 15,
-    color: COLORS.text,
     lineHeight: 21,
   },
   senderName: {
     fontSize: 15,
-    color: COLORS.accent,
+    color: '#7c3aed',
     fontWeight: '700',
   },
   messageText: {
     fontSize: 15,
-    color: COLORS.text,
+    color: '#1f2937',
     lineHeight: 21,
   },
   emptyMessages: {
@@ -723,13 +720,14 @@ const styles = StyleSheet.create({
   },
   systemMessageText: {
     fontSize: 12,
-    color: COLORS.accent,
-    backgroundColor: COLORS.cardBg,
+    color: '#92400e',
+    backgroundColor: 'rgba(255,255,255,0.7)',
     paddingHorizontal: SPACING.sm,
     paddingVertical: 4,
     borderRadius: 12,
     fontStyle: 'italic',
     textAlign: 'center',
     overflow: 'hidden',
+    fontWeight: '600',
   },
 });
