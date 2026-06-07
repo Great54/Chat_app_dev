@@ -396,7 +396,7 @@ export default function BoardTab({ roomId, active }: BoardTabProps) {
         />
       )}
 
-      {/* Create Post Modal */}
+      {/* Create Post Modal — light themed with cursive script */}
       <Modal
         visible={createModalVisible}
         animationType="slide"
@@ -404,38 +404,44 @@ export default function BoardTab({ roomId, active }: BoardTabProps) {
         onRequestClose={() => setCreateModalVisible(false)}
       >
         <KeyboardAvoidingView 
-          style={styles.modalContainer}
+          style={styles.modalContainerLight}
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         >
-          <View style={styles.modalHeader}>
-            <TouchableOpacity onPress={() => setCreateModalVisible(false)}>
-              <Text style={styles.modalCancel}>Cancel</Text>
+          <View style={styles.modalHeaderLight}>
+            <TouchableOpacity onPress={() => setCreateModalVisible(false)} testID="create-post-cancel">
+              <Text style={styles.modalCancelLight}>Cancel</Text>
             </TouchableOpacity>
-            <Text style={styles.modalTitle}>Create Post</Text>
+            <View style={styles.modalTitlePill}>
+              <Text style={styles.modalTitleCursive}>Create Post</Text>
+            </View>
             <TouchableOpacity 
               onPress={handleCreatePost}
               disabled={isSubmitting || !newPostText.trim()}
+              testID="create-post-submit"
             >
               <Text style={[
-                styles.modalPost, 
+                styles.modalPostLight, 
                 (!newPostText.trim() || isSubmitting) && styles.modalPostDisabled
               ]}>
-                {isSubmitting ? 'Posting...' : 'Post'}
+                {isSubmitting ? 'Posting…' : 'Post'}
               </Text>
             </TouchableOpacity>
           </View>
 
-          <View style={styles.createForm}>
-            <TextInput
-              style={styles.createInput}
-              placeholder="What's on your mind?"
-              placeholderTextColor={COLORS.textSecondary}
-              value={newPostText}
-              onChangeText={setNewPostText}
-              multiline
-              maxLength={2000}
-              autoFocus
-            />
+          <View style={styles.createFormLight}>
+            <View style={styles.createInputBox}>
+              <TextInput
+                style={styles.createInputLight}
+                placeholder="What's on your mind?"
+                placeholderTextColor="#94a3b8"
+                value={newPostText}
+                onChangeText={setNewPostText}
+                multiline
+                maxLength={2000}
+                autoFocus
+                testID="create-post-input"
+              />
+            </View>
 
             {newPostImage && (
               <View style={styles.imagePreviewContainer}>
@@ -444,16 +450,16 @@ export default function BoardTab({ roomId, active }: BoardTabProps) {
                   style={styles.removeImageButton}
                   onPress={() => setNewPostImage(null)}
                 >
-                  <Ionicons name="close-circle" size={28} color={COLORS.error} />
+                  <Ionicons name="close-circle" size={28} color="#ef4444" />
                 </TouchableOpacity>
               </View>
             )}
           </View>
 
-          <View style={styles.createActions}>
-            <TouchableOpacity style={styles.addImageButton} onPress={pickImage}>
-              <Ionicons name="image" size={24} color={COLORS.primary} />
-              <Text style={styles.addImageText}>Add Photo</Text>
+          <View style={styles.createActionsLight}>
+            <TouchableOpacity style={styles.addImageButtonLight} onPress={pickImage} testID="create-post-add-photo">
+              <Ionicons name="image" size={22} color="#7c3aed" />
+              <Text style={styles.addImageTextLight}>Add Photo</Text>
             </TouchableOpacity>
           </View>
         </KeyboardAvoidingView>
@@ -857,6 +863,103 @@ const styles = StyleSheet.create({
   modalContainer: {
     flex: 1,
     backgroundColor: COLORS.background,
+  },
+  // ---- Light + cursive Create Post modal ----
+  modalContainerLight: {
+    flex: 1,
+    backgroundColor: '#fff8f0',
+  },
+  modalHeaderLight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.md,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f1d9b5',
+    backgroundColor: '#fff8f0',
+  },
+  modalCancelLight: {
+    color: '#64748b',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  modalTitlePill: {
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: '#fde68a',
+    borderWidth: 1,
+    borderColor: '#facc15',
+    shadowColor: '#f59e0b',
+    shadowOpacity: 0.25,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
+  },
+  modalTitleCursive: {
+    fontFamily: Platform.select({ web: '"Dancing Script", "Great Vibes", cursive', default: undefined }) as any,
+    color: '#7c2d12',
+    fontSize: 26,
+    lineHeight: 30,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+  },
+  modalPostLight: {
+    color: '#ec4899',
+    fontSize: 17,
+    fontWeight: '800',
+  },
+  createFormLight: {
+    flex: 1,
+    padding: SPACING.md,
+  },
+  createInputBox: {
+    flex: 1,
+    backgroundColor: '#ffffff',
+    borderRadius: 18,
+    borderWidth: 2,
+    borderColor: '#facc15',
+    padding: SPACING.md,
+    shadowColor: '#f59e0b',
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
+  },
+  createInputLight: {
+    flex: 1,
+    color: '#1f2937',
+    fontSize: 18,
+    lineHeight: 26,
+    minHeight: 200,
+    textAlignVertical: 'top',
+    fontFamily: Platform.select({ web: '"Dancing Script", cursive', default: undefined }) as any,
+  },
+  createActionsLight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.md,
+    borderTopWidth: 1,
+    borderTopColor: '#f1d9b5',
+    backgroundColor: '#fff8f0',
+  },
+  addImageButtonLight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 999,
+    backgroundColor: '#f3e8ff',
+    borderWidth: 1,
+    borderColor: '#c4b5fd',
+  },
+  addImageTextLight: {
+    color: '#7c3aed',
+    fontSize: 15,
+    fontWeight: '700',
   },
   modalHeader: {
     flexDirection: 'row',

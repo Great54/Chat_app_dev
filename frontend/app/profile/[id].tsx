@@ -262,12 +262,15 @@ export default function ProfileViewScreen() {
             <Text style={styles.username}>@{profile.username}</Text>
 
             <View style={styles.statsRow}>
-              <View style={styles.statBox}>
-                <Text style={styles.statValue}>{profile.friendCount}</Text>
-                <Text style={styles.statLabel}>Friends</Text>
+              <View style={styles.statCircle}>
+                <Text style={styles.statCircleValue}>{profile.friendCount}</Text>
+                <Text style={styles.statCircleLabel}>Friends</Text>
               </View>
-              <View style={styles.statDivider} />
-              <View style={styles.statBox}>
+              <View style={styles.statCircleGreen}>
+                <Text style={styles.statCircleValueGreen}>{profile.level || 0}</Text>
+                <Text style={styles.statCircleLabelGreen}>Level</Text>
+              </View>
+              <View style={styles.statCirclePink}>
                 <View style={styles.statValueRow}>
                   <View
                     style={[
@@ -275,16 +278,11 @@ export default function ProfileViewScreen() {
                       { backgroundColor: profile.onlineStatus ? COLORS.success : '#666' },
                     ]}
                   />
-                  <Text style={styles.statValueSmall}>
-                    {profile.onlineStatus ? 'Online' : 'Offline'}
+                  <Text style={styles.statCircleValueSmall}>
+                    {profile.onlineStatus ? 'On' : 'Off'}
                   </Text>
                 </View>
-                <Text style={styles.statLabel}>Status</Text>
-              </View>
-              <View style={styles.statDivider} />
-              <View style={styles.statBox}>
-                <Text style={styles.statValue}>{profile.level || 0}</Text>
-                <Text style={styles.statLabel}>Level</Text>
+                <Text style={styles.statCircleLabelPink}>Status</Text>
               </View>
             </View>
 
@@ -390,13 +388,7 @@ export default function ProfileViewScreen() {
             </View>
           )}
 
-          {activeTab === 'posts' && (
-            <View style={styles.placeholder}>
-              <Ionicons name="newspaper-outline" size={48} color={COLORS.textSecondary} />
-              <Text style={styles.placeholderTitle}>No posts available yet</Text>
-              <Text style={styles.placeholderText}>Stay tuned — posts are on the way!</Text>
-            </View>
-          )}
+          {activeTab === 'posts' && <PostsTab userId={profile.id} />}
         </Animated.View>
       </ScrollView>
 
@@ -422,7 +414,7 @@ function AboutTab({ profile }: { profile: ProfileCard }) {
     <View style={styles.aboutWrap}>
       <View style={styles.infoCard}>
         <Text style={styles.infoLabel}>Bio</Text>
-        <Text style={styles.infoValue}>{profile.bio || 'No bio yet.'}</Text>
+        <Text style={styles.bioCursive}>{profile.bio || 'No bio yet.'}</Text>
       </View>
       <View style={styles.infoCard}>
         <Text style={styles.infoLabel}>Member since</Text>
@@ -443,6 +435,69 @@ function AboutTab({ profile }: { profile: ProfileCard }) {
           </View>
         </View>
       )}
+    </View>
+  );
+}
+
+function PostsTab({ userId }: { userId: string }) {
+  const [posts, setPosts] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        setLoading(true);
+        const res = await api.get(`/users/${userId}/posts`);
+        if (!cancelled) setPosts(res.data || []);
+      } catch (e) {
+        if (!cancelled) setPosts([]);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [userId]);
+
+  if (loading) {
+    return (
+      <View style={styles.placeholder}>
+        <ActivityIndicator color={COLORS.primary} />
+      </View>
+    );
+  }
+  if (posts.length === 0) {
+    return (
+      <View style={styles.placeholder}>
+        <Ionicons name="newspaper-outline" size={48} color={COLORS.textSecondary} />
+        <Text style={styles.placeholderTitle}>No posts yet</Text>
+        <Text style={styles.placeholderText}>When this user posts on a Board, it'll show up here.</Text>
+      </View>
+    );
+  }
+  return (
+    <View style={styles.postsWrap}>
+      {posts.map((p) => (
+        <View key={p.id} style={styles.postCard} testID={`post-card-${p.id}`}>
+          {p.imageUrl ? (
+            <Image source={{ uri: p.imageUrl }} style={styles.postImage} contentFit="cover" />
+          ) : null}
+          {p.text ? <Text style={styles.postText}>{p.text}</Text> : null}
+          <View style={styles.postMetaRow}>
+            <View style={styles.postMetaItem}>
+              <Ionicons name="heart" size={14} color="#ec4899" />
+              <Text style={styles.postMetaText}>{p.likeCount ?? 0}</Text>
+            </View>
+            <View style={styles.postMetaItem}>
+              <Ionicons name="chatbubble" size={14} color="#7c3aed" />
+              <Text style={styles.postMetaText}>{p.commentCount ?? 0}</Text>
+            </View>
+            <Text style={styles.postMetaTime}>
+              {p.createdAt ? new Date(p.createdAt).toLocaleDateString() : ''}
+            </Text>
+          </View>
+        </View>
+      ))}
     </View>
   );
 }
@@ -619,8 +674,13 @@ const styles = StyleSheet.create({
   },
   displayName: {
     color: COLORS.text,
-    fontSize: 24,
+    fontSize: 38,
     fontWeight: '800',
+    fontFamily: Platform.select({ web: '"Dancing Script", "Great Vibes", cursive', default: undefined }) as any,
+    lineHeight: 44,
+    textShadowColor: 'rgba(0,0,0,0.55)',
+    textShadowOffset: { width: 0, height: 2 },
+    textShadowRadius: 4,
   },
   badge: {
     flexDirection: 'row',
@@ -645,12 +705,91 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignSelf: 'stretch',
     marginTop: SPACING.md,
-    backgroundColor: '#15101f',
-    borderRadius: 14,
-    paddingVertical: SPACING.md,
+    paddingVertical: SPACING.sm,
     paddingHorizontal: SPACING.sm,
-    borderWidth: 1,
-    borderColor: '#2a2240',
+    justifyContent: 'space-around',
+    alignItems: 'center',
+    gap: 12,
+  },
+  statCircle: {
+    width: 92,
+    height: 92,
+    borderRadius: 46,
+    backgroundColor: '#fef3c7',
+    borderWidth: 4,
+    borderColor: '#facc15',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#f59e0b',
+    shadowOpacity: 0.35,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 4,
+  },
+  statCircleValue: {
+    color: '#a16207',
+    fontSize: 26,
+    fontWeight: '900',
+    lineHeight: 28,
+  },
+  statCircleLabel: {
+    color: '#a16207',
+    fontSize: 11,
+    fontWeight: '700',
+    marginTop: 2,
+  },
+  statCircleGreen: {
+    width: 92,
+    height: 92,
+    borderRadius: 46,
+    backgroundColor: '#dcfce7',
+    borderWidth: 4,
+    borderColor: '#22c55e',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#22c55e',
+    shadowOpacity: 0.35,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 4,
+  },
+  statCircleValueGreen: {
+    color: '#166534',
+    fontSize: 26,
+    fontWeight: '900',
+    lineHeight: 28,
+  },
+  statCircleLabelGreen: {
+    color: '#166534',
+    fontSize: 11,
+    fontWeight: '700',
+    marginTop: 2,
+  },
+  statCirclePink: {
+    width: 92,
+    height: 92,
+    borderRadius: 46,
+    backgroundColor: '#fce7f3',
+    borderWidth: 4,
+    borderColor: '#ec4899',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#ec4899',
+    shadowOpacity: 0.35,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 4,
+  },
+  statCircleValueSmall: {
+    color: '#9f1239',
+    fontSize: 18,
+    fontWeight: '900',
+  },
+  statCircleLabelPink: {
+    color: '#9f1239',
+    fontSize: 11,
+    fontWeight: '700',
+    marginTop: 2,
   },
   statBox: {
     flex: 1,
@@ -769,6 +908,63 @@ const styles = StyleSheet.create({
     color: COLORS.text,
     fontSize: 14,
     lineHeight: 20,
+  },
+  bioCursive: {
+    color: '#fde68a',
+    fontSize: 22,
+    lineHeight: 30,
+    fontFamily: Platform.select({ web: '"Dancing Script", "Great Vibes", cursive', default: undefined }) as any,
+    textShadowColor: 'rgba(0,0,0,0.55)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
+  },
+  postsWrap: {
+    gap: SPACING.sm,
+    paddingBottom: SPACING.xl,
+  },
+  postCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 14,
+    padding: SPACING.md,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    shadowColor: '#000',
+    shadowOpacity: 0.06,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 1,
+    gap: SPACING.sm,
+  },
+  postImage: {
+    width: '100%',
+    height: 200,
+    borderRadius: 10,
+    backgroundColor: '#f1f5f9',
+  },
+  postText: {
+    color: '#1f2937',
+    fontSize: 15,
+    lineHeight: 21,
+  },
+  postMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+  },
+  postMetaItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  postMetaText: {
+    color: '#475569',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  postMetaTime: {
+    color: '#94a3b8',
+    fontSize: 12,
+    marginLeft: 'auto',
   },
   aboutBadgeRow: {
     flexDirection: 'row',

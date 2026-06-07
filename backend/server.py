@@ -3255,6 +3255,18 @@ def _serialize_comment(comment: dict) -> dict:
         "createdAt": comment["createdAt"].isoformat() if isinstance(comment["createdAt"], datetime) else comment["createdAt"]
     }
 
+@api_router.get("/users/{user_id}/posts")
+async def get_user_posts(
+    user_id: str,
+    limit: int = 50,
+    current_user: dict = Depends(get_current_user)
+):
+    """Get all posts authored by a specific user across rooms (Profile → Posts tab)."""
+    me_id = str(current_user["_id"])
+    posts = await db.board_posts.find({"authorId": user_id}).sort("createdAt", -1).limit(limit).to_list(limit)
+    return [_serialize_post(post, me_id) for post in posts]
+
+
 @api_router.get("/rooms/{room_id}/posts")
 async def get_room_posts(
     room_id: str,
