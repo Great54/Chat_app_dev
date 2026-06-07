@@ -10,7 +10,7 @@ import time
 from typing import Dict, Optional
 
 # Backend URL
-BASE_URL = "https://leaderboard-coins-1.preview.emergentagent.com/api"
+BASE_URL = "https://vip-styling-suite.preview.emergentagent.com/api"
 
 # Test users
 USER_A = {
