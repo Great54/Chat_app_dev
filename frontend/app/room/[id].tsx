@@ -247,6 +247,7 @@ export default function RoomScreen() {
             auraType={item.senderAuraType}
             auraColor={item.senderAuraColor}
             enlargedAvatar={item.senderEnlargedAvatar}
+            shape="square"
             showBadge
           />
         </View>

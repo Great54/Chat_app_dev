@@ -16,30 +16,41 @@ interface Props {
   auraColor?: string | null;
   enlargedAvatar?: boolean;
   showBadge?: boolean;
+  /** 'circle' (default) | 'square' — square uses a small radius and skips the
+   * non-VIP circular framing. VIP aura/glow is still applied when the user is
+   * VIP regardless of shape. */
+  shape?: 'circle' | 'square';
   // Optional override
   style?: any;
 }
 
 /**
- * Renders a circular avatar with optional VIP Pro aura effect and VIP badge.
- * Scales the avatar up by VIP_PRO_AVATAR_SCALE (1.18x) when `enlargedAvatar` is true.
+ * Renders an avatar (circular by default, optional square) with optional VIP
+ * Pro aura effect and VIP badge. Scales the avatar up by VIP_PRO_AVATAR_SCALE
+ * (1.18x) when `enlargedAvatar` is true.
  */
 export default function AvatarWithAura({
   photoUrl,
   displayName,
   size,
+  vipTier,
   vipBadgeId,
   auraType,
   auraColor,
   enlargedAvatar,
   showBadge = true,
+  shape = 'circle',
   style,
 }: Props) {
   const finalSize = enlargedAvatar ? Math.round(size * VIP_PRO_AVATAR_SCALE) : size;
-  const aura = getAuraStyle(auraType, auraColor, finalSize);
+  const isVip = !!vipTier;
+  // VIP users keep their aura/glow regardless of shape; normal users get a
+  // plain frame.
+  const aura = isVip ? getAuraStyle(auraType, auraColor, finalSize) : null;
   const badge = showBadge ? findBadge(vipBadgeId) : undefined;
   const initial = (displayName || '?').charAt(0).toUpperCase();
   const badgeSize = Math.max(16, Math.round(finalSize * 0.42));
+  const radius = shape === 'square' ? Math.max(4, Math.round(finalSize * 0.16)) : finalSize / 2;
 
   return (
     <View style={[styles.container, { width: finalSize, height: finalSize }, style]}>
@@ -49,7 +60,7 @@ export default function AvatarWithAura({
           {
             width: finalSize,
             height: finalSize,
-            borderRadius: finalSize / 2,
+            borderRadius: radius,
           },
           aura,
         ]}
@@ -58,13 +69,13 @@ export default function AvatarWithAura({
         {photoUrl ? (
           <Image
             source={{ uri: photoUrl }}
-            style={{ width: finalSize, height: finalSize, borderRadius: finalSize / 2 }}
+            style={{ width: finalSize, height: finalSize, borderRadius: radius }}
           />
         ) : (
           <View
             style={[
               styles.placeholder,
-              { width: finalSize, height: finalSize, borderRadius: finalSize / 2 },
+              { width: finalSize, height: finalSize, borderRadius: radius },
             ]}
           >
             <Text style={[styles.placeholderText, { fontSize: finalSize * 0.4 }]}>

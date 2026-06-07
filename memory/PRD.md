@@ -137,3 +137,16 @@
 
 ### Smart enhancement idea
 > Add a **subtle hover/press highlight** on chat rows (light translucent purple at `rgba(124,58,237,0.05)`) plus a `time-ago` timestamp on the right that fades in on hover. Makes the chat feel more "live" without taking screen real estate from the avatars — a tiny polish lever that closes the gap between MVP-chat and a premium social product.
+
+## Iteration 20 (Jun 2026) — Square chat avatars (no border for non-VIP)
+
+### What shipped
+- Added a `shape?: 'circle' | 'square'` prop to `src/components/AvatarWithAura.tsx`. When `square`, the avatar wrapper + image use a small radius (~16% of size, e.g. 6 px on a 40 px avatar) instead of a full circle.
+- VIP aura (glow / colored ring) is now only applied to VIP users (`isVip = !!vipTier`). Non-VIP users get a plain bordered-less avatar in every shape mode.
+- `app/room/[id].tsx` chat row passes `shape="square"` to `AvatarWithAura`, so chat messages show square cute-astronaut PFPs without the doubled neon ring effect.
+
+### Verified (manual)
+- Reloaded `/room/<id>`: `varr`'s chat row now renders a clean 40 × 40 square bunny avatar with no border, name + message tightly stacked next to it. VIP-tier users would still get their aura because of the `isVip` gate.
+
+### Smart enhancement idea
+> Apply the same `shape="square"` treatment to **room-canvas member tiles** (DraggableMember). The default astronaut PFPs already include a neon-ring inside the artwork — using a square frame lets that built-in ring breathe and gives the room a sticker-board / Polaroid aesthetic. Keep VIPs circular with their gold/elite halo so the tier difference becomes a free visual cue ("squares = members, circles = VIP").
