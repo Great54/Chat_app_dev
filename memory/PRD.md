@@ -100,3 +100,25 @@
 
 ### Smart enhancement idea
 > Add a single-tap "sound preview" row inside Profile → Preferences ("Hear room-enter / notification / message") that lets users assign their own pack from a curated list of 3-4 themed packs ("Arcade", "Cozy", "Minimal", "Lofi"). Sound personalization is a tiny effort but materially boosts identity attachment and the perceived polish of the app — and it's a natural upsell hook for a future VIP-only premium pack.
+
+## Iteration 18 (Jun 2026) — Default profile avatars (9 cute astronaut animals)
+
+### What shipped
+1. **9 bundled default avatars** under `/app/backend/static/avatars/` — `default-1-panda.png … default-9-koala.png` (panda, corgi, kitten, alien, penguin, bunny, fox, robot, koala). Sliced from the 1254×1254 master grid into 418×418 PNGs (~260 KB each). Served via the existing K8s-ingress-routed mount at `/api/static/avatars/<name>.png`.
+2. **`pick_random_default_avatar()`** helper in `server.py` returns one of the 9 URLs at random.
+3. **`POST /api/auth/register`** now sets `photoUrl = pick_random_default_avatar()` for every new user (previously `None`).
+4. **Startup backfill `_backfill_default_avatars()`** rewrites every existing user whose `photoUrl` is null/empty/stale (regex `/^/api/static/avatars/default-/` not in current valid set) → ensures legacy users aren't blank and old filename variants are auto-healed.
+5. **`/app/frontend/src/api/client.ts`** — exported `API_BASE_URL` and added a `resolveAssetUrl(url)` helper for native-platform compatibility (web resolves relative URLs against page origin automatically).
+
+### Verified (iteration_16)
+- 14/14 pytest backend cases PASS (`/app/backend/tests/test_default_avatars.py`):
+  - All 9 PNGs served (HTTP 200, image/png, valid PNG magic).
+  - Register → random default URL; 10 registrations → 8 distinct (entropy good).
+  - Backfill purges null/empty/stale URLs; no legacy filenames left.
+- Frontend: avatar-tester-1's profile renders the bunny astronaut at 418×418 (verified, screenshot attached in test report).
+
+### Note
+- Earlier in this iteration a wrong asset URL was downloaded (produced leaderboard-screenshot crops). Re-sliced from the correct 1254×1254 grid; backfill auto-rewrote affected users.
+
+### Smart enhancement idea
+> Add an **avatar picker tile-grid** in Profile → Edit (3×3 of the same 9 astronauts + a 10th "Upload your own" tile). Lets users quickly switch their default to a different astronaut without uploading, gives them an instant identity moment, and the same 9-image set can later seed a **paid VIP avatar pack** (different art style, e.g. cyberpunk animals) — small build, real personalization upside.
