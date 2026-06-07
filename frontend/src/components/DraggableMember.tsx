@@ -1,5 +1,5 @@
 import React, { useRef, useState, useEffect } from 'react';
-import { View, Text, StyleSheet, PanResponder, Animated, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, PanResponder, Animated, Easing, TouchableOpacity } from 'react-native';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -99,17 +99,45 @@ export default function DraggableMember({
     };
   };
 
-  // Smooth animation to an externally-set target (tap-to-move)
+  // Track the currently-running tap-to-move animation so we can interrupt it
+  // cleanly if the user taps another spot mid-glide.
+  const moveAnimRef = useRef<Animated.CompositeAnimation | null>(null);
+
+  // Smooth animation to an externally-set target (tap-to-move).
+  // Slower, easy-to-follow timing curve (~900ms). Interruptible: any in-flight
+  // animation is stopped before kicking off the new one so the avatar glides
+  // toward the LATEST tap point only, not chains them.
   useEffect(() => {
     if (!isCurrentUser || !targetPosition) return;
     const clamped = clampPosition(targetPosition.x, targetPosition.y);
+
+    // Stop the previous glide so it doesn't fight the new one.
+    if (moveAnimRef.current) {
+      moveAnimRef.current.stop();
+      moveAnimRef.current = null;
+    }
+    // Distance-aware duration: small hop = quicker, long traverse = longer
+    // but always perceptibly slow (>=600ms).
+    // We read pan's current value via __getValue() so chained taps measure
+    // the *current* position, not the original cell.
+    // @ts-ignore — internal but supported on web + native
+    const cur = (pan as any).__getValue?.() ?? offsetRef.current;
+    const dx = clamped.x - (cur.x ?? offsetRef.current.x);
+    const dy = clamped.y - (cur.y ?? offsetRef.current.y);
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    const duration = Math.max(600, Math.min(1400, 600 + dist * 1.4));
+
     offsetRef.current = clamped;
-    Animated.spring(pan, {
+    const anim = Animated.timing(pan, {
       toValue: clamped,
+      duration,
+      easing: Easing.out(Easing.cubic),
       useNativeDriver: false,
-      friction: 7,
-      tension: 50,
-    }).start();
+    });
+    moveAnimRef.current = anim;
+    anim.start(({ finished }) => {
+      if (finished) moveAnimRef.current = null;
+    });
   }, [targetPosition?.x, targetPosition?.y, isCurrentUser]);
 
   // Drag for current user only
@@ -119,6 +147,11 @@ export default function DraggableMember({
       onMoveShouldSetPanResponder: (_, g) =>
         isCurrentUser && (Math.abs(g.dx) > 2 || Math.abs(g.dy) > 2),
       onPanResponderGrant: () => {
+        // If a tap-to-move glide is in flight, stop it so the drag takes over.
+        if (moveAnimRef.current) {
+          moveAnimRef.current.stop();
+          moveAnimRef.current = null;
+        }
         setIsDragging(true);
         Animated.spring(scale, {
           toValue: 1.15,

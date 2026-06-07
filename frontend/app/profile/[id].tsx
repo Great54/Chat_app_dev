@@ -10,6 +10,7 @@ import {
   Easing,
   Platform,
   Alert,
+  Modal,
 } from 'react-native';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -67,11 +68,14 @@ export default function ProfileViewScreen() {
   const [giftOpen, setGiftOpen] = useState(false);
   const [dmOpen, setDmOpen] = useState(false);
   const [sendCoinsOpen, setSendCoinsOpen] = useState(false);
+  const [postsOpen, setPostsOpen] = useState(false);
+  const [likeBusy, setLikeBusy] = useState(false);
 
   // Animations
   const headerAnim = useRef(new Animated.Value(0)).current;
   const tabAnim = useRef(new Animated.Value(0)).current;
   const contentAnim = useRef(new Animated.Value(0)).current;
+  const likeScale = useRef(new Animated.Value(1)).current;
 
   const loadProfile = useCallback(async (id: string) => {
     const cached = getCachedProfile(id);
@@ -159,6 +163,35 @@ export default function ProfileViewScreen() {
     }
   };
 
+  // Toggle profile-like (heart). 1 like per (viewer → target), idempotent.
+  const handleLikeToggle = async () => {
+    if (!profile || profile.isSelf || likeBusy) return;
+    setLikeBusy(true);
+    // Optimistic UI flip
+    const wasLiked = !!profile.hasLiked;
+    setProfile({
+      ...profile,
+      hasLiked: !wasLiked,
+      likesCount: (profile.likesCount || 0) + (wasLiked ? -1 : 1),
+    });
+    Animated.sequence([
+      Animated.spring(likeScale, { toValue: 1.35, useNativeDriver: true, friction: 4, tension: 200 }),
+      Animated.spring(likeScale, { toValue: 1.0,  useNativeDriver: true, friction: 5, tension: 140 }),
+    ]).start();
+    try {
+      const res = await api.post(`/users/${profile.id}/like`);
+      // Trust server for the final count
+      setProfile((p) => p ? ({ ...p, hasLiked: !!res.data.hasLiked, likesCount: res.data.likesCount } as any) : p);
+      invalidateProfile(profile.id);
+    } catch (e: any) {
+      // Roll back optimistic update
+      setProfile({ ...profile });
+      showAlert('Error', e?.response?.data?.detail || 'Could not like profile');
+    } finally {
+      setLikeBusy(false);
+    }
+  };
+
   if (loading || !profile) {
     return (
       <SafeAreaView style={styles.container} edges={['top']}>
@@ -193,6 +226,21 @@ export default function ProfileViewScreen() {
       </View>
 
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+        {/* "View Posts" CTA — placed BEFORE the banner so it sits at the very top
+            of the scroll content, clearly above the banner area. */}
+        <TouchableOpacity
+          onPress={() => setPostsOpen(true)}
+          style={styles.viewPostsPill}
+          testID="profile-view-posts"
+          activeOpacity={0.85}
+        >
+          <Ionicons name="newspaper" size={15} color="#fde68a" />
+          <Text style={styles.viewPostsText}>View Posts</Text>
+          <View style={styles.viewPostsCount}>
+            <Text style={styles.viewPostsCountText}>{profile.postsCount ?? 0}</Text>
+          </View>
+        </TouchableOpacity>
+
         {/* Header — avatar LEFT, identity RIGHT */}
         <Animated.View style={{ opacity: headerAnim, transform: [{ translateY: headerTranslate }] }}>
           <View style={styles.banner}>
@@ -209,6 +257,7 @@ export default function ProfileViewScreen() {
             <LinearGradient
               colors={['rgba(255,255,255,0.0)', 'rgba(255,255,255,0.35)', COLORS.background]}
               style={StyleSheet.absoluteFillObject}
+              pointerEvents="none"
             />
           </View>
 
@@ -267,32 +316,50 @@ export default function ProfileViewScreen() {
                   </View>
                 ))}
               </View>
-              {/* Inline cursive bio (the previous "About" section, surfaced directly) */}
-              <Text style={styles.bioInline} numberOfLines={4} testID="profile-bio-inline">
-                {profile.bio || 'No bio yet.'}
-              </Text>
             </View>
           </View>
 
           <View style={styles.identity}>
+            {/* 3 stat circles — Coins / Likes / Ads (Friends) */}
             <View style={styles.statsRow}>
               <View style={[styles.statCircle, styles.statCircleCoins]} testID="profile-stat-coins">
                 <Text style={[styles.statCircleValue, { color: '#a16207' }]}>{profile.coins}</Text>
                 <Text style={[styles.statCircleLabel, { color: '#a16207' }]}>Coins</Text>
               </View>
-              <View style={[styles.statCircle, styles.statCircleFriends]} testID="profile-stat-friends">
+
+              {/* Likes — TAPPABLE (one-per-user toggle) */}
+              <TouchableOpacity
+                onPress={handleLikeToggle}
+                disabled={profile.isSelf || likeBusy}
+                activeOpacity={0.8}
+                testID="profile-stat-likes"
+                style={[styles.statCircle, styles.statCircleLikes, profile.hasLiked && styles.statCircleLikesActive]}
+              >
+                <Animated.View style={{ alignItems: 'center', transform: [{ scale: likeScale }] }}>
+                  <View style={styles.likeIconRow}>
+                    <Ionicons
+                      name={profile.hasLiked ? 'heart' : 'heart-outline'}
+                      size={14}
+                      color={profile.hasLiked ? '#dc2626' : '#9d174d'}
+                    />
+                    <Text style={[styles.statCircleValue, { color: profile.hasLiked ? '#7f1d1d' : '#9d174d' }]}>{profile.likesCount ?? 0}</Text>
+                  </View>
+                  <Text style={[styles.statCircleLabel, { color: '#9d174d' }]}>
+                    {profile.hasLiked ? 'Liked' : 'Likes'}
+                  </Text>
+                </Animated.View>
+              </TouchableOpacity>
+
+              <View style={[styles.statCircle, styles.statCircleFriends]} testID="profile-stat-ads">
                 <Text style={[styles.statCircleValue, { color: '#1e40af' }]}>{profile.friendCount}</Text>
-                <Text style={[styles.statCircleLabel, { color: '#1e40af' }]}>Friends</Text>
-              </View>
-              <View style={[styles.statCircle, styles.statCircleLikes]} testID="profile-stat-likes">
-                <Text style={[styles.statCircleValue, { color: '#9d174d' }]}>{profile.likesCount ?? 0}</Text>
-                <Text style={[styles.statCircleLabel, { color: '#9d174d' }]}>Likes</Text>
-              </View>
-              <View style={[styles.statCircle, styles.statCirclePosts]} testID="profile-stat-posts">
-                <Text style={[styles.statCircleValue, { color: '#166534' }]}>{profile.postsCount ?? 0}</Text>
-                <Text style={[styles.statCircleLabel, { color: '#166534' }]}>Posts</Text>
+                <Text style={[styles.statCircleLabel, { color: '#1e40af' }]}>Ads</Text>
               </View>
             </View>
+
+            {/* Bio BELOW stats (inline cursive) */}
+            <Text style={styles.bioBelow} numberOfLines={4} testID="profile-bio-inline">
+              {profile.bio || 'No bio yet.'}
+            </Text>
 
             {/* Quick action bar — Add Friend / Message / Gift / Send Coins
                 (All popup-only interactions have moved here, per the new design.) */}
@@ -348,21 +415,23 @@ export default function ProfileViewScreen() {
             )}
           </View>
         </Animated.View>
-
-        {/* Posts section — single content area (About / Photos / Friends tabs removed per design) */}
-        <Animated.View
-          style={[
-            styles.tabContent,
-            { opacity: contentAnim, transform: [{ translateY: contentTranslate }] },
-          ]}
-        >
-          <View style={styles.postsHeader}>
-            <Ionicons name="newspaper-outline" size={18} color="#7c2d12" />
-            <Text style={styles.postsHeaderTitle}>Posts</Text>
-          </View>
-          <PostsTab userId={profile.id} />
-        </Animated.View>
       </ScrollView>
+
+      {/* Posts sub-page — opens as a slide-up Modal so it feels like a 2nd page inside the profile */}
+      <Modal visible={postsOpen} animationType="slide" onRequestClose={() => setPostsOpen(false)}>
+        <SafeAreaView style={styles.container} edges={['top']}>
+          <View style={styles.topBar}>
+            <TouchableOpacity onPress={() => setPostsOpen(false)} style={styles.iconBtn} testID="posts-back">
+              <Ionicons name="arrow-back" size={22} color={COLORS.text} />
+            </TouchableOpacity>
+            <Text style={styles.topBarTitle} numberOfLines={1}>{profile.displayName} · Posts</Text>
+            <View style={styles.iconBtn} />
+          </View>
+          <ScrollView contentContainerStyle={{ paddingBottom: SPACING.xl * 2 }}>
+            <PostsTab userId={profile.id} />
+          </ScrollView>
+        </SafeAreaView>
+      </Modal>
 
       <GiftSendModal
         visible={giftOpen}
@@ -587,7 +656,6 @@ const styles = StyleSheet.create({
     height: 160,
     backgroundColor: COLORS.cardBg,
     position: 'relative',
-    marginTop: -48, // Pull behind top bar
   },
   avatarRow: {
     alignSelf: 'center',
@@ -650,10 +718,62 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     letterSpacing: 0.4,
   },
+  viewPostsPill: {
+    flexDirection: 'row',
+    alignSelf: 'center',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 9,
+    marginTop: 6,
+    marginBottom: 10,
+    backgroundColor: '#1f1226',
+    borderRadius: 999,
+    borderWidth: 1.5,
+    borderColor: '#fbbf24',
+    // @ts-ignore RN web shadow
+    boxShadow: '0 6px 18px rgba(251,191,36,0.45)',
+  },
+  viewPostsText: {
+    color: '#fde68a',
+    fontSize: 13,
+    fontWeight: '800',
+    letterSpacing: 0.4,
+  },
+  viewPostsCount: {
+    paddingHorizontal: 8,
+    paddingVertical: 1,
+    borderRadius: 999,
+    backgroundColor: '#fbbf24',
+    minWidth: 24,
+    alignItems: 'center',
+  },
+  viewPostsCountText: { color: '#1f1226', fontSize: 11, fontWeight: '900' },
+  bioBelow: {
+    color: '#e7d6ff',
+    fontSize: 18,
+    fontFamily: Platform.select({ web: '"Dancing Script", "Great Vibes", cursive', default: undefined }) as any,
+    lineHeight: 24,
+    marginTop: SPACING.md,
+    paddingHorizontal: SPACING.md,
+    textAlign: 'center',
+    opacity: 0.92,
+  },
+  likeIconRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  statCircleLikesActive: {
+    backgroundColor: '#fecdd3',
+    borderColor: '#f43f5e',
+    // @ts-ignore
+    boxShadow: '0 0 0 3px rgba(244,63,94,0.15)',
+  },
   avatarFrame: {
     width: 130,
     height: 130,
-    borderRadius: 65,
+    borderRadius: 18,
     padding: 5,
     alignItems: 'center',
     justifyContent: 'center',
@@ -661,7 +781,7 @@ const styles = StyleSheet.create({
   avatarInner: {
     width: '100%',
     height: '100%',
-    borderRadius: 60,
+    borderRadius: 13,
     backgroundColor: COLORS.background,
     alignItems: 'center',
     justifyContent: 'center',
@@ -672,7 +792,7 @@ const styles = StyleSheet.create({
   avatarImg: {
     width: '100%',
     height: '100%',
-    borderRadius: 60,
+    borderRadius: 10,
   },
   bigOnlineDot: {
     position: 'absolute',

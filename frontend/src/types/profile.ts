@@ -24,6 +24,8 @@ export interface ProfileCard {
   friendCount: number;
   postsCount?: number;
   likesCount?: number;
+  postLikesCount?: number;
+  hasLiked?: boolean;
   friendStatus: FriendStatus;
   friendRequestId?: string | null;
   isBlocked: boolean;

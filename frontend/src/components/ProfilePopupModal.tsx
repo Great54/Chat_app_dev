@@ -699,7 +699,7 @@ const styles = StyleSheet.create({
   avatarFrame: {
     width: 88,
     height: 88,
-    borderRadius: 44,
+    borderRadius: 14,
     padding: 3,
     alignItems: 'center',
     justifyContent: 'center',
@@ -707,13 +707,14 @@ const styles = StyleSheet.create({
   avatarFramePlain: {
     backgroundColor: '#ffffff',
     padding: 3,
+    borderRadius: 14,
     // @ts-ignore
     boxShadow: '0 4px 12px rgba(0,0,0,0.18)',
   },
   avatarFrameInner: {
     width: '100%',
     height: '100%',
-    borderRadius: 42,
+    borderRadius: 11,
     backgroundColor: '#fff7ed',
     alignItems: 'center',
     justifyContent: 'center',
@@ -724,7 +725,7 @@ const styles = StyleSheet.create({
   avatarImg: {
     width: '100%',
     height: '100%',
-    borderRadius: 42,
+    borderRadius: 8,
   },
   onlineDot: {
     position: 'absolute',

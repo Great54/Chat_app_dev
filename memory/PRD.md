@@ -1,44 +1,30 @@
 # GenC Vibez — PRD
 
-## Original problem statement (Jan 2026)
-> Profile section: when pressed on another's profile (or they press ours), display likes, friends, profile pic, name, background pic, coins, posts, bio, and VIP badge. Use pleasant bright colours and cursive writing. Tournament section: if >4 people join then 2 winners, otherwise 1 winner. 1st should get more coins than 2nd. Tournaments visible for 5 hours per room. Knockout based, each person faces other person. Public/private tournaments with join code.
+## Iteration 14 (Jun 2026) — square avatars + profile likes + View Posts + slow room glide
 
-## Tech stack
-- Frontend: React Native + Expo Router (web build served on :3000)
-- Backend: FastAPI + Motor at :8001, prefix `/api`
-- Database: MongoDB local
-- Backend modularized: `server.py` + `routes/{tournaments,leaderboard,vip}.py`
+### Changes shipped
+1. **Square avatars everywhere.** Both the in-room popup (`ProfilePopupModal`) and the full profile page (`app/profile/[id].tsx`) now use rounded-square avatar frames (`borderRadius: 8-14`) instead of circles.
+2. **Profile like feature** (NEW backend + UI).
+   - **Backend:** new `profile_likes` collection (unique compound index `targetUserId + likerId`).
+   - **`POST /api/users/{user_id}/like`** — toggles a like from the caller toward target. Idempotent: a 2nd call un-likes. Self-like rejected (400). Response: `{ hasLiked, likesCount, userId }`.
+   - **`GET /api/users/{user_id}/profile-card`** now returns `likesCount` (PROFILE likes) and a per-viewer `hasLiked` boolean. The legacy "likes received on board posts" count is preserved as `postLikesCount` for callers that still need it.
+3. **Profile stats reduced to 3** per the user's spec: **Coins / Likes / Ads** (label "Ads" with value = friendCount). The Likes circle is **tappable** — taps optimistically flip the heart icon (outline ↔ filled), spring-animate the count, and call the toggle endpoint. The Posts circle is gone (replaced by the View Posts button).
+4. **Bio moved below the 3 stat circles** in cursive style.
+5. **"View Posts" button placed above the banner** as a prominent dark-pill chip with the user's post count badge. Tap opens a slide-up Modal that renders `<PostsTab userId>` so posts feel like a second page inside the profile.
+6. **Room avatar tap-to-move slowed + interruptible.** `DraggableMember` now uses `Animated.timing` with `Easing.out(Easing.cubic)` and distance-aware duration (`600–1400 ms`). A running animation is tracked in a ref; the next tap or drag explicitly `.stop()`s it so the avatar always glides toward the LATEST tap point and never chains motions.
 
-## Implementation log
-
-### Iteration 11 — initial profile + tournament work
-- Cursive profile design + tiered tournament prizes + public/private tournaments + 5h visibility window. (17/17 tests passed.)
-
-### Iteration 12 — dots fix + podium + Hall of Champions + P1 refactor
-- Removed unrequested scallop divider dots.
-- Animated podium reveal in TournamentDetail (`Animated.View` staggered springs).
-- New `GET /api/tournaments/wins/leaderboard` global Hall of Champions endpoint + UI modal.
-- Extracted `routes/tournaments.py`, `routes/leaderboard.py`, `routes/vip.py` from server.py (-21% lines).
-
-### Iteration 13 — minimal "in-room" peek + full-profile redesign (Jun 2026)
-User wanted a clean separation:
-- **Popup ("in-room" peek)** = avatar + name + VIP badge + coins + View Profile only. No stats, no actions, no online label (dot is enough), no Report/Block.
-- **Full profile = where ALL interaction lives** — Add Friend, Message, Gift, Send Coins, and post-likes are all here.
-
-#### Changes shipped
-1. **`ProfilePopupModal.tsx` — radically simplified.** Avatar LEFT, identity RIGHT layout (no banner anymore). The right column shows the cursive display name, `@username`, VIP badge pill (`PRO`/`ELITE` only — no separate "Online" word), and a Coins pill. A single gradient `View Profile` button is the sole CTA. The previous stat chips (Friends/Likes/Posts), 4-button action grid (Friend/Message/Gift/Coins), and Report|Block row were removed. Online status is conveyed silently by the dot on the avatar.
-2. **`app/profile/[id].tsx` — avatar-LEFT redesigned.** Removed the centered avatar-over-banner layout. New `headerSplit` row: avatar LEFT (130×130 frame with VIP gradient, crown badge, online dot), identity column RIGHT with cursive `displayName`, `@username`, inline VIP badges and **bio rendered directly** (so the "About" section is unnecessary — `"No bio yet."` is shown when empty).
-3. **Tabs removed.** `About`, `Friends`, and `Photos` tabs are gone. The page now renders ONE content area: a "Posts" section header followed by `<PostsTab>` showing all the user's posts across rooms. (Friends list was already restricted to self by privacy rules and is now no longer exposed at all on the profile page.)
-4. **Send Coins button added to the full profile** quick-actions row (`Add Friend / Message / Gift / Coins`). Wired to `SendCoinsModal` using `useAuth().user.coins`.
-5. **Bio inline shown in cursive** with a soft purple tint to feel handwritten.
+### Verified
+- Backend: like toggle round-trip works (`hasLiked` flips, `likesCount` increments/decrements). Self-like returns 400 with friendly message. Profile-card includes `likesCount` + `hasLiked` + `postLikesCount`.
+- Frontend: profile page screenshots confirm square avatars, 3-stat layout, Liked state (filled heart + pink active background), bio below, dark View Posts pill above banner.
 
 ## Backlog / Next actions
-- **(P1)** Continue the refactor — extract `auth`, `board_posts`, `rooms`, `messages`, `friends` (server.py still ~3300 lines).
-- **(P1)** Cleanup unused tab code in `app/profile/[id].tsx` (the `AboutTab`/`FriendsTab` sub-views and the related state are still in the file even though they are no longer rendered — safe but adds noise).
-- **(P1)** Raise default room `maxCapacity` (=36) so long-lived dev DBs don't saturate the >10p tournament test.
-- **(P1)** One-tap copy/share sheet for the private-tournament invite code.
-- **(P2)** Push private-tournament filter into the Mongo query.
-- **(P3)** Auto-host "Tournament of the Day" + weekly Champions Banner auto-posted to room boards.
+- (P1) Clean up dead `TABS` / `AboutTab` / `FriendsTab` code in `app/profile/[id].tsx` (no longer rendered).
+- (P1) Continue server.py refactor (still ~3300 lines): extract `auth`, `board_posts`, `rooms`, `messages`, `friends`.
+- (P1) Raise default room `maxCapacity` so long-lived dev DBs don't saturate the >10p test.
+- (P1) One-tap copy/share sheet for the private-tournament invite code.
+- (P2) Push private-tournament filter into the Mongo query.
+- (P3) Notification ping to the liked user (`X liked your profile`).
+- (P3) Auto-host "Tournament of the Day" + weekly Champions Banner.
 
 ## Smart enhancement idea
-> The new ultra-minimal popup makes it harder to spam Add Friend / Gift from chat (a good thing for behavior). To recoup the discoverability, sprinkle a **"+ Add Friend" suggestion chip** on the View Profile screen the first time someone lands on a stranger's profile — drives engagement without cluttering the in-room peek.
+> The profile-like is a low-friction signal that's gold for personalization. Surface a **"People who liked your profile"** list inside the user's *own* full profile (above the Posts pill) — leverages the new collection without any extra API spend and creates a satisfying "who's checked me out" moment that drives daily opens. Pair with a "+1 like" haptic + heart particle burst for delight.

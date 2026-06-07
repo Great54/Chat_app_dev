@@ -910,15 +910,25 @@ async def get_profile_card(user_id: str, current_user: dict = Depends(get_curren
     elif vip == "pro":
         badges.append({"id": "pro", "label": "PRO", "color": "#FFD700", "icon": "star"})
 
-    # Posts count (across all rooms) + likes received across all their posts
+    # Posts count (across all rooms)
     posts_count = await db.board_posts.count_documents({"authorId": target_id})
-    likes_pipeline = [
+
+    # Profile likes (NEW): "like this user" feature — 1 like per (liker, target).
+    # Likes received on the user's POSTS are still kept as `postLikesCount` for legacy.
+    likes_count = await db.profile_likes.count_documents({"targetUserId": target_id})
+    me_id = str(current_user["_id"])
+    has_liked = False
+    if me_id != target_id:
+        has_liked = bool(await db.profile_likes.find_one({"targetUserId": target_id, "likerId": me_id}))
+
+    # Legacy post-likes aggregate (kept for backwards-compat consumers)
+    post_likes_pipeline = [
         {"$match": {"authorId": target_id}},
         {"$project": {"likes_n": {"$size": {"$ifNull": ["$likes", []]}}}},
         {"$group": {"_id": None, "total": {"$sum": "$likes_n"}}},
     ]
-    likes_doc = await db.board_posts.aggregate(likes_pipeline).to_list(1)
-    likes_count = likes_doc[0]["total"] if likes_doc else 0
+    post_likes_doc = await db.board_posts.aggregate(post_likes_pipeline).to_list(1)
+    post_likes_count = post_likes_doc[0]["total"] if post_likes_doc else 0
 
     return {
         "id": target_id,
@@ -937,6 +947,8 @@ async def get_profile_card(user_id: str, current_user: dict = Depends(get_curren
         "friendCount": friend_count,
         "postsCount": posts_count,
         "likesCount": likes_count,
+        "postLikesCount": post_likes_count,
+        "hasLiked": has_liked,
         "friendStatus": friend_status,
         "friendRequestId": friend_request_id,
         "isBlocked": is_blocked,
@@ -950,6 +962,36 @@ async def get_profile_card(user_id: str, current_user: dict = Depends(get_curren
         "pmBoxColor": user.get("pmBoxColor"),
         "enlargedAvatar": bool(user.get("enlargedAvatar", False)),
     }
+
+@api_router.post("/users/{user_id}/like")
+async def like_user_profile(user_id: str, current_user: dict = Depends(get_current_user)):
+    """Toggle a "profile like" from the current user toward target user.
+    Uses an upsert/delete on `profile_likes`; 1 like per (liker, target) pair.
+    Idempotent: calling twice in a row just toggles."""
+    if not ObjectId.is_valid(user_id):
+        raise HTTPException(status_code=400, detail="Invalid user id")
+    me_id = str(current_user["_id"])
+    if me_id == user_id:
+        raise HTTPException(status_code=400, detail="You can't like your own profile")
+    target = await db.users.find_one({"_id": ObjectId(user_id)})
+    if not target:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    existing = await db.profile_likes.find_one({"targetUserId": user_id, "likerId": me_id})
+    if existing:
+        await db.profile_likes.delete_one({"_id": existing["_id"]})
+        liked = False
+    else:
+        await db.profile_likes.insert_one({
+            "targetUserId": user_id,
+            "likerId": me_id,
+            "likerName": current_user["displayName"],
+            "createdAt": datetime.utcnow(),
+        })
+        liked = True
+
+    new_count = await db.profile_likes.count_documents({"targetUserId": user_id})
+    return {"hasLiked": liked, "likesCount": new_count, "userId": user_id}
 
 @api_router.get("/users/{user_id}/friends")
 async def get_user_friends(user_id: str, current_user: dict = Depends(get_current_user), limit: int = 30):
@@ -3290,6 +3332,16 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+@app.on_event("startup")
+async def _ensure_indexes():
+    """Create necessary unique indexes (idempotent)."""
+    try:
+        await db.profile_likes.create_index(
+            [("targetUserId", 1), ("likerId", 1)], unique=True, name="uniq_target_liker"
+        )
+    except Exception as e:
+        print(f"[startup] profile_likes index warn: {e}")
 
 @app.on_event("shutdown")
 async def shutdown_db_client():
