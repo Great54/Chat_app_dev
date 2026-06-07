@@ -268,178 +268,127 @@ export default function ProfilePopupModal({ visible, userId, onClose }: Props) {
             </View>
           ) : (
             <>
-              {/* Banner with avatar LEFT + name CENTER overlay */}
-              <View style={styles.bannerWrap}>
-                <View style={styles.banner}>
-                  {profile.bannerUrl ? (
-                    <Image source={{ uri: profile.bannerUrl }} style={StyleSheet.absoluteFillObject} contentFit="cover" />
-                  ) : (
+              {/* Minimal "in-room" peek — avatar LEFT, identity RIGHT.
+                  All interactions (Like / Add Friend / Message / Gift / Coins)
+                  live inside "View Profile". */}
+              <TouchableOpacity onPress={onClose} style={styles.closeBtn} testID="profile-popup-close">
+                <Ionicons name="close" size={18} color="#1f2937" />
+              </TouchableOpacity>
+
+              <View style={styles.peekRow}>
+                {/* Avatar — LEFT */}
+                <View
+                  style={[
+                    styles.peekAvatarWrap,
+                    profile.enlargedAvatar && { transform: [{ scale: VIP_PRO_AVATAR_SCALE }] },
+                    getAuraStyle(profile.auraType, profile.auraColor, 88),
+                  ]}
+                >
+                  {vipStyle ? (
                     <LinearGradient
-                      colors={['#a7f3d0', '#fde68a', '#fbcfe8'] as [string, string, ...string[]]}
-                      style={StyleSheet.absoluteFillObject}
+                      colors={vipStyle.borderColors as [string, string, ...string[]]}
+                      style={styles.avatarFrame}
                       start={{ x: 0, y: 0 }}
                       end={{ x: 1, y: 1 }}
-                    />
+                    >
+                      <View style={styles.avatarFrameInner}>
+                        {profile.photoUrl ? (
+                          <Image source={{ uri: profile.photoUrl }} style={styles.avatarImg} />
+                        ) : (
+                          <Ionicons name="person" size={42} color="#9ca3af" />
+                        )}
+                      </View>
+                    </LinearGradient>
+                  ) : (
+                    <View style={[styles.avatarFrame, styles.avatarFramePlain]}>
+                      <View style={styles.avatarFrameInner}>
+                        {profile.photoUrl ? (
+                          <Image source={{ uri: profile.photoUrl }} style={styles.avatarImg} />
+                        ) : (
+                          <Ionicons name="person" size={42} color="#9ca3af" />
+                        )}
+                      </View>
+                    </View>
                   )}
-                  {/* Soft pastel veil for legibility */}
-                  <LinearGradient
-                    colors={['rgba(255,255,255,0.0)', 'rgba(255,255,255,0.35)']}
-                    style={StyleSheet.absoluteFillObject}
-                  />
-
-                  {/* Avatar — LEFT */}
+                  {/* Online dot — silent indicator, no text */}
                   <View
                     style={[
-                      styles.avatarOverlayLeft,
-                      profile.enlargedAvatar && { transform: [{ scale: VIP_PRO_AVATAR_SCALE }] },
-                      getAuraStyle(profile.auraType, profile.auraColor, 84),
+                      styles.onlineDot,
+                      { backgroundColor: profile.onlineStatus ? '#22c55e' : '#94a3b8' },
                     ]}
-                  >
-                    {vipStyle ? (
+                  />
+                </View>
+
+                {/* Identity — RIGHT side */}
+                <View style={styles.peekIdentity}>
+                  {isElite && (
+                    <View style={styles.eliteRibbon} testID="elite-ribbon">
                       <LinearGradient
-                        colors={vipStyle.borderColors as [string, string, ...string[]]}
-                        style={styles.avatarFrame}
+                        colors={['#fde68a', '#fbbf24', '#dc2626'] as [string, string, ...string[]]}
                         start={{ x: 0, y: 0 }}
-                        end={{ x: 1, y: 1 }}
+                        end={{ x: 1, y: 0 }}
+                        style={styles.eliteRibbonGrad}
                       >
-                        <View style={styles.avatarFrameInner}>
-                          {profile.photoUrl ? (
-                            <Image source={{ uri: profile.photoUrl }} style={styles.avatarImg} />
-                          ) : (
-                            <Ionicons name="person" size={40} color="#9ca3af" />
-                          )}
-                        </View>
+                        <Ionicons name="diamond" size={10} color="#1a0f2e" />
+                        <Text style={styles.eliteRibbonText}>VIP ELITE</Text>
+                        <Ionicons name="star" size={9} color="#1a0f2e" />
                       </LinearGradient>
-                    ) : (
-                      <View style={[styles.avatarFrame, styles.avatarFramePlain]}>
-                        <View style={styles.avatarFrameInner}>
-                          {profile.photoUrl ? (
-                            <Image source={{ uri: profile.photoUrl }} style={styles.avatarImg} />
-                          ) : (
-                            <Ionicons name="person" size={40} color="#9ca3af" />
-                          )}
-                        </View>
-                      </View>
-                    )}
-                    {/* Online dot */}
-                    <View
-                      style={[
-                        styles.onlineDot,
-                        { backgroundColor: profile.onlineStatus ? '#22c55e' : '#94a3b8' },
-                      ]}
-                    />
-                    {/* VIP badge */}
-                    {(() => {
-                      const customBadge = findBadge(profile.vipBadgeId);
-                      if (customBadge) {
-                        return (
-                          <View style={[styles.crown, { backgroundColor: customBadge.bg }]}>
-                            <Text style={{ fontSize: 16 }}>{customBadge.emoji}</Text>
-                          </View>
-                        );
-                      }
-                      if (vipStyle) {
-                        return (
-                          <View style={[styles.crown, { backgroundColor: vipStyle.crownColor }]}>
-                            <Ionicons name={vipStyle.badgeIcon} size={13} color="#fff" />
-                          </View>
-                        );
-                      }
-                      return null;
-                    })()}
-                  </View>
-
-                  {/* Cursive name — CENTER overlay */}
-                  <View style={styles.nameOverlay} pointerEvents="none">
-                    {isElite && (
-                      <View style={styles.eliteRibbon} testID="elite-ribbon">
-                        <LinearGradient
-                          colors={['#fde68a', '#fbbf24', '#dc2626'] as [string, string, ...string[]]}
-                          start={{ x: 0, y: 0 }}
-                          end={{ x: 1, y: 0 }}
-                          style={styles.eliteRibbonGrad}
-                        >
-                          <Ionicons name="diamond" size={10} color="#1a0f2e" />
-                          <Text style={styles.eliteRibbonText}>VIP ELITE</Text>
-                          <Ionicons name="star" size={9} color="#1a0f2e" />
-                        </LinearGradient>
-                      </View>
-                    )}
-                    <Text
-                      style={[
-                        styles.cursiveName,
-                        profile.usernameColor ? { color: profile.usernameColor } : null,
-                      ]}
-                      numberOfLines={1}
-                      testID="profile-popup-name"
-                    >
-                      {profile.displayName}
-                    </Text>
-                    <Text style={styles.usernameOverlay} numberOfLines={1}>
-                      @{profile.username}
-                    </Text>
-                  </View>
-
-                  <TouchableOpacity onPress={onClose} style={styles.closeBtn} testID="profile-popup-close">
-                    <Ionicons name="close" size={18} color="#1f2937" />
-                  </TouchableOpacity>
-                </View>
-              </View>
-
-              {/* Identity block: badges row + bio */}
-              <View style={styles.identityBlock}>
-                <View style={styles.badgesRow}>
-                  {profile.badges.map((b) => (
-                    <View key={b.id} style={[styles.badgePill, { backgroundColor: b.color }]}>
-                      <Ionicons name={b.icon as any} size={10} color="#fff" />
-                      <Text style={styles.badgeText}>{b.label}</Text>
                     </View>
-                  ))}
-                  <View style={styles.statusInlineRow}>
-                    <View
-                      style={[
-                        styles.statusDot,
-                        { backgroundColor: profile.onlineStatus ? '#22c55e' : '#94a3b8' },
-                      ]}
-                    />
-                    <Text style={styles.statusText}>
-                      {profile.onlineStatus ? 'Online' : 'Offline'}
-                    </Text>
-                  </View>
-                </View>
-
-                {/* Stats row: Coins / Friends / Likes / Posts */}
-                <View style={styles.statsRow} testID="profile-popup-stats">
-                  <View style={[styles.statChip, styles.statCoins]} testID="stat-coins">
-                    <Ionicons name="logo-bitcoin" size={14} color="#a16207" />
-                    <Text style={styles.statValue}>{profile.coins}</Text>
-                    <Text style={styles.statLabel}>Coins</Text>
-                  </View>
-                  <View style={[styles.statChip, styles.statFriends]} testID="stat-friends">
-                    <Ionicons name="people" size={14} color="#1d4ed8" />
-                    <Text style={[styles.statValue, { color: '#1e3a8a' }]}>{profile.friendCount}</Text>
-                    <Text style={[styles.statLabel, { color: '#1e3a8a' }]}>Friends</Text>
-                  </View>
-                  <View style={[styles.statChip, styles.statLikes]} testID="stat-likes">
-                    <Ionicons name="heart" size={14} color="#be185d" />
-                    <Text style={[styles.statValue, { color: '#9d174d' }]}>{profile.likesCount ?? 0}</Text>
-                    <Text style={[styles.statLabel, { color: '#9d174d' }]}>Likes</Text>
-                  </View>
-                  <View style={[styles.statChip, styles.statPosts]} testID="stat-posts">
-                    <Ionicons name="newspaper" size={14} color="#15803d" />
-                    <Text style={[styles.statValue, { color: '#166534' }]}>{profile.postsCount ?? 0}</Text>
-                    <Text style={[styles.statLabel, { color: '#166534' }]}>Posts</Text>
-                  </View>
-                </View>
-
-                {profile.bio ? (
-                  <Text style={styles.bio} numberOfLines={3} testID="profile-popup-bio">
-                    {profile.bio}
+                  )}
+                  <Text
+                    style={[
+                      styles.peekName,
+                      profile.usernameColor ? { color: profile.usernameColor } : null,
+                    ]}
+                    numberOfLines={1}
+                    testID="profile-popup-name"
+                  >
+                    {profile.displayName}
                   </Text>
-                ) : null}
+                  <Text style={styles.peekUsername} numberOfLines={1}>@{profile.username}</Text>
+
+                  {/* VIP badge row (only badges, no online label) */}
+                  {(() => {
+                    const customBadge = findBadge(profile.vipBadgeId);
+                    const items: React.ReactNode[] = [];
+                    if (customBadge) {
+                      items.push(
+                        <View key="vip-custom" style={[styles.badgePill, { backgroundColor: customBadge.bg }]}>
+                          <Text style={{ fontSize: 11 }}>{customBadge.emoji}</Text>
+                          <Text style={styles.badgeText}>VIP</Text>
+                        </View>
+                      );
+                    } else if (vipStyle) {
+                      items.push(
+                        <View key="vip-default" style={[styles.badgePill, { backgroundColor: vipStyle.crownColor }]}>
+                          <Ionicons name={vipStyle.badgeIcon} size={10} color="#fff" />
+                          <Text style={styles.badgeText}>{(profile.vipTier || '').toUpperCase()}</Text>
+                        </View>
+                      );
+                    }
+                    profile.badges.forEach((b) => {
+                      // Avoid duplicating the VIP badge that we already render above
+                      if (b.id === profile.vipTier) return;
+                      items.push(
+                        <View key={b.id} style={[styles.badgePill, { backgroundColor: b.color }]}>
+                          <Ionicons name={b.icon as any} size={10} color="#fff" />
+                          <Text style={styles.badgeText}>{b.label}</Text>
+                        </View>
+                      );
+                    });
+                    return items.length ? <View style={styles.peekBadgesRow}>{items}</View> : null;
+                  })()}
+
+                  {/* Coins pill */}
+                  <View style={styles.peekCoinsPill} testID="profile-popup-coins">
+                    <Ionicons name="logo-bitcoin" size={14} color="#a16207" />
+                    <Text style={styles.peekCoinsValue}>{profile.coins}</Text>
+                    <Text style={styles.peekCoinsLabel}>coins</Text>
+                  </View>
+                </View>
               </View>
 
-              {/* View Profile primary CTA */}
+              {/* Sole CTA — View Profile (all other actions live inside) */}
               <TouchableOpacity
                 style={styles.viewProfileBtn}
                 onPress={handleViewProfile}
@@ -455,70 +404,6 @@ export default function ProfilePopupModal({ visible, userId, onClose }: Props) {
                   <Text style={styles.viewProfileText}>View Profile</Text>
                 </LinearGradient>
               </TouchableOpacity>
-
-              {/* Action grid */}
-              {!isSelf && (
-                <View style={styles.actionRow}>
-                  <ActionButton
-                    label={friendBtnLabel}
-                    icon={friendBtnIcon}
-                    loading={actionLoading === 'friend'}
-                    onPress={handleAddFriend}
-                    active={profile.friendStatus === 'friends'}
-                    testID="profile-popup-friend"
-                  />
-                  <ActionButton
-                    label="Message"
-                    icon="chatbubble-ellipses"
-                    onPress={handleMessage}
-                    testID="profile-popup-message"
-                  />
-                  <ActionButton
-                    label="Gift"
-                    icon="gift"
-                    color="#ec4899"
-                    onPress={handleGift}
-                    testID="profile-popup-gift"
-                  />
-                  <ActionButton
-                    label="Coins"
-                    icon="cash"
-                    color="#f59e0b"
-                    onPress={() => setSendCoinsOpen(true)}
-                    testID="profile-popup-send-coins"
-                  />
-                </View>
-              )}
-
-              {!isSelf && (
-                <View style={styles.secondaryRow}>
-                  <TouchableOpacity
-                    onPress={handleReport}
-                    style={styles.secondaryBtn}
-                    testID="profile-popup-report"
-                    disabled={actionLoading === 'report'}
-                  >
-                    <Ionicons name="flag-outline" size={14} color={COLORS.warning} />
-                    <Text style={[styles.secondaryText, { color: COLORS.warning }]}>Report</Text>
-                  </TouchableOpacity>
-                  <View style={styles.secondaryDivider} />
-                  <TouchableOpacity
-                    onPress={handleBlock}
-                    style={styles.secondaryBtn}
-                    testID="profile-popup-block"
-                    disabled={actionLoading === 'block'}
-                  >
-                    <Ionicons
-                      name={profile.isBlocked ? 'lock-open-outline' : 'ban-outline'}
-                      size={14}
-                      color={COLORS.error}
-                    />
-                    <Text style={[styles.secondaryText, { color: COLORS.error }]}>
-                      {profile.isBlocked ? 'Unblock' : 'Block'}
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-              )}
             </>
           )}
         </Animated.View>
@@ -637,15 +522,81 @@ const styles = StyleSheet.create({
   },
   card: {
     width: '100%',
-    maxWidth: 380,
+    maxWidth: 360,
     backgroundColor: '#fffaf3',
-    borderRadius: 26,
+    borderRadius: 22,
     overflow: 'hidden',
     borderWidth: 1,
     borderColor: '#fde68a',
+    paddingTop: SPACING.lg,
     paddingBottom: SPACING.md,
+    paddingHorizontal: SPACING.md,
     // @ts-ignore RN web shadow
     boxShadow: '0 18px 50px rgba(244,114,182,0.30), 0 8px 16px rgba(0,0,0,0.20)',
+  },
+  peekRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.md,
+  },
+  peekAvatarWrap: {
+    position: 'relative',
+    width: 88,
+    height: 88,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  peekIdentity: {
+    flex: 1,
+    minWidth: 0,
+    gap: 4,
+  },
+  peekName: {
+    color: '#1f2937',
+    fontFamily: CURSIVE_FONT,
+    fontSize: 30,
+    fontWeight: '700',
+    lineHeight: 34,
+    // @ts-ignore — RN web textShadow
+    textShadow: '0 2px 6px rgba(255,255,255,0.85), 0 4px 10px rgba(244,114,182,0.25)',
+  },
+  peekUsername: {
+    color: '#7c2d12',
+    fontSize: 12,
+    fontWeight: '700',
+    opacity: 0.8,
+  },
+  peekBadgesRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginTop: 4,
+  },
+  peekCoinsPill: {
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: '#fef3c7',
+    borderWidth: 1.5,
+    borderColor: '#facc15',
+    marginTop: 6,
+  },
+  peekCoinsValue: {
+    color: '#92400e',
+    fontSize: 14,
+    fontWeight: '900',
+    fontFamily: CURSIVE_FONT,
+  },
+  peekCoinsLabel: {
+    color: '#92400e',
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 0.4,
+    textTransform: 'uppercase',
   },
   cardElite: {
     borderWidth: 2,
@@ -733,21 +684,22 @@ const styles = StyleSheet.create({
   },
   closeBtn: {
     position: 'absolute',
-    top: SPACING.sm,
-    right: SPACING.sm,
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    backgroundColor: 'rgba(255,255,255,0.85)',
+    top: 8,
+    right: 8,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: '#ffffff',
     alignItems: 'center',
     justifyContent: 'center',
+    zIndex: 2,
     // @ts-ignore
     boxShadow: '0 2px 6px rgba(0,0,0,0.15)',
   },
   avatarFrame: {
-    width: 96,
-    height: 96,
-    borderRadius: 48,
+    width: 88,
+    height: 88,
+    borderRadius: 44,
     padding: 3,
     alignItems: 'center',
     justifyContent: 'center',
@@ -761,7 +713,7 @@ const styles = StyleSheet.create({
   avatarFrameInner: {
     width: '100%',
     height: '100%',
-    borderRadius: 46,
+    borderRadius: 42,
     backgroundColor: '#fff7ed',
     alignItems: 'center',
     justifyContent: 'center',
@@ -772,15 +724,15 @@ const styles = StyleSheet.create({
   avatarImg: {
     width: '100%',
     height: '100%',
-    borderRadius: 46,
+    borderRadius: 42,
   },
   onlineDot: {
     position: 'absolute',
-    bottom: 6,
-    right: 6,
-    width: 16,
-    height: 16,
-    borderRadius: 8,
+    bottom: 4,
+    right: 4,
+    width: 14,
+    height: 14,
+    borderRadius: 7,
     borderWidth: 3,
     borderColor: '#ffffff',
   },
@@ -899,7 +851,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.sm,
   },
   viewProfileBtn: {
-    marginHorizontal: SPACING.lg,
     marginTop: SPACING.md,
     borderRadius: 14,
     overflow: 'hidden',

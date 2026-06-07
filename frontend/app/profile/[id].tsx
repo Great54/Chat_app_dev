@@ -25,6 +25,7 @@ import { useProfilePopup } from '@/src/contexts/ProfilePopupContext';
 import { useAuth } from '@/src/contexts/AuthContext';
 import GiftSendModal from '@/src/components/GiftSendModal';
 import PrivateMessagesModal from '@/src/components/PrivateMessagesModal';
+import SendCoinsModal from '@/src/components/SendCoinsModal';
 
 const ALL_TABS = [
   { id: 'about',   label: 'About',   icon: 'information-circle-outline' as const },
@@ -65,6 +66,7 @@ export default function ProfileViewScreen() {
   const [friendsLoading, setFriendsLoading] = useState(false);
   const [giftOpen, setGiftOpen] = useState(false);
   const [dmOpen, setDmOpen] = useState(false);
+  const [sendCoinsOpen, setSendCoinsOpen] = useState(false);
 
   // Animations
   const headerAnim = useRef(new Animated.Value(0)).current;
@@ -191,79 +193,88 @@ export default function ProfileViewScreen() {
       </View>
 
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
-        {/* Header */}
+        {/* Header — avatar LEFT, identity RIGHT */}
         <Animated.View style={{ opacity: headerAnim, transform: [{ translateY: headerTranslate }] }}>
           <View style={styles.banner}>
             {profile.bannerUrl ? (
               <Image source={{ uri: profile.bannerUrl }} style={StyleSheet.absoluteFillObject} contentFit="cover" />
             ) : (
               <LinearGradient
-                colors={vipStyle ? (vipStyle.borderColors as [string, string, ...string[]]) : [COLORS.primary, COLORS.accent, COLORS.secondary]}
+                colors={vipStyle ? (vipStyle.borderColors as [string, string, ...string[]]) : (['#a7f3d0', '#fde68a', '#fbcfe8'] as [string, string, ...string[]])}
                 style={StyleSheet.absoluteFillObject}
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 1 }}
               />
             )}
             <LinearGradient
-              colors={['transparent', 'rgba(0,0,0,0.6)', COLORS.background]}
+              colors={['rgba(255,255,255,0.0)', 'rgba(255,255,255,0.35)', COLORS.background]}
               style={StyleSheet.absoluteFillObject}
             />
           </View>
 
-          <View style={styles.avatarRow}>
-            {vipStyle ? (
-              <LinearGradient
-                colors={vipStyle.borderColors as [string, string, ...string[]]}
-                style={styles.avatarFrame}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-              >
-                <View style={styles.avatarInner}>
-                  {profile.photoUrl ? (
-                    <Image source={{ uri: profile.photoUrl }} style={styles.avatarImg} />
-                  ) : (
-                    <Ionicons name="person" size={56} color={COLORS.textSecondary} />
-                  )}
+          {/* Avatar LEFT + identity RIGHT, like the reference image */}
+          <View style={styles.headerSplit}>
+            <View style={styles.avatarLeftWrap}>
+              {vipStyle ? (
+                <LinearGradient
+                  colors={vipStyle.borderColors as [string, string, ...string[]]}
+                  style={styles.avatarFrame}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                >
+                  <View style={styles.avatarInner}>
+                    {profile.photoUrl ? (
+                      <Image source={{ uri: profile.photoUrl }} style={styles.avatarImg} />
+                    ) : (
+                      <Ionicons name="person" size={56} color={COLORS.textSecondary} />
+                    )}
+                  </View>
+                </LinearGradient>
+              ) : (
+                <View style={[styles.avatarFrame, { backgroundColor: '#ffffff', padding: 4 }]}>
+                  <View style={styles.avatarInner}>
+                    {profile.photoUrl ? (
+                      <Image source={{ uri: profile.photoUrl }} style={styles.avatarImg} />
+                    ) : (
+                      <Ionicons name="person" size={56} color={COLORS.textSecondary} />
+                    )}
+                  </View>
                 </View>
-              </LinearGradient>
-            ) : (
-              <View style={[styles.avatarFrame, { backgroundColor: COLORS.cardBg, padding: 4 }]}>
-                <View style={styles.avatarInner}>
-                  {profile.photoUrl ? (
-                    <Image source={{ uri: profile.photoUrl }} style={styles.avatarImg} />
-                  ) : (
-                    <Ionicons name="person" size={56} color={COLORS.textSecondary} />
-                  )}
+              )}
+              <View
+                style={[
+                  styles.bigOnlineDot,
+                  { backgroundColor: profile.onlineStatus ? COLORS.success : '#666' },
+                ]}
+              />
+              {vipStyle && (
+                <View style={[styles.crown, { backgroundColor: vipStyle.crownColor }]}>
+                  <Ionicons name={vipStyle.badgeIcon} size={16} color={COLORS.background} />
                 </View>
+              )}
+            </View>
+
+            <View style={styles.identityRight}>
+              <Text style={[styles.cursiveDisplayName, vipStyle && { color: vipStyle.nameColor }]} numberOfLines={1}>
+                {profile.displayName}
+              </Text>
+              <Text style={styles.username}>@{profile.username}</Text>
+              <View style={styles.badgesInlineRow}>
+                {profile.badges.map((b) => (
+                  <View key={b.id} style={[styles.badge, { backgroundColor: b.color }]}>
+                    <Ionicons name={b.icon as any} size={11} color={COLORS.background} />
+                    <Text style={styles.badgeText}>{b.label}</Text>
+                  </View>
+                ))}
               </View>
-            )}
-            <View
-              style={[
-                styles.bigOnlineDot,
-                { backgroundColor: profile.onlineStatus ? COLORS.success : '#666' },
-              ]}
-            />
-            {vipStyle && (
-              <View style={[styles.crown, { backgroundColor: vipStyle.crownColor }]}>
-                <Ionicons name={vipStyle.badgeIcon} size={16} color={COLORS.background} />
-              </View>
-            )}
+              {/* Inline cursive bio (the previous "About" section, surfaced directly) */}
+              <Text style={styles.bioInline} numberOfLines={4} testID="profile-bio-inline">
+                {profile.bio || 'No bio yet.'}
+              </Text>
+            </View>
           </View>
 
           <View style={styles.identity}>
-            <View style={styles.nameLine}>
-              <Text style={[styles.displayName, vipStyle && { color: vipStyle.nameColor }]} numberOfLines={1}>
-                {profile.displayName}
-              </Text>
-              {profile.badges.map((b) => (
-                <View key={b.id} style={[styles.badge, { backgroundColor: b.color }]}>
-                  <Ionicons name={b.icon as any} size={11} color={COLORS.background} />
-                  <Text style={styles.badgeText}>{b.label}</Text>
-                </View>
-              ))}
-            </View>
-            <Text style={styles.username}>@{profile.username}</Text>
-
             <View style={styles.statsRow}>
               <View style={[styles.statCircle, styles.statCircleCoins]} testID="profile-stat-coins">
                 <Text style={[styles.statCircleValue, { color: '#a16207' }]}>{profile.coins}</Text>
@@ -283,14 +294,15 @@ export default function ProfileViewScreen() {
               </View>
             </View>
 
-            {/* Quick action bar */}
+            {/* Quick action bar — Add Friend / Message / Gift / Send Coins
+                (All popup-only interactions have moved here, per the new design.) */}
             {!profile.isSelf && (
               <View style={styles.quickActions}>
                 <TouchableOpacity
                   onPress={handleAddFriend}
                   style={[
                     styles.quickBtn,
-                    profile.friendStatus === 'friends' && { backgroundColor: '#1f2a1f', borderColor: COLORS.success },
+                    profile.friendStatus === 'friends' && { backgroundColor: '#dcfce7', borderColor: COLORS.success },
                   ]}
                   testID="profile-quick-friend"
                 >
@@ -328,64 +340,27 @@ export default function ProfileViewScreen() {
                   <Ionicons name="gift" size={16} color={COLORS.accent} />
                   <Text style={styles.quickBtnText}>Gift</Text>
                 </TouchableOpacity>
+                <TouchableOpacity onPress={() => setSendCoinsOpen(true)} style={styles.quickBtn} testID="profile-quick-coins">
+                  <Ionicons name="cash" size={16} color="#f59e0b" />
+                  <Text style={styles.quickBtnText}>Coins</Text>
+                </TouchableOpacity>
               </View>
             )}
           </View>
         </Animated.View>
 
-        {/* Tabs */}
-        <Animated.View
-          style={[
-            styles.tabsRow,
-            { opacity: tabAnim, transform: [{ translateY: tabTranslate }] },
-          ]}
-        >
-          {TABS.map((t) => {
-            const isActive = t.id === activeTab;
-            return (
-              <TouchableOpacity
-                key={t.id}
-                onPress={() => handleTabChange(t.id)}
-                style={[styles.tab, isActive && styles.tabActive]}
-                testID={`profile-tab-${t.id}`}
-              >
-                <Ionicons
-                  name={t.icon}
-                  size={16}
-                  color={isActive ? COLORS.primary : COLORS.textSecondary}
-                />
-                <Text style={[styles.tabLabel, isActive && styles.tabLabelActive]}>{t.label}</Text>
-              </TouchableOpacity>
-            );
-          })}
-        </Animated.View>
-
-        {/* Tab content */}
+        {/* Posts section — single content area (About / Photos / Friends tabs removed per design) */}
         <Animated.View
           style={[
             styles.tabContent,
             { opacity: contentAnim, transform: [{ translateY: contentTranslate }] },
           ]}
         >
-          {activeTab === 'about' && <AboutTab profile={profile} />}
-
-          {activeTab === 'friends' && (
-            <FriendsTab
-              loading={friendsLoading}
-              friends={friends}
-              onTapFriend={(id) => openProfile(id)}
-            />
-          )}
-
-          {activeTab === 'photos' && (
-            <View style={styles.placeholder}>
-              <Ionicons name="images-outline" size={48} color={COLORS.textSecondary} />
-              <Text style={styles.placeholderTitle}>Photos coming soon</Text>
-              <Text style={styles.placeholderText}>This user hasn't added any photos yet.</Text>
-            </View>
-          )}
-
-          {activeTab === 'posts' && <PostsTab userId={profile.id} />}
+          <View style={styles.postsHeader}>
+            <Ionicons name="newspaper-outline" size={18} color="#7c2d12" />
+            <Text style={styles.postsHeaderTitle}>Posts</Text>
+          </View>
+          <PostsTab userId={profile.id} />
         </Animated.View>
       </ScrollView>
 
@@ -399,6 +374,14 @@ export default function ProfileViewScreen() {
         visible={dmOpen}
         onClose={() => setDmOpen(false)}
         initialUserId={profile.id}
+      />
+      <SendCoinsModal
+        visible={sendCoinsOpen}
+        onClose={() => setSendCoinsOpen(false)}
+        receiverId={profile.id}
+        receiverName={profile.displayName}
+        userCoins={me?.coins ?? 0}
+        onSuccess={() => loadProfile(profile.id)}
       />
     </SafeAreaView>
   );
@@ -610,6 +593,62 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
     marginTop: -65,
     position: 'relative',
+  },
+  // New: avatar LEFT, identity RIGHT layout (per user's reference image)
+  headerSplit: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: SPACING.md,
+    paddingHorizontal: SPACING.lg,
+    marginTop: -55,
+  },
+  avatarLeftWrap: {
+    width: 130,
+    height: 130,
+    position: 'relative',
+  },
+  identityRight: {
+    flex: 1,
+    minWidth: 0,
+    paddingTop: 55, // align below banner gradient
+    gap: 4,
+  },
+  cursiveDisplayName: {
+    color: COLORS.text,
+    fontSize: 38,
+    fontWeight: '800',
+    fontFamily: Platform.select({ web: '"Dancing Script", "Great Vibes", cursive', default: undefined }) as any,
+    lineHeight: 44,
+    textShadowColor: 'rgba(0,0,0,0.55)',
+    textShadowOffset: { width: 0, height: 2 },
+    textShadowRadius: 4,
+  },
+  badgesInlineRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginTop: 4,
+  },
+  bioInline: {
+    color: '#e7d6ff',
+    fontSize: 16,
+    fontFamily: Platform.select({ web: '"Dancing Script", "Great Vibes", cursive', default: undefined }) as any,
+    lineHeight: 22,
+    marginTop: 8,
+    opacity: 0.9,
+  },
+  postsHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: SPACING.lg,
+    marginBottom: SPACING.sm,
+  },
+  postsHeaderTitle: {
+    color: COLORS.text,
+    fontSize: 16,
+    fontWeight: '800',
+    letterSpacing: 0.4,
   },
   avatarFrame: {
     width: 130,
