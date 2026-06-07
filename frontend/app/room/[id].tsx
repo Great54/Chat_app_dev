@@ -175,13 +175,19 @@ export default function RoomScreen() {
           {item.senderPhoto ? (
             <Image source={{ uri: item.senderPhoto }} style={styles.avatarImg} />
           ) : (
-            <Ionicons name="person" size={12} color="#7c3aed" />
+            <Ionicons name="person" size={18} color="#7c3aed" />
           )}
         </View>
-        <Text style={styles.messageLine} numberOfLines={0}>
-          <Text style={styles.senderName}>{item.senderName}</Text>
-          <Text style={styles.messageText}>{'  '}{item.messageText}</Text>
-        </Text>
+        <View style={styles.senderCol}>
+          <Text style={styles.senderName} numberOfLines={0}>
+            {item.senderName}
+          </Text>
+        </View>
+        <View style={styles.messageCol}>
+          <Text style={styles.messageText} numberOfLines={0}>
+            {item.messageText}
+          </Text>
+        </View>
       </TouchableOpacity>
     );
   };
@@ -586,42 +592,42 @@ const styles = StyleSheet.create({
   },
   messageRow: {
     flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 4,
+    alignItems: 'flex-start',
+    marginBottom: 8,
     paddingHorizontal: 2,
   },
   avatar: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
+    width: 32,
+    height: 32,
+    borderRadius: 0,
     backgroundColor: 'rgba(124,58,237,0.12)',
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 6,
+    marginRight: 8,
     overflow: 'hidden',
   },
   avatarImg: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
+    width: 32,
+    height: 32,
+    borderRadius: 0,
   },
-  messageLineWrap: {
-    flex: 1,
-  },
-  messageLine: {
-    flex: 1,
-    fontSize: 15,
-    lineHeight: 21,
+  senderCol: {
+    width: 84,
+    marginRight: 8,
   },
   senderName: {
     fontSize: 15,
     color: '#7c3aed',
     fontWeight: '700',
+    lineHeight: 19,
+  },
+  messageCol: {
+    flex: 1,
   },
   messageText: {
     fontSize: 15,
     color: '#1f2937',
-    lineHeight: 21,
+    lineHeight: 19,
   },
   emptyMessages: {
     alignItems: 'center',
