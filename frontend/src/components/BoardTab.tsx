@@ -257,100 +257,64 @@ export default function BoardTab({ roomId, active }: BoardTabProps) {
 
   const renderPost = ({ item }: { item: BoardPost }) => {
     const vipStyle = getVipStyle(item.authorVipTier);
-    const isOwn = item.authorId === user?.id;
-    // Image aspect ratio: prefer 1:1, fallback 4:5 — use 4/5 if user prefers tall
-    const imageAspectRatio = 1; // 1:1 — change to 4/5 for portrait
 
     return (
-      <View style={styles.postCard} testID={`post-${item.id}`}>
-        {/* Top row: avatar (left) + username column (right) */}
-        <View style={styles.postTopRow}>
-          <TouchableOpacity
-            onPress={() => openProfile(item.authorId)}
-            activeOpacity={0.85}
-            testID={`post-avatar-${item.id}`}
-          >
-            <View style={[styles.postAvatar, vipStyle && { borderColor: vipStyle.borderColor, borderWidth: 2 }]}>
-              {item.authorPhotoUrl ? (
-                <Image source={{ uri: item.authorPhotoUrl }} style={styles.postAvatarImage} />
-              ) : (
-                <Ionicons name="person" size={26} color="#7c3aed" />
-              )}
-            </View>
-          </TouchableOpacity>
-          <View style={styles.postTextWrap}>
-            <View style={styles.postNameRow}>
-              <Text
-                style={[styles.postAuthorName, vipStyle && { color: vipStyle.nameColor }]}
-                onPress={() => openProfile(item.authorId)}
-              >
-                {item.authorDisplayName}
-              </Text>
-              {vipStyle && (
-                <Ionicons
-                  name={vipStyle.badgeIcon === 'diamond' ? 'diamond' : 'star'}
-                  size={12}
-                  color={vipStyle.crownColor}
-                  style={{ marginLeft: 4 }}
-                />
-              )}
-              <Text style={styles.postTimestamp}>{formatTimeAgo(item.createdAt)}</Text>
-              {isOwn && (
-                <TouchableOpacity
-                  style={styles.postDelete}
-                  onPress={() => handleDeletePost(item.id)}
-                  testID={`post-delete-${item.id}`}
-                >
-                  <Ionicons name="trash-outline" size={16} color={COLORS.error} />
-                </TouchableOpacity>
-              )}
-            </View>
-            <Text style={styles.postText}>{item.text || '(No text)'}</Text>
-          </View>
+      <TouchableOpacity
+        style={styles.gridCard}
+        activeOpacity={0.85}
+        onPress={() => openComments(item)}
+        testID={`post-${item.id}`}
+      >
+        {/* Likes badge */}
+        <View style={styles.gridLikesBadge}>
+          <Text style={styles.gridLikesNum}>{item.likesCount}</Text>
+          <Ionicons
+            name={item.likedByMe ? 'heart' : 'happy'}
+            size={12}
+            color={item.likedByMe ? COLORS.error : '#7c3aed'}
+          />
         </View>
 
-        {/* Post image — 1:1 ratio, centered */}
-        {item.imageBase64 && (
-          <View style={styles.postImageCenter}>
+        {/* Image OR text preview */}
+        <View style={styles.gridPreviewWrap}>
+          {item.imageBase64 ? (
             <Image
               source={{ uri: item.imageBase64 }}
-              style={[styles.postImage, { aspectRatio: imageAspectRatio }]}
+              style={styles.gridPreviewImage}
               contentFit="cover"
             />
+          ) : (
+            <View style={styles.gridTextPreview}>
+              <Text style={styles.gridTextPreviewText} numberOfLines={3}>
+                {item.text || '(No text)'}
+              </Text>
+            </View>
+          )}
+        </View>
+
+        {/* Footer: avatar + by name + comments count */}
+        <View style={styles.gridFooter}>
+          <View style={styles.gridAvatar}>
+            {item.authorPhotoUrl ? (
+              <Image source={{ uri: item.authorPhotoUrl }} style={styles.gridAvatarImg} />
+            ) : (
+              <Ionicons name="person" size={12} color="#7c3aed" />
+            )}
+          </View>
+          <Text
+            style={[styles.gridAuthor, vipStyle && { color: vipStyle.nameColor }]}
+            numberOfLines={1}
+          >
+            by {item.authorDisplayName}
+          </Text>
+        </View>
+        {item.commentsCount > 0 && (
+          <View style={styles.gridCommentsRow}>
+            <Text style={styles.gridCommentsNum}>{item.commentsCount}</Text>
+            <Ionicons name="return-down-forward" size={11} color="#10b981" />
           </View>
         )}
-
-        {/* Actions on the right */}
-        <View style={styles.actionsBar}>
-          <View style={{ flex: 1 }} />
-          <TouchableOpacity
-            style={styles.actionPill}
-            onPress={() => handleLikePost(item.id)}
-            testID={`post-like-${item.id}`}
-          >
-            <Ionicons
-              name={item.likedByMe ? 'heart' : 'heart-outline'}
-              size={20}
-              color={item.likedByMe ? COLORS.error : '#7c3aed'}
-            />
-            {item.likesCount > 0 && (
-              <Text style={[styles.actionCount, item.likedByMe && styles.likedCount]}>
-                {item.likesCount}
-              </Text>
-            )}
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.actionPill}
-            onPress={() => openComments(item)}
-            testID={`post-comment-${item.id}`}
-          >
-            <Ionicons name="chatbubble-ellipses-outline" size={20} color="#7c3aed" />
-            {item.commentsCount > 0 && (
-              <Text style={styles.actionCount}>{item.commentsCount}</Text>
-            )}
-          </TouchableOpacity>
-        </View>
-      </View>
+      </TouchableOpacity>
     );
   };
 
@@ -402,7 +366,7 @@ export default function BoardTab({ roomId, active }: BoardTabProps) {
         <Ionicons name="image-outline" size={22} color={COLORS.primary} />
       </TouchableOpacity>
 
-      {/* Posts list */}
+      {/* Posts list — 3 column grid */}
       {loading && posts.length === 0 ? (
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={COLORS.primary} />
@@ -411,7 +375,8 @@ export default function BoardTab({ roomId, active }: BoardTabProps) {
         <FlashList
           data={posts}
           renderItem={renderPost}
-          estimatedItemSize={200}
+          numColumns={3}
+          estimatedItemSize={140}
           keyExtractor={item => item.id}
           contentContainerStyle={styles.listContent}
           refreshControl={
@@ -521,6 +486,70 @@ export default function BoardTab({ roomId, active }: BoardTabProps) {
               estimatedItemSize={80}
               keyExtractor={item => item.id}
               contentContainerStyle={styles.commentsListContent}
+              ListHeaderComponent={
+                selectedPost ? (
+                  <View style={styles.detailHeader}>
+                    <View style={styles.detailAuthorRow}>
+                      <TouchableOpacity onPress={() => openProfile(selectedPost.authorId)}>
+                        <View style={styles.detailAvatar}>
+                          {selectedPost.authorPhotoUrl ? (
+                            <Image source={{ uri: selectedPost.authorPhotoUrl }} style={styles.detailAvatarImg} />
+                          ) : (
+                            <Ionicons name="person" size={22} color="#7c3aed" />
+                          )}
+                        </View>
+                      </TouchableOpacity>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.detailAuthorName} onPress={() => openProfile(selectedPost.authorId)}>
+                          {selectedPost.authorDisplayName}
+                        </Text>
+                        <Text style={styles.detailTimestamp}>{formatTimeAgo(selectedPost.createdAt)}</Text>
+                      </View>
+                      {selectedPost.authorId === user?.id && (
+                        <TouchableOpacity
+                          onPress={() => handleDeletePost(selectedPost.id)}
+                          testID={`detail-delete-${selectedPost.id}`}
+                        >
+                          <Ionicons name="trash-outline" size={18} color={COLORS.error} />
+                        </TouchableOpacity>
+                      )}
+                    </View>
+                    {!!selectedPost.text && (
+                      <Text style={styles.detailText}>{selectedPost.text}</Text>
+                    )}
+                    {!!selectedPost.imageBase64 && (
+                      <View style={styles.detailImageWrap}>
+                        <Image
+                          source={{ uri: selectedPost.imageBase64 }}
+                          style={styles.detailImage}
+                          contentFit="cover"
+                        />
+                      </View>
+                    )}
+                    <View style={styles.detailActions}>
+                      <TouchableOpacity
+                        style={styles.actionPill}
+                        onPress={() => handleLikePost(selectedPost.id)}
+                        testID={`detail-like-${selectedPost.id}`}
+                      >
+                        <Ionicons
+                          name={selectedPost.likedByMe ? 'heart' : 'heart-outline'}
+                          size={20}
+                          color={selectedPost.likedByMe ? COLORS.error : '#7c3aed'}
+                        />
+                        <Text style={[styles.actionCount, selectedPost.likedByMe && styles.likedCount]}>
+                          {selectedPost.likesCount}
+                        </Text>
+                      </TouchableOpacity>
+                      <View style={styles.actionPill}>
+                        <Ionicons name="chatbubble-ellipses-outline" size={20} color="#7c3aed" />
+                        <Text style={styles.actionCount}>{selectedPost.commentsCount}</Text>
+                      </View>
+                    </View>
+                    <Text style={styles.commentsDivider}>Comments</Text>
+                  </View>
+                ) : null
+              }
               ListEmptyComponent={
                 <View style={styles.emptyComments}>
                   <Text style={styles.emptyCommentsText}>No comments yet</Text>
@@ -626,6 +655,97 @@ const styles = StyleSheet.create({
     shadowRadius: 6,
     shadowOffset: { width: 0, height: 2 },
     elevation: 1,
+  },
+  // ---- Grid card (3 per row) ----
+  gridCard: {
+    flex: 1,
+    backgroundColor: '#ffffff',
+    margin: 4,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#fbcfe8',
+    overflow: 'hidden',
+    position: 'relative',
+    paddingBottom: 4,
+    minHeight: 150,
+  },
+  gridLikesBadge: {
+    position: 'absolute',
+    top: 4,
+    right: 4,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+    paddingHorizontal: 5,
+    paddingVertical: 2,
+    backgroundColor: 'rgba(255,255,255,0.92)',
+    borderRadius: 999,
+    zIndex: 2,
+  },
+  gridLikesNum: { fontSize: 10, fontWeight: '800', color: '#fbbf24' },
+  gridPreviewWrap: { width: '100%', aspectRatio: 1, backgroundColor: '#f3e8ff' },
+  gridPreviewImage: { width: '100%', height: '100%' },
+  gridTextPreview: {
+    flex: 1,
+    backgroundColor: '#a7f3d0',
+    padding: 6,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  gridTextPreviewText: { fontSize: 11, color: '#065f46', fontWeight: '700', textAlign: 'center' },
+  gridFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 6,
+    paddingTop: 4,
+    gap: 4,
+  },
+  gridAvatar: {
+    width: 18,
+    height: 18,
+    backgroundColor: '#ede9fe',
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  gridAvatarImg: { width: 18, height: 18 },
+  gridAuthor: { flex: 1, fontSize: 11, fontWeight: '700', color: '#2563eb' },
+  gridCommentsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    paddingHorizontal: 6,
+    paddingTop: 1,
+  },
+  gridCommentsNum: { fontSize: 10, fontWeight: '700', color: '#10b981' },
+  // ---- Detail header (in comments modal) ----
+  detailHeader: {
+    backgroundColor: '#ffffff',
+    padding: SPACING.md,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f3f4f6',
+    marginBottom: 4,
+  },
+  detailAuthorRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, marginBottom: SPACING.sm },
+  detailAvatar: {
+    width: 44, height: 44, backgroundColor: '#ede9fe',
+    alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
+    borderWidth: 1, borderColor: '#e5e7eb',
+  },
+  detailAvatarImg: { width: 44, height: 44 },
+  detailAuthorName: { color: '#2563eb', fontSize: 16, fontWeight: '800' },
+  detailTimestamp: { color: '#9ca3af', fontSize: 12, marginTop: 2 },
+  detailText: { color: '#1f2937', fontSize: 15, lineHeight: 22, marginBottom: SPACING.sm },
+  detailImageWrap: {
+    width: '100%', aspectRatio: 1, borderRadius: 10,
+    overflow: 'hidden', backgroundColor: '#f3f4f6', marginBottom: SPACING.sm,
+  },
+  detailImage: { width: '100%', height: '100%' },
+  detailActions: { flexDirection: 'row', gap: SPACING.sm, marginTop: 4 },
+  commentsDivider: {
+    fontSize: 11, color: '#7c3aed', fontWeight: '800',
+    textTransform: 'uppercase', letterSpacing: 0.6,
+    marginTop: SPACING.md,
   },
   postTopRow: {
     flexDirection: 'row',

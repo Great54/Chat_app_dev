@@ -2888,7 +2888,36 @@ async def create_room_post(
         target_id=str(result.inserted_id),
         metadata={"postText": post_data.text.strip()[:100]}  # First 100 chars as preview
     )
-    
+
+    # Notify the author's accepted friends ("user created a new post")
+    friend_links = await db.friends.find({
+        "status": "accepted",
+        "$or": [{"senderId": user_id}, {"receiverId": user_id}],
+    }).to_list(500)
+    friend_ids = {
+        (f["receiverId"] if f["senderId"] == user_id else f["senderId"])
+        for f in friend_links
+    }
+    if friend_ids:
+        preview = post_data.text.strip()[:80] or ("Shared a photo" if post_data.imageBase64 else "New post")
+        now = datetime.utcnow()
+        notifications = [
+            {
+                "userId": fid,
+                "title": f"{current_user['displayName']} posted",
+                "body": preview,
+                "type": "friend_post",
+                "relatedUserId": user_id,
+                "relatedPostId": str(result.inserted_id),
+                "relatedRoomId": room_id,
+                "createdAt": now,
+                "readStatus": False,
+            }
+            for fid in friend_ids
+        ]
+        if notifications:
+            await db.notifications.insert_many(notifications)
+
     return _serialize_post(post, user_id)
 
 @api_router.get("/posts/{post_id}")
