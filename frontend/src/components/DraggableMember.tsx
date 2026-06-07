@@ -117,7 +117,7 @@ export default function DraggableMember({
       moveAnimRef.current = null;
     }
     // Distance-aware duration: small hop = quicker, long traverse = longer
-    // but always perceptibly slow (>=600ms).
+    // but always perceptibly slow (>= 900ms, up to 2000ms for a long sweep).
     // We read pan's current value via __getValue() so chained taps measure
     // the *current* position, not the original cell.
     // @ts-ignore — internal but supported on web + native
@@ -125,7 +125,7 @@ export default function DraggableMember({
     const dx = clamped.x - (cur.x ?? offsetRef.current.x);
     const dy = clamped.y - (cur.y ?? offsetRef.current.y);
     const dist = Math.sqrt(dx * dx + dy * dy);
-    const duration = Math.max(600, Math.min(1400, 600 + dist * 1.4));
+    const duration = Math.max(900, Math.min(2000, 900 + dist * 1.8));
 
     offsetRef.current = clamped;
     const anim = Animated.timing(pan, {

@@ -281,7 +281,7 @@ export default function ProfilePopupModal({ visible, userId, onClose }: Props) {
                   style={[
                     styles.peekAvatarWrap,
                     profile.enlargedAvatar && { transform: [{ scale: VIP_PRO_AVATAR_SCALE }] },
-                    getAuraStyle(profile.auraType, profile.auraColor, 88),
+                    getAuraStyle(profile.auraType, profile.auraColor, 116),
                   ]}
                 >
                   {vipStyle ? (
@@ -541,8 +541,8 @@ const styles = StyleSheet.create({
   },
   peekAvatarWrap: {
     position: 'relative',
-    width: 88,
-    height: 88,
+    width: 120,
+    height: 120,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -697,9 +697,9 @@ const styles = StyleSheet.create({
     boxShadow: '0 2px 6px rgba(0,0,0,0.15)',
   },
   avatarFrame: {
-    width: 88,
-    height: 88,
-    borderRadius: 14,
+    width: 120,
+    height: 120,
+    borderRadius: 16,
     padding: 3,
     alignItems: 'center',
     justifyContent: 'center',

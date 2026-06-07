@@ -56,21 +56,29 @@ async def purchase_vip(req: VipPurchase, current_user: dict = Depends(get_curren
         raise HTTPException(status_code=400, detail=f"You already have {tier_config['name']}")
     elif current_tier == "elite" and req.tier == "pro":
         raise HTTPException(status_code=400, detail="Cannot downgrade from Elite to Pro")
-    
+
+    # 🧪 TEST MODE — VIP subscriptions are FREE for everyone right now so the
+    # owner can verify the upgrade flow end-to-end. Remove this block to
+    # re-enable the coin price check. (See PRD backlog: "Re-gate VIP price.")
+    VIP_TEST_MODE_FREE = True
+    if VIP_TEST_MODE_FREE:
+        effective_price = 0
+
     if current_user.get("coins", 0) < effective_price:
         raise HTTPException(
             status_code=400,
             detail=f"Need {effective_price} coins (you have {current_user.get('coins', 0)})"
         )
-    
-    # Deduct price
-    await add_coins(user_id, -effective_price, "vip_purchase", f"Purchased {tier_config['name']}")
+
+    # Deduct price (zero in test mode → no-op)
+    if effective_price > 0:
+        await add_coins(user_id, -effective_price, "vip_purchase", f"Purchased {tier_config['name']}")
     # Award bonus coins
     await add_coins(user_id, tier_config["bonusCoins"], "vip_bonus", f"{tier_config['name']} signup bonus")
     
     # Apply VIP tier + vouchers
     await db.users.update_one(
-        {"_id": current_user["_id"]},
+        {"_id": ObjectId(user_id)},
         {"$set": {"vipTier": req.tier}, "$inc": {"vouchers": tier_config["vouchers"]}}
     )
     
@@ -113,7 +121,7 @@ async def purchase_vip(req: VipPurchase, current_user: dict = Depends(get_curren
             }
         )
 
-    updated = await db.users.find_one({"_id": current_user["_id"]})
+    updated = await db.users.find_one({"_id": ObjectId(user_id)})
     return _build_user_profile(updated)
 
 @api_router.get("/vip/vouchers")
