@@ -14,6 +14,7 @@ import { Link, router, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, SPACING } from '@/src/constants/theme';
 import api from '@/src/api/client';
+import CosmicAuthBackground from '@/src/components/CosmicAuthBackground';
 
 export default function ResetPassword() {
   const params = useLocalSearchParams<{ email?: string }>();
@@ -104,17 +105,18 @@ export default function ResetPassword() {
       style={styles.container}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
+      <CosmicAuthBackground />
       <ScrollView contentContainerStyle={styles.scrollContent}>
         <TouchableOpacity 
           style={styles.backButton}
           onPress={() => router.back()}
         >
-          <Ionicons name="arrow-back" size={24} color={COLORS.text} />
+          <Ionicons name="arrow-back" size={22} color="#fff" />
         </TouchableOpacity>
 
         <View style={styles.header}>
           <View style={styles.iconContainer}>
-            <Ionicons name="lock-open-outline" size={48} color={COLORS.primary} />
+            <Ionicons name="lock-open" size={42} color="#a7f3d0" />
           </View>
           <Text style={styles.title}>Reset Password</Text>
           <Text style={styles.subtitle}>
@@ -122,6 +124,7 @@ export default function ResetPassword() {
           </Text>
         </View>
 
+        <View style={styles.formCard}>
         <View style={styles.form}>
           {/* Error Message */}
           {errorMessage ? (
@@ -240,6 +243,7 @@ export default function ResetPassword() {
             </Link>
           </View>
         </View>
+        </View>
       </ScrollView>
     </KeyboardAvoidingView>
   );
@@ -248,45 +252,65 @@ export default function ResetPassword() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: COLORS.background,
+    backgroundColor: '#0b0820',
   },
   scrollContent: {
     flexGrow: 1,
     padding: SPACING.lg,
   },
   backButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: COLORS.cardBg,
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(192,132,252,0.28)',
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: SPACING.lg,
   },
   header: {
     alignItems: 'center',
-    marginBottom: SPACING.xl,
+    marginBottom: SPACING.lg,
   },
   iconContainer: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: COLORS.cardBg,
+    width: 110,
+    height: 110,
+    borderRadius: 55,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    borderWidth: 1,
+    borderColor: 'rgba(167,243,208,0.35)',
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: SPACING.md,
+    // @ts-ignore
+    boxShadow: '0 0 60px rgba(34,211,238,0.40)',
   },
   title: {
     fontSize: 28,
-    fontWeight: '700',
-    color: COLORS.text,
-    marginBottom: SPACING.sm,
+    fontWeight: '800',
+    color: '#ffffff',
+    marginBottom: 4,
+    // @ts-ignore
+    textShadow: '0 2px 14px rgba(34,211,238,0.45)',
   },
   subtitle: {
     fontSize: 14,
-    color: COLORS.textSecondary,
+    color: '#cbb6ff',
+    opacity: 0.9,
     textAlign: 'center',
     paddingHorizontal: SPACING.lg,
+  },
+  formCard: {
+    backgroundColor: 'rgba(20, 14, 42, 0.62)',
+    borderWidth: 1,
+    borderColor: 'rgba(192,132,252,0.28)',
+    borderRadius: 22,
+    padding: SPACING.md,
+    // @ts-ignore
+    backdropFilter: 'blur(18px)',
+    // @ts-ignore
+    boxShadow: '0 18px 60px rgba(124, 58, 237, 0.35), 0 4px 16px rgba(0,0,0,0.45)',
   },
   form: {
     width: '100%',
@@ -294,7 +318,7 @@ const styles = StyleSheet.create({
   errorContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(239, 68, 68, 0.15)',
+    backgroundColor: 'rgba(239, 68, 68, 0.18)',
     paddingVertical: SPACING.sm,
     paddingHorizontal: SPACING.md,
     borderRadius: 10,
@@ -303,7 +327,7 @@ const styles = StyleSheet.create({
     borderColor: COLORS.error,
   },
   errorText: {
-    color: COLORS.error,
+    color: '#fecaca',
     fontSize: 14,
     marginLeft: SPACING.sm,
     flex: 1,
@@ -311,7 +335,7 @@ const styles = StyleSheet.create({
   successContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(16, 185, 129, 0.15)',
+    backgroundColor: 'rgba(16, 185, 129, 0.18)',
     paddingVertical: SPACING.sm,
     paddingHorizontal: SPACING.md,
     borderRadius: 10,
@@ -320,7 +344,7 @@ const styles = StyleSheet.create({
     borderColor: '#10B981',
   },
   successText: {
-    color: '#10B981',
+    color: '#a7f3d0',
     fontSize: 14,
     marginLeft: SPACING.sm,
     flex: 1,
@@ -328,21 +352,23 @@ const styles = StyleSheet.create({
   inputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: COLORS.cardBg,
-    borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    borderRadius: 14,
     marginBottom: SPACING.md,
     paddingHorizontal: SPACING.md,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: 'rgba(192,132,252,0.22)',
   },
   inputIcon: {
     marginRight: SPACING.sm,
   },
   input: {
     flex: 1,
-    color: COLORS.text,
+    color: '#ffffff',
     fontSize: 16,
     paddingVertical: SPACING.md,
+    // @ts-ignore web
+    outlineStyle: 'none',
   },
   resendButton: {
     alignItems: 'flex-end',
@@ -350,23 +376,27 @@ const styles = StyleSheet.create({
     marginTop: -SPACING.xs,
   },
   resendText: {
-    color: COLORS.primary,
+    color: '#f0abfc',
     fontSize: 13,
+    fontWeight: '700',
   },
   button: {
     backgroundColor: COLORS.primary,
     paddingVertical: SPACING.md,
-    borderRadius: 12,
+    borderRadius: 14,
     alignItems: 'center',
     marginTop: SPACING.sm,
+    // @ts-ignore
+    boxShadow: '0 10px 24px rgba(124,58,237,0.55)',
   },
   buttonDisabled: {
     opacity: 0.6,
   },
   buttonText: {
-    color: COLORS.text,
+    color: '#ffffff',
     fontSize: 16,
-    fontWeight: '700',
+    fontWeight: '800',
+    letterSpacing: 0.4,
   },
   footer: {
     flexDirection: 'row',
@@ -374,12 +404,13 @@ const styles = StyleSheet.create({
     marginTop: SPACING.lg,
   },
   footerText: {
-    color: COLORS.textSecondary,
+    color: '#cbb6ff',
+    opacity: 0.85,
     fontSize: 14,
   },
   link: {
-    color: COLORS.primary,
+    color: '#f0abfc',
     fontSize: 14,
-    fontWeight: '600',
+    fontWeight: '700',
   },
 });

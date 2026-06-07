@@ -369,6 +369,21 @@ export default function ProfileScreen() {
 
         {editing ? (
           <View style={styles.form}>
+            {/* Prominent banner change CTA inside the edit form */}
+            <TouchableOpacity
+              onPress={() => pickImage('bannerUrl')}
+              activeOpacity={0.85}
+              style={styles.changeBannerCta}
+              testID="change-banner-cta"
+            >
+              <Ionicons name="image" size={18} color="#fde68a" />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.changeBannerTitle}>Change Banner</Text>
+                <Text style={styles.changeBannerSubtitle}>Upload any image from your gallery</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={16} color="#fde68a" />
+            </TouchableOpacity>
+
             <View style={styles.inputGroup}>
               <Text style={styles.label}>Display Name</Text>
               <TextInput
@@ -1060,6 +1075,31 @@ const styles = StyleSheet.create({
     gap: SPACING.md,
     paddingHorizontal: SPACING.md,
     marginTop: SPACING.lg,
+  },
+  changeBannerCta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: 12,
+    borderRadius: 14,
+    backgroundColor: '#1f1226',
+    borderWidth: 1.5,
+    borderColor: '#fbbf24',
+    // @ts-ignore web shadow
+    boxShadow: '0 6px 18px rgba(251,191,36,0.30)',
+  },
+  changeBannerTitle: {
+    color: '#fde68a',
+    fontSize: 14,
+    fontWeight: '800',
+    letterSpacing: 0.3,
+  },
+  changeBannerSubtitle: {
+    color: '#fde68a',
+    fontSize: 11,
+    opacity: 0.8,
+    marginTop: 2,
   },
   inputGroup: {
     gap: SPACING.xs,
