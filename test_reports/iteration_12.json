@@ -1,0 +1,43 @@
+{
+  "summary": "Backend-only regression + new-endpoint testing after server.py was split into routes/{tournaments,leaderboard,vip}.py. All 6 new refactor tests pass (new GET /api/tournaments/wins/leaderboard endpoint shape, route-ordering vs /tournaments/{tid}, 2-player tournament leaderboard correctness, VIP tiers, leaderboard/vip empty-state, 404 on bogus tournament id). 15/17 of the previous regression suite (test_profile_tournament_v2.py) still pass through the moved routes — confirming auth, profile-card, friends privacy 403, public/private tournament create+join, join-by-code, prize-split tiers (≤4, 5-10), room scoping. Total: 21/23 backend tests passing (91%). The 2 failures are environment-state related ('Room is full' — maxCapacity=36 exhausted by cumulative test users), NOT refactor regressions.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "n/a (test infra)", "issue": "Helper symbols (TOURNAMENT_JOIN_CODE_ALPHABET, _winners_count, _prize_split, _generate_join_code, TOURNAMENT_VISIBLE_HOURS) moved out of server.py into routes/tournaments.py. Any external consumer previously importing them from `server` will break. Updated test imports to `from routes import tournaments as srv`."},
+      {"endpoint": "POST /api/rooms/{rid}/join", "issue": "Default rooms cap at maxCapacity=36. Cumulative test runs leave users in rooms forever (no test cleanup), so the >10-player and room-scope tests fail with 'Room is full' on a long-lived DB. Suggest either adding a /admin/rooms/{id}/clear endpoint, raising default capacity, or making tests register-then-leave."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_refactor_iter12.py",
+    "/app/backend/tests/test_profile_tournament_v2.py",
+    "/app/test_reports/pytest/iter12_refactor.xml",
+    "/app/test_reports/pytest/iter12_regression.xml"
+  ],
+  "action_items": [
+    "(Optional) Consider re-exporting the prize helpers from server.py for backwards compatibility, e.g. `from routes.tournaments import _winners_count, _prize_split, _generate_join_code, TOURNAMENT_VISIBLE_HOURS, TOURNAMENT_JOIN_CODE_ALPHABET` so legacy imports keep working.",
+    "(Optional) Increase default room maxCapacity from 36 or add test cleanup to prevent 'Room is full' in long-lived dev DBs."
+  ],
+  "critical_code_review_comments": [
+    "Route-ordering verified: GET /api/tournaments/wins/leaderboard is registered AFTER GET /api/tournaments/{tid} in routes/tournaments.py (lines 505 vs 512). FastAPI still resolves the leaderboard route correctly because the path-segment counts differ (`/tournaments/wins/leaderboard` is 3 segments under the base vs `/tournaments/{tid}` which is 2). Confirmed by direct hit in TestWinsLeaderboardShape::test_route_ordering_not_intercepted_by_tid.",
+    "server.py is down from 4177 → 3296 lines. Good progress but still large; further candidates: auth, posts, rooms, messages modules.",
+    "tournaments_wins_leaderboard aggregation pipeline filters `winners.placement == 1` AFTER an $unwind which is correct, and the 30-day window via completedAt $gte is sensible. The `me` pipeline duplicates the aggregation; minor — could share a sub-aggregation but acceptable.",
+    "Helpers were physically moved instead of re-exported. Backwards compatibility lost (the test had to be updated). Low risk but documented.",
+    "Empty leaderboard array returns [] correctly; me.rank=null for fresh user — verified."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_refactor_iter12.py (new)",
+    "/app/backend/tests/test_profile_tournament_v2.py (one-line import fix: now imports helpers from routes.tournaments instead of server)"
+  ],
+  "success_rate": {"backend": "91% (21/23)", "frontend": "skipped"},
+  "test_credentials": "Fresh users registered per-run (a12*, b12*, fresh12*, ord12*) — pre-seeded alice1780825006/bob1780825006 NOT used; module-scoped fixtures create fresh accounts each run to avoid cross-run state.",
+  "seed_data_creation": "POST /api/init/rooms (idempotent). ~25 throwaway TEST users + 1 completed 2-player tournament (winner picks up >=20 coins, drives leaderboard test).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Refactor (server.py → routes/{tournaments,leaderboard,vip}.py) is verified working end-to-end. Helper symbols (TOURNAMENT_JOIN_CODE_ALPHABET, _winners_count, _prize_split, _generate_join_code, TOURNAMENT_VISIBLE_HOURS) now live in /app/backend/routes/tournaments.py — import accordingly. New global leaderboard endpoint GET /api/tournaments/wins/leaderboard works (shape + correctness + route ordering). If you re-run on a long-lived DB and see 'Room is full' on TestPrize_GT10 or TestRoomScoped — it's env saturation, not a regression; either reset the rooms collection or skip those two tests. /app/backend/tests/test_refactor_iter12.py is safe to re-run; it always registers fresh users.",
+  "rca of the issue": "TestPrize_GT10 and TestRoomScoped 'Room is full' failures — RCA: default room maxCapacity=36 (server.py:1332). Each prior test run leaves up to ~20 TEST users currentRoomId pointing at room A; after several iterations the room saturates. Reproduction: run the full suite twice on the same DB and watch the 11-player test fail at the 6th-7th join_room. Mitigation options: (a) increase maxCapacity, (b) add a teardown that calls /api/rooms/{id}/leave for all TEST_-prefixed users, or (c) seed a temporary throwaway room per test class. Not a refactor regression."
+}

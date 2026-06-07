@@ -42,7 +42,8 @@ API = f"{BASE_URL}/api"
 
 # Add backend to path for direct helper imports
 sys.path.insert(0, "/app/backend")
-import server as srv  # noqa: E402
+import server as _srv_mod  # noqa: E402  (ensures server is importable post-refactor)
+from routes import tournaments as srv  # noqa: E402  (helpers moved here in iter12)
 
 JOIN_CODE_ALPHABET = set(srv.TOURNAMENT_JOIN_CODE_ALPHABET)
 

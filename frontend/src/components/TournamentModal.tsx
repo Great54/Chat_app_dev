@@ -1,7 +1,7 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, Modal,
-  ScrollView, ActivityIndicator, Alert, Platform, TextInput,
+  ScrollView, ActivityIndicator, Alert, Platform, TextInput, Animated,
 } from 'react-native';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
@@ -100,16 +100,28 @@ export default function TournamentModal({
   const [showJoinCode, setShowJoinCode] = useState(false);
   const [joinCodeInput, setJoinCodeInput] = useState('');
   const [joiningCode, setJoiningCode] = useState(false);
+  const [leaderboard, setLeaderboard] = useState<any[]>([]);
+  const [myWinStats, setMyWinStats] = useState<{ wins: number; coinsWon: number; rank: number | null }>({ wins: 0, coinsWon: 0, rank: null });
+  const [showLeaderboard, setShowLeaderboard] = useState(false);
 
   const loadAll = useCallback(async () => {
     setLoading(true);
     try {
-      const [tRes, gRes] = await Promise.all([
+      const [tRes, gRes, lRes] = await Promise.all([
         api.get(`/rooms/${roomId}/tournaments`),
         api.get('/games/types/list'),
+        api.get('/tournaments/wins/leaderboard', { params: { limit: 10 } }).catch(() => ({ data: null })),
       ]);
       setTournaments(Array.isArray(tRes.data) ? tRes.data : []);
       setGameTypes(Array.isArray(gRes.data) ? gRes.data : []);
+      if (lRes?.data) {
+        setLeaderboard(lRes.data.leaderboard || []);
+        setMyWinStats({
+          wins: lRes.data.me?.wins ?? 0,
+          coinsWon: lRes.data.me?.coinsWon ?? 0,
+          rank: lRes.data.me?.rank ?? null,
+        });
+      }
     } catch (e) {
       console.error('Tournament load failed', e);
     } finally {
@@ -226,6 +238,14 @@ export default function TournamentModal({
             <Text style={styles.headerTitle}>Tournaments</Text>
             <Text style={styles.headerSub}>Knockout · Top {`>10p:30%`} of players win</Text>
           </View>
+          <TouchableOpacity
+            onPress={() => setShowLeaderboard(true)}
+            style={styles.hallBtn}
+            testID="open-hall-of-champions"
+          >
+            <Ionicons name="trophy" size={16} color="#a16207" />
+            <Text style={styles.hallBtnText}>Hall</Text>
+          </TouchableOpacity>
           <TouchableOpacity
             onPress={() => setShowJoinCode(true)}
             style={styles.codeBtn}
@@ -558,8 +578,136 @@ export default function TournamentModal({
             </TouchableOpacity>
           </TouchableOpacity>
         </Modal>
+
+        {/* Hall of Champions — global "Tournaments You've Won" leaderboard */}
+        <Modal visible={showLeaderboard} transparent animationType="slide" onRequestClose={() => setShowLeaderboard(false)}>
+          <TouchableOpacity style={styles.overlay} activeOpacity={1} onPress={() => setShowLeaderboard(false)}>
+            <TouchableOpacity activeOpacity={1} style={[styles.createCard, { maxWidth: 420, maxHeight: '85%' }]} testID="hall-of-champions-modal">
+              <View style={styles.createHeader}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <Ionicons name="trophy" size={22} color="#a16207" />
+                  <Text style={styles.createTitle}>Hall of Champions</Text>
+                </View>
+                <TouchableOpacity onPress={() => setShowLeaderboard(false)} testID="close-hall"><Ionicons name="close" size={22} color="#1f2937" /></TouchableOpacity>
+              </View>
+              <Text style={styles.createSub}>Most #1 finishes in the last 30 days · across every room</Text>
+
+              {/* My stats card */}
+              <View style={styles.myWinCard} testID="my-win-stats">
+                <View style={styles.myWinRankBubble}>
+                  <Text style={styles.myWinRankNum}>{myWinStats.rank ? `#${myWinStats.rank}` : '—'}</Text>
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.myWinTitle}>Your record</Text>
+                  <Text style={styles.myWinSub}>
+                    {myWinStats.wins} win{myWinStats.wins === 1 ? '' : 's'} · +{myWinStats.coinsWon}🪙 earned
+                  </Text>
+                </View>
+                {myWinStats.wins > 0 ? <Text style={{ fontSize: 26 }}>🏆</Text> : <Text style={{ fontSize: 22, opacity: 0.5 }}>🎯</Text>}
+              </View>
+
+              <ScrollView style={{ marginTop: SPACING.md, maxHeight: 360 }}>
+                {leaderboard.length === 0 ? (
+                  <View style={styles.lbEmpty}>
+                    <Ionicons name="hourglass-outline" size={28} color="#9ca3af" />
+                    <Text style={styles.lbEmptyText}>No champions yet — be the first to win a knockout!</Text>
+                  </View>
+                ) : (
+                  leaderboard.map((row: any) => {
+                    const isMe = row.userId === currentUserId;
+                    const isTop3 = row.rank <= 3;
+                    return (
+                      <View
+                        key={row.userId}
+                        style={[styles.lbRow, isMe && styles.lbRowMe, isTop3 && styles.lbRowTop3]}
+                        testID={`lb-row-${row.rank}`}
+                      >
+                        <Text style={[styles.lbRank, isTop3 && styles.lbRankTop3]}>
+                          {row.rank === 1 ? '🥇' : row.rank === 2 ? '🥈' : row.rank === 3 ? '🥉' : `#${row.rank}`}
+                        </Text>
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.lbName} numberOfLines={1}>
+                            {row.displayName}{isMe ? ' (you)' : ''}
+                          </Text>
+                          <Text style={styles.lbSub}>+{row.coinsWon}🪙 earned</Text>
+                        </View>
+                        <View style={styles.lbWinsPill}>
+                          <Ionicons name="trophy" size={11} color="#92400e" />
+                          <Text style={styles.lbWinsText}>{row.wins}</Text>
+                        </View>
+                      </View>
+                    );
+                  })
+                )}
+              </ScrollView>
+            </TouchableOpacity>
+          </TouchableOpacity>
+        </Modal>
       </View>
     </Modal>
+  );
+}
+
+function PodiumRow({
+  w,
+  index,
+  isMe,
+  total,
+}: {
+  w: any;
+  index: number;
+  isMe: boolean;
+  total: number;
+}) {
+  const opacity = useRef(new Animated.Value(0)).current;
+  const translate = useRef(new Animated.Value(30)).current;
+  const scale = useRef(new Animated.Value(0.95)).current;
+  useEffect(() => {
+    // Staggered top-down reveal: champion first, then runner-up, etc.
+    const delay = index * 220;
+    Animated.parallel([
+      Animated.timing(opacity, { toValue: 1, duration: 380, delay, useNativeDriver: true }),
+      Animated.spring(translate, { toValue: 0, friction: 7, tension: 60, delay, useNativeDriver: true }),
+      Animated.spring(scale,     { toValue: 1, friction: 6, tension: 80, delay, useNativeDriver: true }),
+    ]).start();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const medal = w.placement === 1 ? '🏆' : w.placement === 2 ? '🥈' : w.placement === 3 ? '🥉' : `#${w.placement}`;
+  const extras = w.placement === 1 ? ' + VIP Pro 30d + 30pts'
+              : w.placement === 2 ? ' + 20pts'
+              : w.placement === 3 ? ' + 10pts'
+              : ` + ${Math.max(5, 35 - w.placement * 5)}pts`;
+  // Highlight color tier
+  const tier = w.placement === 1
+    ? { bg: '#fef3c7', border: '#facc15' }
+    : w.placement === 2
+    ? { bg: '#f1f5f9', border: '#94a3b8' }
+    : w.placement === 3
+    ? { bg: '#fef2e7', border: '#fb923c' }
+    : { bg: '#fffbeb', border: '#fde68a' };
+
+  return (
+    <Animated.View
+      style={[
+        detailStyles.podiumRow,
+        { backgroundColor: tier.bg, borderColor: tier.border },
+        isMe && detailStyles.podiumRowMe,
+        { opacity, transform: [{ translateY: translate }, { scale }] },
+      ]}
+      testID={`podium-row-${w.placement}`}
+    >
+      <Text style={detailStyles.podiumMedal}>{medal}</Text>
+      <View style={{ flex: 1 }}>
+        <Text style={detailStyles.podiumName}>{w.displayName}{isMe ? ' (you)' : ''}</Text>
+        <Text style={detailStyles.podiumReward}>+{w.coinsWon || 0}🪙{extras}</Text>
+      </View>
+      {w.placement === 1 && index === 0 && total > 1 ? (
+        <View style={detailStyles.champBadge}>
+          <Ionicons name="trophy" size={11} color="#fff" />
+          <Text style={detailStyles.champBadgeText}>CHAMP</Text>
+        </View>
+      ) : null}
+    </Animated.View>
   );
 }
 
@@ -602,26 +750,15 @@ function TournamentDetail({
         {tournament.status === 'completed' && tournament.winners.length > 0 && (
           <View style={detailStyles.podium}>
             <Text style={detailStyles.sectionLabel}>Final Standings · {tournament.winners.length} winner{tournament.winners.length > 1 ? 's' : ''}</Text>
-            {tournament.winners.map((w: any) => {
-              const isMe = w.userId === currentUserId;
-              const medal = w.placement === 1 ? '🏆' : w.placement === 2 ? '🥈' : w.placement === 3 ? '🥉' : `#${w.placement}`;
-              const extras = w.placement === 1
-                ? ' + VIP Pro 30d + 30pts'
-                : w.placement === 2
-                ? ' + 20pts'
-                : w.placement === 3
-                ? ' + 10pts'
-                : ` + ${Math.max(5, 35 - w.placement * 5)}pts`;
-              return (
-                <View key={w.userId} style={[detailStyles.podiumRow, isMe && detailStyles.podiumRowMe]}>
-                  <Text style={detailStyles.podiumMedal}>{medal}</Text>
-                  <View style={{ flex: 1 }}>
-                    <Text style={detailStyles.podiumName}>{w.displayName}{isMe ? ' (you)' : ''}</Text>
-                    <Text style={detailStyles.podiumReward}>+{w.coinsWon || 0}🪙{extras}</Text>
-                  </View>
-                </View>
-              );
-            })}
+            {tournament.winners.map((w: any, i: number) => (
+              <PodiumRow
+                key={w.userId}
+                w={w}
+                index={i}
+                isMe={w.userId === currentUserId}
+                total={tournament.winners.length}
+              />
+            ))}
           </View>
         )}
 
@@ -733,6 +870,45 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: '#c4b5fd',
   },
   codeBtnText: { color: '#5b21b6', fontWeight: '800', fontSize: 12 },
+  hallBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    backgroundColor: '#fef3c7', paddingHorizontal: 10, paddingVertical: 8, borderRadius: 999,
+    borderWidth: 1, borderColor: '#facc15',
+  },
+  hallBtnText: { color: '#92400e', fontWeight: '800', fontSize: 12 },
+  myWinCard: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    backgroundColor: '#fffbeb', borderColor: '#fde68a', borderWidth: 1.5,
+    borderRadius: 14, padding: 12, marginTop: SPACING.md,
+  },
+  myWinRankBubble: {
+    width: 46, height: 46, borderRadius: 23,
+    backgroundColor: '#fbbf24', alignItems: 'center', justifyContent: 'center',
+    borderWidth: 2, borderColor: '#fff',
+  },
+  myWinRankNum: { color: '#1f2937', fontSize: 14, fontWeight: '900' },
+  myWinTitle: { color: '#1f2937', fontSize: 14, fontWeight: '800' },
+  myWinSub: { color: '#92400e', fontSize: 12, fontWeight: '700', marginTop: 2 },
+  lbEmpty: { alignItems: 'center', paddingVertical: 28, gap: 8 },
+  lbEmptyText: { color: '#6b7280', fontSize: 13, fontWeight: '600', textAlign: 'center', paddingHorizontal: 24 },
+  lbRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    paddingHorizontal: 12, paddingVertical: 10,
+    backgroundColor: '#fafafa', borderRadius: 12, marginBottom: 6,
+    borderWidth: 1, borderColor: '#e5e7eb',
+  },
+  lbRowTop3: { backgroundColor: '#fef3c7', borderColor: '#facc15' },
+  lbRowMe: { borderColor: '#7c3aed', borderWidth: 1.5 },
+  lbRank: { fontSize: 18, fontWeight: '900', width: 36, color: '#374151', textAlign: 'center' },
+  lbRankTop3: { fontSize: 22 },
+  lbName: { fontSize: 14, fontWeight: '800', color: '#1f2937' },
+  lbSub: { fontSize: 11, color: '#6b7280', fontWeight: '700', marginTop: 1 },
+  lbWinsPill: {
+    flexDirection: 'row', alignItems: 'center', gap: 3,
+    backgroundColor: '#fde68a', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 999,
+    borderWidth: 1, borderColor: '#facc15',
+  },
+  lbWinsText: { color: '#7c2d12', fontWeight: '900', fontSize: 13 },
   cardTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   privatePill: {
     flexDirection: 'row', alignItems: 'center', gap: 3,
@@ -841,6 +1017,11 @@ const detailStyles = StyleSheet.create({
   podiumMedal: { fontSize: 22 },
   podiumName: { fontSize: 15, fontWeight: '800', color: '#1f2937' },
   podiumReward: { fontSize: 11, color: '#92400e', fontWeight: '700', marginTop: 1 },
+  champBadge: {
+    flexDirection: 'row', alignItems: 'center', gap: 3,
+    backgroundColor: '#f59e0b', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8,
+  },
+  champBadgeText: { color: '#fff', fontSize: 9, fontWeight: '900', letterSpacing: 0.6 },
   codeCard: {
     flexDirection: 'row', alignItems: 'center', gap: 10,
     backgroundColor: '#ede9fe', borderColor: '#c4b5fd', borderWidth: 1.5,

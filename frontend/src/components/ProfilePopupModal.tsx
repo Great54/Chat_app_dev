@@ -384,13 +384,6 @@ export default function ProfilePopupModal({ visible, userId, onClose }: Props) {
                     <Ionicons name="close" size={18} color="#1f2937" />
                   </TouchableOpacity>
                 </View>
-
-                {/* Decorative scallop divider (matches reference) */}
-                <View style={styles.scallopRow}>
-                  {Array.from({ length: 14 }).map((_, i) => (
-                    <View key={i} style={styles.scallopDot} />
-                  ))}
-                </View>
               </View>
 
               {/* Identity block: badges row + bio */}
@@ -676,7 +669,7 @@ const styles = StyleSheet.create({
   avatarOverlayLeft: {
     position: 'absolute',
     left: 14,
-    bottom: -8,
+    bottom: 8,
   },
   nameOverlay: {
     position: 'absolute',
@@ -712,22 +705,8 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     overflow: 'hidden',
   },
-  scallopRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    paddingHorizontal: 12,
-    paddingTop: 6,
-    paddingBottom: 4,
-    backgroundColor: '#fffaf3',
-  },
-  scallopDot: {
-    width: 14,
-    height: 14,
-    borderRadius: 7,
-    backgroundColor: '#fbbf24',
-    // @ts-ignore RN web shadow
-    boxShadow: '0 1px 3px rgba(0,0,0,0.15)',
-  },
+  scallopRow: { display: 'none' },
+  scallopDot: { display: 'none' },
   eliteRibbon: {
     marginBottom: 4,
     borderRadius: 10,
