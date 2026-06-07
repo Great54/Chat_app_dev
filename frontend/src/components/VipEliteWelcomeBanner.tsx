@@ -63,7 +63,11 @@ export default function VipEliteWelcomeBanner({ roomId, pollIntervalMs = 1500 }:
         fresh.forEach((w: PriorityWelcome) => seenIds.current.add(w.id));
         setActive((prev) => [...prev, ...fresh]);
       } catch (e) {
-        // silently swallow — non-critical UX
+        // Non-critical UX; log for dev visibility but don't break the room.
+        if (typeof __DEV__ !== 'undefined' && __DEV__) {
+          // eslint-disable-next-line no-console
+          console.warn('[VipEliteWelcomeBanner] poll failed:', e);
+        }
       }
     };
     poll();
@@ -86,7 +90,7 @@ export default function VipEliteWelcomeBanner({ roomId, pollIntervalMs = 1500 }:
     <View
       style={styles.container}
       pointerEvents="box-none"
-      data-testid="vip-elite-welcome-banner"
+      testID="vip-elite-welcome-banner"
     >
       {active.map((w) => (
         <WelcomeCard
@@ -111,18 +115,18 @@ function WelcomeCard({
   const shimmer = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    // Slide-down + fade-in
+    // Slide-down + fade-in (useNativeDriver:false because react-native-web has no RCTAnimation module)
     Animated.parallel([
       Animated.timing(slideAnim, {
         toValue: 0,
         duration: 400,
         easing: Easing.out(Easing.cubic),
-        useNativeDriver: true,
+        useNativeDriver: false,
       }),
       Animated.timing(opacity, {
         toValue: 1,
         duration: 300,
-        useNativeDriver: true,
+        useNativeDriver: false,
       }),
     ]).start();
 
@@ -132,7 +136,7 @@ function WelcomeCard({
         toValue: 1,
         duration: 1800,
         easing: Easing.linear,
-        useNativeDriver: true,
+        useNativeDriver: false,
       })
     ).start();
 
@@ -145,12 +149,12 @@ function WelcomeCard({
           toValue: -90,
           duration: 400,
           easing: Easing.in(Easing.cubic),
-          useNativeDriver: true,
+          useNativeDriver: false,
         }),
         Animated.timing(opacity, {
           toValue: 0,
           duration: 350,
-          useNativeDriver: true,
+          useNativeDriver: false,
         }),
       ]).start(() => onDismiss());
     }, holdMs);
@@ -173,7 +177,7 @@ function WelcomeCard({
         { transform: [{ translateY: slideAnim }], opacity },
       ]}
       pointerEvents="none"
-      data-testid={`vip-elite-welcome-${welcome.userId}`}
+      testID={`vip-elite-welcome-${welcome.userId}`}
     >
       <LinearGradient
         colors={['#fde68a', '#fbbf24', '#dc2626', '#7c2d12'] as [string, string, ...string[]]}

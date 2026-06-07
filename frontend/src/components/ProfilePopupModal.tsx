@@ -353,7 +353,7 @@ export default function ProfilePopupModal({ visible, userId, onClose }: Props) {
               {/* Name + badges */}
               <View style={styles.identityBlock}>
                 {isElite && (
-                  <View style={styles.eliteRibbon} data-testid="elite-ribbon">
+                  <View style={styles.eliteRibbon} testID="elite-ribbon">
                     <LinearGradient
                       colors={['#fde68a', '#fbbf24', '#dc2626'] as [string, string, ...string[]]}
                       start={{ x: 0, y: 0 }}

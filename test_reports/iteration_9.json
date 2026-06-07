@@ -1,0 +1,57 @@
+{
+  "summary": "RETEST of two iteration_8 fixes for VIP Elite Priority Welcome banner + Elite Profile Popup ribbon. (1) CRITICAL banner fix VERIFIED PASSED — banner now appears in DOM within ~0.5s of Elite join, with correct testID, displayName, ELITE chip, Great-Vibes/Dancing-Script cursive welcome message, and auto-dismisses within ~5s. (2) Non-blocking pointerEvents VERIFIED PASSED — elementFromPoint in the banner area returns the underlying chat DIV (not banner descendants). (3) elite-ribbon testID fix CANNOT BE END-TO-END VERIFIED because GET /users/{eliteUserId}/profile-card now returns 403, blocking the ProfilePopupModal from rendering the ribbon section. Source code at ProfilePopupModal.tsx:356 correctly uses testID='elite-ribbon' (the fix itself is valid).",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "GET /api/users/{userId}/profile-card", "issue": "Returns 403 when Elite (vippro) tries to view own profile-card AND when Pro (proonly) tries to view Elite's profile-card. Likely a stale block relationship in DB from iteration_8 testing OR a backend rule rejecting self profile-card lookup. Prevents end-to-end DOM verification of [data-testid='elite-ribbon']. Recommendation: unblock the relationship between the two test accounts in the DB (or allow isSelf to bypass block check on profile-card)."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/test_reports/elite_banner_visible.png",
+    "/app/test_reports/elite_ribbon_check.png"
+  ],
+  "verified_fixes": {
+    "vip_elite_welcome_banner": {
+      "status": "PASS",
+      "evidence": "After triggering Elite leave+rejoin via POST /api/rooms/{id}/leave then POST /api/rooms/{id}/join with Elite token, the Pro user's room screen rendered [data-testid='vip-elite-welcome-banner'] within ~0.5s containing 1 card [data-testid='vip-elite-welcome-6a250eb3b01b44bc01fb812c']. Inner text: 'VIP Pro Tester · VIP Elite · 👑 An Elite member has entered the room — welcome!'. Cursive fonts confirmed: name in 'Dancing Script', message in 'Great Vibes, Dancing Script, Pinyon Script, cursive'. ELITE chip present. Banner auto-dismissed (DOM removal) within ~5.5s.",
+      "details": {
+        "appearance_time_s": 0.5,
+        "auto_dismiss_within_s": 5.5,
+        "card_count": 1,
+        "has_elite_chip": true,
+        "has_cursive_name": true,
+        "has_cursive_message": true,
+        "banner_rect": {"x": 0, "y": 6, "w": 1400, "h": 69}
+      }
+    },
+    "non_blocking_pointer_events": {
+      "status": "PASS",
+      "evidence": "Computed pointerEvents on banner container = 'none', on card = 'none'. document.elementFromPoint(700, 40) — center of visible banner — returned a DIV NOT inside the banner (elementIsInsideBanner=false), confirming clicks pass through to chat underneath. Note: container uses 'none' instead of 'box-none' on web (react-native-web translates pointerEvents differently), but the effective behavior is identical because banner content is non-interactive."
+    },
+    "elite_ribbon_testid": {
+      "status": "BLOCKED",
+      "evidence": "Source code line 356 of ProfilePopupModal.tsx correctly reads: <View style={styles.eliteRibbon} testID=\"elite-ribbon\">. Fix is syntactically correct (RN-Web will emit data-testid='elite-ribbon' on the DOM). However, end-to-end DOM verification failed because /users/{eliteUserId}/profile-card returns 403 to BOTH the Pro user and to the Elite user themselves — the profile popup opens (modal + loading spinner visible) but exits with 'Could not load profile' before rendering the ribbon section. This is a backend/data issue unrelated to the iteration_9 fix."
+    }
+  },
+  "action_items": [
+    "(LOW) Investigate the 403 on GET /api/users/{userId}/profile-card for the two test accounts so the elite-ribbon DOM presence can be re-verified end-to-end. Likely a stale `blocks` collection entry from iteration_8 testing, OR a server rule preventing self profile-card lookup. Suggested fix: remove any blocks between vippro and proonly in the DB; or relax the isSelf path in the profile-card endpoint."
+  ],
+  "critical_code_review_comments": [
+    "VipEliteWelcomeBanner.tsx: useNativeDriver:false fix is correct for react-native-web (RCTAnimation absent). Banner now renders + animates + auto-dismisses cleanly. Code is solid.",
+    "Console still emits warning 'props.pointerEvents is deprecated. Use style.pointerEvents.' Non-blocking issue. To future-proof, migrate pointerEvents prop to style.pointerEvents at /app/frontend/src/components/VipEliteWelcomeBanner.tsx lines 92 & 179.",
+    "ProfilePopupModal.tsx line 356 testID='elite-ribbon' is correct; cannot DOM-verify due to unrelated 403."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "n/a (skipped)", "frontend": "Banner & pointer-events PASS; elite-ribbon BLOCKED by /profile-card 403 (not a regression of the iteration_9 fix)"},
+  "test_credentials": "Elite: vippro@test.com / Test123!  |  Pro: proonly@test.com / Test123!  |  Room: mermaid (6a250fb3887fc39328a98cd4)",
+  "seed_data_creation": "None. Only triggered Elite POST leave/join to insert a fresh elite_welcomes record.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Iteration_9 fixes for VipEliteWelcomeBanner are fully verified — banner renders, animates in/out, contains all required elements, and is non-blocking. The elite-ribbon source change is also correct but end-to-end DOM verification is blocked by a 403 on /users/{id}/profile-card for the test accounts (likely stale block in DB from iteration_8). Once block is cleared, opening the Elite user's profile popup will show [data-testid='elite-ribbon'] in DOM.",
+  "rca_of_the_issue": "Banner non-rendering in iteration_8 was caused by useNativeDriver:true on react-native-web which has no RCTAnimation module. Iteration_9 fix (useNativeDriver:false on every Animated.timing) + use of testID on the container is now confirmed working. The remaining elite-ribbon DOM verification is gated by an HTTP 403 on the profile-card endpoint — a backend/data state issue unrelated to the React Native Web fix."
+}
