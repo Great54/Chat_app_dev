@@ -562,8 +562,9 @@ export default function PrivateMessagesModal({ visible, onClose, initialUserId }
                   setNotificationsEnabled(v);
                   updateSetting({ notificationsEnabled: v });
                 }}
-                trackColor={{ false: '#cbd5e1', true: '#22c55e' }}
-                thumbColor="#fff"
+                trackColor={{ false: '#64748b', true: '#22c55e' }}
+                thumbColor="#ffffff"
+                ios_backgroundColor="#64748b"
                 testID="dm-toggle-notifications"
               />
             </View>
@@ -616,7 +617,7 @@ const styles = StyleSheet.create({
   tabText: {
     fontSize: 18,
     fontWeight: '800',
-    color: '#e7f6ff',
+    color: '#0c4a6e',
     letterSpacing: 0.3,
   },
   tabTextActive: {
