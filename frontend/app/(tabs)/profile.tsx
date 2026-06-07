@@ -22,6 +22,12 @@ import api from '@/src/api/client';
 import { COLORS, SPACING } from '@/src/constants/theme';
 import { getAuraStyle, findBadge, VIP_PRO_AVATAR_SCALE } from '@/src/utils/vipProCustomization';
 
+// Cursive font stack matching the profile popup look
+const CURSIVE_FONT = Platform.select({
+  web: '"Dancing Script", "Great Vibes", "Brush Script MT", cursive',
+  default: 'System',
+}) as string;
+
 export default function ProfileScreen() {
   const { user, logout, refreshUser } = useAuth();
   const [editing, setEditing] = useState(false);
@@ -128,110 +134,129 @@ export default function ProfileScreen() {
           )}
         </View>
 
-        {/* Avatar overlapping banner */}
-        <View style={styles.avatarSection}>
-          <TouchableOpacity
-            onPress={() => pickImage('photoUrl')}
-            style={[
-              styles.avatarContainer,
-              vipStyle && { transform: [{ scale: vipStyle.avatarScale }] },
-              user?.enlargedAvatar && { transform: [{ scale: (vipStyle?.avatarScale || 1) * VIP_PRO_AVATAR_SCALE }] },
-              getAuraStyle(user?.auraType, user?.auraColor, 110),
-            ]}
-            testID="edit-avatar-btn"
-          >
-            {user.photoUrl ? (
-              <Image
-                source={{ uri: user.photoUrl }}
-                style={[
-                  styles.avatarImg,
-                  vipStyle && { borderColor: vipStyle.borderColor, borderWidth: 4 },
-                ]}
-              />
-            ) : (
+        {/* Popup-style peek card: avatar LEFT + identity RIGHT (matches ProfilePopupModal graphics) */}
+        <View style={styles.peekCard} testID="profile-peek-card">
+          <View style={styles.peekRow}>
+            {/* Avatar — LEFT (tap to change photo) */}
+            <TouchableOpacity
+              activeOpacity={0.85}
+              onPress={() => pickImage('photoUrl')}
+              testID="edit-avatar-btn"
+              style={[
+                styles.peekAvatarWrap,
+                user?.enlargedAvatar && { transform: [{ scale: VIP_PRO_AVATAR_SCALE }] },
+                getAuraStyle(user?.auraType, user?.auraColor, 116),
+              ]}
+            >
+              {vipStyle ? (
+                <LinearGradient
+                  colors={vipStyle.borderColors as [string, string, ...string[]]}
+                  style={styles.avatarFrame}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                >
+                  <View style={styles.avatarFrameInner}>
+                    {user.photoUrl ? (
+                      <Image source={{ uri: user.photoUrl }} style={styles.peekAvatarImg} />
+                    ) : (
+                      <Ionicons name="person" size={42} color="#9ca3af" />
+                    )}
+                  </View>
+                </LinearGradient>
+              ) : (
+                <View style={[styles.avatarFrame, styles.avatarFramePlain]}>
+                  <View style={styles.avatarFrameInner}>
+                    {user.photoUrl ? (
+                      <Image source={{ uri: user.photoUrl }} style={styles.peekAvatarImg} />
+                    ) : (
+                      <Ionicons name="person" size={42} color="#9ca3af" />
+                    )}
+                  </View>
+                </View>
+              )}
+              {/* Online dot */}
               <View
                 style={[
-                  styles.avatarPlaceholder,
-                  vipStyle && { borderColor: vipStyle.borderColor, borderWidth: 4 },
+                  styles.onlineDot,
+                  { backgroundColor: user.onlineStatus ? '#22c55e' : '#94a3b8' },
                 ]}
-              >
-                <Ionicons name="person" size={56} color={COLORS.textSecondary} />
+              />
+              {/* Camera affordance */}
+              <View style={styles.peekCameraIcon}>
+                <Ionicons name="camera" size={12} color={COLORS.text} />
               </View>
-            )}
-            {(() => {
-              const customBadge = findBadge(user.vipBadgeId);
-              if (customBadge) {
-                return (
-                  <View style={[styles.vipCrownOnAvatar, { backgroundColor: customBadge.bg, width: 30, height: 30, borderRadius: 15 }]}>
-                    <Text style={{ fontSize: 18 }}>{customBadge.emoji}</Text>
-                  </View>
-                );
-              }
-              if (vipStyle) {
-                return (
-                  <View style={[styles.vipCrownOnAvatar, { backgroundColor: vipStyle.crownColor }]}>
-                    <Ionicons name={vipStyle.badgeIcon} size={14} color={COLORS.background} />
-                  </View>
-                );
-              }
-              return null;
-            })()}
-            <View style={styles.cameraIcon}>
-              <Ionicons name="camera" size={14} color={COLORS.text} />
-            </View>
-          </TouchableOpacity>
-          <Text
-            style={[
-              styles.displayName,
-              vipStyle && { color: vipStyle.nameColor, fontWeight: '800' },
-              user?.usernameColor ? { color: user.usernameColor } : null,
-            ]}
-          >
-            {user.displayName}
-            {vipStyle && (
-              <Text style={{ color: user?.usernameColor || vipStyle.nameColor }}> {vipStyle.badgeIcon === 'diamond' ? '💎' : '⭐'}</Text>
-            )}
-          </Text>
-          <Text style={styles.username}>@{user.username}</Text>
-          {vipStyle && (
-            <View style={[styles.vipTagPill, { borderColor: vipStyle.crownColor }]}>
-              <Ionicons name={vipStyle.badgeIcon} size={12} color={vipStyle.crownColor} />
-              <Text style={[styles.vipTagText, { color: vipStyle.crownColor }]}>
-                {vipStyle.name}
-              </Text>
-            </View>
-          )}
-        </View>
+            </TouchableOpacity>
 
-        {/* Stats Row - no XP/Level, replaced with VIP */}
-        <View style={styles.statsRow}>
-          <View style={styles.statBox}>
-            <Ionicons name="wallet" size={22} color={COLORS.coin} />
-            <Text style={styles.statValue}>{user.coins}</Text>
-            <Text style={styles.statLabel}>Coins</Text>
-          </View>
-          <TouchableOpacity
-            style={[
-              styles.statBox,
-              vipStyle && { borderWidth: 1.5, borderColor: vipStyle.crownColor },
-            ]}
-            onPress={() => setVipModalOpen(true)}
-            testID="profile-vip-stat"
-          >
-            <Ionicons
-              name={user.vipTier === 'elite' ? 'diamond' : user.vipTier === 'pro' ? 'star' : 'diamond-outline'}
-              size={22}
-              color={vipStyle ? vipStyle.crownColor : COLORS.coin}
-            />
-            <Text style={[styles.statValue, vipStyle && { color: vipStyle.crownColor }]}>
-              {user.vipTier ? (user.vipTier === 'elite' ? 'ELITE' : 'PRO') : 'Get VIP'}
-            </Text>
-            <Text style={styles.statLabel}>VIP Status</Text>
-          </TouchableOpacity>
-          <View style={styles.statBox}>
-            <Ionicons name="gift" size={22} color={COLORS.accent} />
-            <Text style={styles.statValue}>{user.vouchers || 0}</Text>
-            <Text style={styles.statLabel}>Vouchers</Text>
+            {/* Identity — RIGHT side */}
+            <View style={styles.peekIdentity}>
+              {user.vipTier === 'elite' && (
+                <View style={styles.eliteRibbon} testID="elite-ribbon">
+                  <LinearGradient
+                    colors={['#fde68a', '#fbbf24', '#dc2626'] as [string, string, ...string[]]}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 0 }}
+                    style={styles.eliteRibbonGrad}
+                  >
+                    <Ionicons name="diamond" size={10} color="#1a0f2e" />
+                    <Text style={styles.eliteRibbonText}>VIP ELITE</Text>
+                    <Ionicons name="star" size={9} color="#1a0f2e" />
+                  </LinearGradient>
+                </View>
+              )}
+              <Text
+                style={[
+                  styles.peekName,
+                  user.usernameColor ? { color: user.usernameColor } : null,
+                ]}
+                numberOfLines={1}
+              >
+                {user.displayName}
+              </Text>
+              <Text style={styles.peekUsername} numberOfLines={1}>@{user.username}</Text>
+
+              {/* VIP badge pill (mirrors popup) */}
+              {(() => {
+                const customBadge = findBadge(user.vipBadgeId);
+                if (customBadge) {
+                  return (
+                    <TouchableOpacity
+                      onPress={() => setVipModalOpen(true)}
+                      activeOpacity={0.85}
+                      style={styles.peekBadgesRow}
+                      testID="profile-vip-badge"
+                    >
+                      <View style={[styles.badgePill, { backgroundColor: customBadge.bg }]}>
+                        <Text style={{ fontSize: 11 }}>{customBadge.emoji}</Text>
+                        <Text style={styles.badgeText}>VIP</Text>
+                      </View>
+                    </TouchableOpacity>
+                  );
+                }
+                if (vipStyle) {
+                  return (
+                    <TouchableOpacity
+                      onPress={() => setVipModalOpen(true)}
+                      activeOpacity={0.85}
+                      style={styles.peekBadgesRow}
+                      testID="profile-vip-badge"
+                    >
+                      <View style={[styles.badgePill, { backgroundColor: vipStyle.crownColor }]}>
+                        <Ionicons name={vipStyle.badgeIcon} size={10} color="#fff" />
+                        <Text style={styles.badgeText}>{(user.vipTier || '').toUpperCase()}</Text>
+                      </View>
+                    </TouchableOpacity>
+                  );
+                }
+                return null;
+              })()}
+
+              {/* Coins pill */}
+              <View style={styles.peekCoinsPill} testID="profile-peek-coins">
+                <Ionicons name="logo-bitcoin" size={14} color="#a16207" />
+                <Text style={styles.peekCoinsValue}>{user.coins}</Text>
+                <Text style={styles.peekCoinsLabel}>coins</Text>
+              </View>
+            </View>
           </View>
         </View>
 
@@ -367,6 +392,172 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginTop: -AVATAR_SIZE / 2,
     paddingHorizontal: SPACING.md,
+  },
+  // ---- Popup-style peek card (mirrors ProfilePopupModal graphics) ----
+  peekCard: {
+    marginTop: -AVATAR_SIZE / 2 - 10,
+    marginHorizontal: SPACING.md,
+    backgroundColor: '#fffaf3',
+    borderRadius: 22,
+    borderWidth: 1,
+    borderColor: '#fde68a',
+    padding: SPACING.md,
+    // @ts-ignore RN web shadow
+    boxShadow: '0 18px 50px rgba(244,114,182,0.30), 0 8px 16px rgba(0,0,0,0.20)',
+  },
+  peekRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.md,
+  },
+  peekAvatarWrap: {
+    position: 'relative',
+    width: 120,
+    height: 120,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarFrame: {
+    width: 120,
+    height: 120,
+    borderRadius: 16,
+    padding: 3,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarFramePlain: {
+    backgroundColor: '#ffffff',
+    padding: 3,
+    borderRadius: 14,
+    // @ts-ignore
+    boxShadow: '0 4px 12px rgba(0,0,0,0.18)',
+  },
+  avatarFrameInner: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 11,
+    backgroundColor: '#fff7ed',
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+    borderWidth: 3,
+    borderColor: '#ffffff',
+  },
+  peekAvatarImg: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 8,
+  },
+  onlineDot: {
+    position: 'absolute',
+    bottom: 4,
+    right: 4,
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    borderWidth: 3,
+    borderColor: '#ffffff',
+  },
+  peekCameraIcon: {
+    position: 'absolute',
+    top: 4,
+    right: 4,
+    backgroundColor: COLORS.primary,
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: '#ffffff',
+  },
+  peekIdentity: {
+    flex: 1,
+    minWidth: 0,
+    gap: 4,
+  },
+  peekName: {
+    color: '#1f2937',
+    fontFamily: CURSIVE_FONT,
+    fontSize: 30,
+    fontWeight: '700',
+    lineHeight: 34,
+    // @ts-ignore — RN web textShadow
+    textShadow: '0 2px 6px rgba(255,255,255,0.85), 0 4px 10px rgba(244,114,182,0.25)',
+  },
+  peekUsername: {
+    color: '#7c2d12',
+    fontSize: 12,
+    fontWeight: '700',
+    opacity: 0.8,
+  },
+  peekBadgesRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginTop: 4,
+    alignSelf: 'flex-start',
+  },
+  badgePill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 999,
+  },
+  badgeText: {
+    color: '#ffffff',
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 0.6,
+  },
+  peekCoinsPill: {
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: '#fef3c7',
+    borderWidth: 1.5,
+    borderColor: '#facc15',
+    marginTop: 6,
+  },
+  peekCoinsValue: {
+    color: '#92400e',
+    fontSize: 14,
+    fontWeight: '900',
+    fontFamily: CURSIVE_FONT,
+  },
+  peekCoinsLabel: {
+    color: '#92400e',
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 0.4,
+    textTransform: 'uppercase',
+  },
+  eliteRibbon: {
+    marginBottom: 4,
+    borderRadius: 10,
+    overflow: 'hidden',
+    alignSelf: 'flex-start',
+    // @ts-ignore
+    boxShadow: '0 2px 10px rgba(251,191,36,0.55)',
+  },
+  eliteRibbonGrad: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 3,
+  },
+  eliteRibbonText: {
+    color: '#1a0f2e',
+    fontSize: 10,
+    fontWeight: '900',
+    letterSpacing: 1.2,
   },
   avatarContainer: {
     position: 'relative',

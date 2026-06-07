@@ -221,7 +221,7 @@ export default function ProfileViewScreen() {
         <TouchableOpacity onPress={() => router.back()} style={styles.iconBtn} testID="profile-back">
           <Ionicons name="arrow-back" size={22} color={COLORS.text} />
         </TouchableOpacity>
-        <Text style={styles.topBarTitle} numberOfLines={1}>{profile.displayName}</Text>
+        <View style={{ flex: 1 }} />
         <View style={styles.iconBtn} />
       </View>
 

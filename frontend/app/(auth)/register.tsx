@@ -16,6 +16,16 @@ import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '@/src/contexts/AuthContext';
 import { COLORS, SPACING } from '@/src/constants/theme';
 
+// react-native's Alert.alert is a no-op on web. Use window.alert there
+// so users actually see validation / API errors instead of silent failure.
+const showAlert = (title: string, message: string) => {
+  if (Platform.OS === 'web' && typeof window !== 'undefined') {
+    window.alert(`${title}\n\n${message}`);
+  } else {
+    Alert.alert(title, message);
+  }
+};
+
 export default function Register() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -26,12 +36,12 @@ export default function Register() {
 
   const handleRegister = async () => {
     if (!email || !password || !username || !displayName) {
-      Alert.alert('Error', 'Please fill in all fields');
+      showAlert('Error', 'Please fill in all fields');
       return;
     }
 
     if (password.length < 6) {
-      Alert.alert('Error', 'Password must be at least 6 characters');
+      showAlert('Error', 'Password must be at least 6 characters');
       return;
     }
 
@@ -39,7 +49,7 @@ export default function Register() {
     try {
       await register(email, password, username, displayName);
     } catch (error: any) {
-      Alert.alert('Registration Failed', error.response?.data?.detail || 'Something went wrong');
+      showAlert('Registration Failed', error?.response?.data?.detail || error?.message || 'Something went wrong');
     } finally {
       setLoading(false);
     }
