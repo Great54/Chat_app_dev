@@ -311,6 +311,20 @@ export default function RoomScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
+      {/* Full-screen room background image — floats behind header, chat, and input */}
+      {room?.roomBackground ? (
+        <Image
+          source={{ uri: room.roomBackground }}
+          style={StyleSheet.absoluteFill}
+          contentFit="cover"
+        />
+      ) : null}
+      {/* Subtle veil so foreground text stays readable */}
+      <LinearGradient
+        colors={['rgba(15,10,31,0.55)', 'rgba(15,10,31,0.18)', 'rgba(15,10,31,0.55)']}
+        style={StyleSheet.absoluteFill}
+        pointerEvents="none"
+      />
       {/* VIP Elite Priority Welcome — slides down at top, never blocks chat */}
       <VipEliteWelcomeBanner roomId={id as string} />
       <View style={styles.header}>
@@ -501,6 +515,7 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: COLORS.background,
+    position: 'relative',
   },
   roomTabs: {
     flexDirection: 'row',
@@ -546,10 +561,10 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.sm,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
     position: 'relative',
     minHeight: 56,
+    backgroundColor: 'transparent',
+    zIndex: 2,
   },
   backButton: {
     padding: 4,
@@ -603,15 +618,21 @@ const styles = StyleSheet.create({
   },
   headerTitle: {
     fontSize: 18,
-    fontWeight: '700',
+    fontWeight: '800',
     color: COLORS.text,
     textAlign: 'center',
+    textShadowColor: 'rgba(0,0,0,0.6)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 3,
   },
   headerSubtitle: {
     fontSize: 12,
-    color: COLORS.textSecondary,
+    color: '#f1f5f9',
     textAlign: 'center',
     marginTop: 2,
+    textShadowColor: 'rgba(0,0,0,0.55)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
   },
   messagesButton: {
     padding: 8,
@@ -752,12 +773,14 @@ const styles = StyleSheet.create({
   inputContainer: {
     flexDirection: 'row',
     padding: SPACING.md,
-    backgroundColor: COLORS.background,
+    backgroundColor: 'transparent',
     alignItems: 'flex-end',
   },
   input: {
     flex: 1,
-    backgroundColor: COLORS.cardBg,
+    backgroundColor: 'rgba(255,255,255,0.18)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.30)',
     borderRadius: 24,
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.sm,
