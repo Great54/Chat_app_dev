@@ -599,6 +599,7 @@ function MyPostsList({ userId }: { userId: string }) {
 /* ---------- Styles ---------- */
 const BANNER_HEIGHT = 200;
 const AVATAR_SIZE = 110;
+const AVATAR_RADIUS = 18; // square with soft corners (matches chat avatar treatment)
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: PALETTE.bg },
@@ -659,7 +660,7 @@ const styles = StyleSheet.create({
   avatarHalo: {
     width: AVATAR_SIZE + 14,
     height: AVATAR_SIZE + 14,
-    borderRadius: (AVATAR_SIZE + 14) / 2,
+    borderRadius: AVATAR_RADIUS + 6,
     alignItems: 'center',
     justifyContent: 'center',
     position: 'relative',
@@ -667,7 +668,7 @@ const styles = StyleSheet.create({
   avatarRing: {
     width: AVATAR_SIZE + 10,
     height: AVATAR_SIZE + 10,
-    borderRadius: (AVATAR_SIZE + 10) / 2,
+    borderRadius: AVATAR_RADIUS + 4,
     padding: 4,
     backgroundColor: '#fff',
     alignItems: 'center',
@@ -680,13 +681,13 @@ const styles = StyleSheet.create({
   avatarInner: {
     width: AVATAR_SIZE,
     height: AVATAR_SIZE,
-    borderRadius: AVATAR_SIZE / 2,
+    borderRadius: AVATAR_RADIUS,
     backgroundColor: PALETTE.cardSubtle,
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
   },
-  avatarImg: { width: '100%', height: '100%', borderRadius: AVATAR_SIZE / 2 },
+  avatarImg: { width: '100%', height: '100%', borderRadius: AVATAR_RADIUS },
   avatarCam: {
     position: 'absolute',
     bottom: 4,

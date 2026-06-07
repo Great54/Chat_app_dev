@@ -37,13 +37,7 @@ security = HTTPBearer()
 DEFAULT_AVATAR_FILES = [
     "default-1-panda.png",
     "default-2-corgi.png",
-    "default-3-kitten.png",
-    "default-4-alien.png",
-    "default-5-penguin.png",
-    "default-6-bunny.png",
-    "default-7-fox.png",
-    "default-8-robot.png",
-    "default-9-koala.png",
+    "default-3-alien.png",
 ]
 
 def pick_random_default_avatar() -> str:

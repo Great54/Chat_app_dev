@@ -150,3 +150,22 @@
 
 ### Smart enhancement idea
 > Apply the same `shape="square"` treatment to **room-canvas member tiles** (DraggableMember). The default astronaut PFPs already include a neon-ring inside the artwork — using a square frame lets that built-in ring breathe and gives the room a sticker-board / Polaroid aesthetic. Keep VIPs circular with their gold/elite halo so the tier difference becomes a free visual cue ("squares = members, circles = VIP").
+
+## Iteration 21 (Jun 2026) — High-res 3-pack avatars + square profile picture
+
+### What shipped
+1. **Replaced default avatar pack** — deleted the previous 9 grid-sliced PNGs and bundled the 3 new full-resolution astronaut illustrations the user attached:
+   - `default-1-panda.png` (512×512, purple nebula)
+   - `default-2-corgi.png` (512×512, orange nebula)
+   - `default-3-alien.png` (512×512, green nebula)
+   Each is ~440 KB. `DEFAULT_AVATAR_FILES` in `server.py` updated to the new 3-pack; the startup backfill regex auto-rewrote any user whose `photoUrl` referenced a stale filename.
+2. **Profile avatar is square** — `app/(tabs)/profile.tsx` introduces `AVATAR_RADIUS = 18` and switches `avatarHalo`, `avatarRing`, `avatarInner`, `avatarImg` from full-circle (`size/2`) to soft-square (18 px) corners — matches the chat-row square treatment the user established earlier. The pink VIP halo glow + camera icon overlay still work.
+
+### Verified (manual + curl)
+- Static assets: HEAD `/api/static/avatars/default-{1,2,3}-{panda,corgi,alien}.png` → 200 / image/png each.
+- Randomization: 20 fresh registrations distributed **8 panda / 4 corgi / 8 alien** (sufficient entropy for a 3-element set).
+- Existing-user healing: host user's old `default-7-fox.png` URL was auto-rewritten to `default-3-alien.png` by the startup backfill.
+- Profile page screenshot confirms square soft-corner avatar with the new alien astronaut rendering at full 512 res.
+
+### Smart enhancement idea
+> Add a one-line VIP unlock teaser under the unlock-VIP banner: **"Upgrade to unlock 6 more rare avatars 🐼✨"** with a tiny tile-strip preview of the previously removed 6 (kitten, penguin, bunny, fox, robot, koala). The art is already produced and bundled-but-unused; gating them behind VIP gives the tier instant tangible value at zero new asset cost.
