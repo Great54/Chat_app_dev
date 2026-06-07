@@ -84,6 +84,7 @@ export default function RoomScreen() {
   const [memberSectionLayout, setMemberSectionLayout] = useState({ width: 0, height: 0 });
   const [messagesModalVisible, setMessagesModalVisible] = useState(false);
   const [dmInitialUserId, setDmInitialUserId] = useState<string | null>(null);
+  const [dmUnreadCount, setDmUnreadCount] = useState(0);
   const [activeRoomTab, setActiveRoomTab] = useState<'feed' | 'chat' | 'board'>('chat');
   const [tournamentModalOpen, setTournamentModalOpen] = useState(false);
   const [currentUserTarget, setCurrentUserTarget] = useState<{ x: number; y: number } | null>(null);
@@ -92,14 +93,23 @@ export default function RoomScreen() {
 
   useEffect(() => {
     loadRoomData();
+    loadDmUnread();
     const interval = setInterval(() => {
       refreshRoomData();
+      loadDmUnread();
     }, 3000);
     return () => {
       clearInterval(interval);
       handleLeaveRoom();
     };
   }, [id]);
+
+  const loadDmUnread = async () => {
+    try {
+      const res = await api.get('/messages/direct/unread/total');
+      setDmUnreadCount(res.data?.unreadCount || 0);
+    } catch {}
+  };
 
   const loadRoomData = async () => {
     try {
@@ -333,6 +343,9 @@ export default function RoomScreen() {
             testID="direct-messages-btn"
           >
             <Ionicons name="chatbox" size={22} color={COLORS.text} />
+            {dmUnreadCount > 0 && (
+              <View style={styles.dmUnreadDot} testID="dm-unread-dot" />
+            )}
           </TouchableOpacity>
         </View>
       </View>
@@ -602,6 +615,18 @@ const styles = StyleSheet.create({
   },
   messagesButton: {
     padding: 8,
+    position: 'relative',
+  },
+  dmUnreadDot: {
+    position: 'absolute',
+    top: 6,
+    right: 6,
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: '#ec4899',
+    borderWidth: 1.5,
+    borderColor: '#0f0a1f',
   },
   chatContainer: {
     flex: 1,

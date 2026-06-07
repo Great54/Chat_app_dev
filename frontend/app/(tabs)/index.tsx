@@ -7,8 +7,9 @@ import {
   RefreshControl,
   TouchableOpacity,
   Alert,
+  ActivityIndicator,
 } from 'react-native';
-import { router, useFocusEffect } from 'expo-router';
+import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import RoomCard from '@/src/components/RoomCard';
@@ -37,7 +38,9 @@ export default function RoomsScreen() {
   const [viewMode, setViewMode] = useState<ViewMode>('all');
   const [loading, setLoading] = useState(false);
   const [vipModalOpen, setVipModalOpen] = useState(false);
-  const { user, refreshUser } = useAuth();
+  const [autoJoinState, setAutoJoinState] = useState<{ status: 'pending' | 'joining' | 'done'; roomName?: string } | null>(null);
+  const { user, refreshUser, autoJoin } = useAuth();
+  const params = useLocalSearchParams<{ autojoin?: string }>();
 
   useEffect(() => {
     (async () => {
@@ -46,6 +49,31 @@ export default function RoomsScreen() {
       await loadFavorites();
     })();
   }, []);
+
+  // Auto-join flow: triggered by ?autojoin=1 param set during login/register
+  useEffect(() => {
+    if (params.autojoin !== '1') return;
+    let cancelled = false;
+    (async () => {
+      setAutoJoinState({ status: 'pending' });
+      const result = await autoJoin();
+      if (cancelled) return;
+      if (!result) {
+        setAutoJoinState({ status: 'done' });
+        Alert.alert('Could not auto-join', 'All rooms are full right now. Please pick a room manually.');
+        return;
+      }
+      setAutoJoinState({ status: 'joining', roomName: result.roomName });
+      await refreshUser();
+      // Small delay so user sees the indicator
+      setTimeout(() => {
+        if (!cancelled) {
+          router.replace(`/room/${result.roomId}`);
+        }
+      }, 900);
+    })();
+    return () => { cancelled = true; };
+  }, [params.autojoin]);
 
   useFocusEffect(
     useCallback(() => {
@@ -208,6 +236,23 @@ export default function RoomsScreen() {
       </View>
 
       <VipShopModal visible={vipModalOpen} onClose={() => setVipModalOpen(false)} />
+
+      {/* Auto-join indicator overlay (after login/signup) */}
+      {autoJoinState && autoJoinState.status !== 'done' && (
+        <View style={styles.autoJoinOverlay} pointerEvents="auto" testID="auto-join-indicator">
+          <View style={styles.autoJoinCard}>
+            <ActivityIndicator size="large" color={COLORS.primary} />
+            <Text style={styles.autoJoinTitle}>
+              {autoJoinState.roomName ? `Joining ${autoJoinState.roomName}…` : 'Finding your room…'}
+            </Text>
+            <Text style={styles.autoJoinSubtitle}>
+              {autoJoinState.roomName
+                ? 'Hold tight, dropping you in.'
+                : 'Looking up your last vibe…'}
+            </Text>
+          </View>
+        </View>
+      )}
 
       <FlatList
         data={visibleRooms}
@@ -380,5 +425,36 @@ const styles = StyleSheet.create({
     marginTop: SPACING.md,
     textAlign: 'center',
     paddingHorizontal: SPACING.lg,
+  },
+  autoJoinOverlay: {
+    position: 'absolute',
+    top: 0, left: 0, right: 0, bottom: 0,
+    backgroundColor: 'rgba(8,6,18,0.78)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 9999,
+  },
+  autoJoinCard: {
+    backgroundColor: '#161024',
+    paddingVertical: 28,
+    paddingHorizontal: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    gap: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(139,92,246,0.35)',
+    minWidth: 240,
+  },
+  autoJoinTitle: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '800',
+    marginTop: 4,
+    textAlign: 'center',
+  },
+  autoJoinSubtitle: {
+    color: 'rgba(255,255,255,0.7)',
+    fontSize: 12,
+    textAlign: 'center',
   },
 });

@@ -1345,10 +1345,10 @@ async def join_room(room_id: str, current_user: dict = Depends(get_current_user)
         {"$inc": {"currentUserCount": 1}}
     )
     
-    # Update user's current room
+    # Update user's current room + track last visited room
     await db.users.update_one(
         {"_id": ObjectId(current_user["_id"])},
-        {"$set": {"currentRoomId": room_id}}
+        {"$set": {"currentRoomId": room_id, "lastRoomId": room_id}}
     )
     
     # Add room join reward
@@ -1413,13 +1413,91 @@ async def leave_room(room_id: str, current_user: dict = Depends(get_current_user
     user_id = str(current_user["_id"])
     await leave_room_helper(room_id, user_id)
     
-    # Update user's current room
+    # Update user's current room (keep lastRoomId so they can be auto-rejoined on next login)
     await db.users.update_one(
         {"_id": ObjectId(current_user["_id"])},
-        {"$set": {"currentRoomId": None}}
+        {"$set": {"currentRoomId": None, "lastRoomId": room_id}}
     )
     
     return {"message": "Left room successfully"}
+
+@api_router.post("/rooms/auto-join")
+async def auto_join_room(current_user: dict = Depends(get_current_user)):
+    """Auto-join the user into a room:
+    1. Try last visited room (if not full)
+    2. Else try World Vibez
+    3. Else first available non-full room
+    Returns: { roomId, roomName, wasResumed: bool }
+    """
+    user_id = str(current_user["_id"])
+    last_room_id = current_user.get("lastRoomId")
+
+    candidate = None
+    was_resumed = False
+
+    # 1. Last room
+    if last_room_id and ObjectId.is_valid(str(last_room_id)):
+        room = await db.rooms.find_one({"_id": ObjectId(last_room_id)})
+        if room and room.get("currentUserCount", 0) < room.get("maxCapacity", 36):
+            candidate = room
+            was_resumed = True
+
+    # 2. World Vibez
+    if not candidate:
+        room = await db.rooms.find_one({"roomName": "World Vibez"})
+        if room and room.get("currentUserCount", 0) < room.get("maxCapacity", 36):
+            candidate = room
+
+    # 3. Any non-full room
+    if not candidate:
+        all_rooms = await db.rooms.find().to_list(100)
+        for r in all_rooms:
+            if r.get("currentUserCount", 0) < r.get("maxCapacity", 36):
+                candidate = r
+                break
+
+    if not candidate:
+        raise HTTPException(status_code=503, detail="All rooms are full. Try again later.")
+
+    room_id = str(candidate["_id"])
+
+    # Leave current room if user is in one (different from candidate)
+    current_room_id = current_user.get("currentRoomId")
+    if current_room_id and current_room_id != room_id:
+        await leave_room_helper(current_room_id, user_id)
+
+    # Join the candidate room (skip if already member)
+    existing = await db.room_members.find_one({"userId": user_id, "roomId": room_id})
+    if not existing:
+        await db.room_members.update_one(
+            {"userId": user_id, "roomId": room_id},
+            {"$set": {
+                "userId": user_id,
+                "roomId": room_id,
+                "joinedAt": datetime.utcnow(),
+                "username": current_user["username"],
+                "profilePhoto": current_user.get("photoUrl"),
+                "level": current_user.get("level", 0),
+                "onlineStatus": True,
+            }},
+            upsert=True,
+        )
+        await db.rooms.update_one(
+            {"_id": candidate["_id"]},
+            {"$inc": {"currentUserCount": 1}}
+        )
+
+    # Track current + last room
+    await db.users.update_one(
+        {"_id": ObjectId(user_id)},
+        {"$set": {"currentRoomId": room_id, "lastRoomId": room_id}}
+    )
+
+    return {
+        "roomId": room_id,
+        "roomName": candidate["roomName"],
+        "wasResumed": was_resumed,
+    }
 
 @api_router.get("/rooms/{room_id}/priority-welcomes")
 async def get_priority_welcomes(room_id: str, since_ms: int = 6000):
@@ -1756,6 +1834,59 @@ async def get_conversations(current_user: dict = Depends(get_current_user)):
             })
     
     return enriched
+
+
+@api_router.get("/messages/direct/unread/total")
+async def get_dm_unread_total(current_user: dict = Depends(get_current_user)):
+    """Total number of unread direct messages addressed to the current user."""
+    me_id = str(current_user["_id"])
+    count = await db.direct_messages.count_documents({
+        "receiverId": me_id,
+        "readStatus": False,
+    })
+    return {"unreadCount": count}
+
+
+@api_router.delete("/messages/direct/conversation/{user_id}")
+async def delete_dm_conversation(user_id: str, current_user: dict = Depends(get_current_user)):
+    """Delete the entire DM conversation between current user and `user_id`
+    for the current user (hard delete is fine here as both ends share the row;
+    we delete all rows between the two)."""
+    me_id = str(current_user["_id"])
+    result = await db.direct_messages.delete_many({
+        "$or": [
+            {"senderId": me_id, "receiverId": user_id},
+            {"senderId": user_id, "receiverId": me_id},
+        ]
+    })
+    return {"deleted": result.deleted_count}
+
+
+class DmSettings(BaseModel):
+    allowMessagesFrom: Optional[str] = None  # "everyone" | "friends" | "nobody"
+    notificationsEnabled: Optional[bool] = None
+
+
+@api_router.get("/users/me/dm-settings")
+async def get_dm_settings(current_user: dict = Depends(get_current_user)):
+    return {
+        "allowMessagesFrom": current_user.get("allowMessagesFrom", "everyone"),
+        "notificationsEnabled": bool(current_user.get("dmNotificationsEnabled", True)),
+        "blockedUserIds": current_user.get("blockedUserIds", []) or [],
+    }
+
+
+@api_router.put("/users/me/dm-settings")
+async def update_dm_settings(payload: DmSettings, current_user: dict = Depends(get_current_user)):
+    update: Dict[str, Any] = {}
+    if payload.allowMessagesFrom in {"everyone", "friends", "nobody"}:
+        update["allowMessagesFrom"] = payload.allowMessagesFrom
+    if payload.notificationsEnabled is not None:
+        update["dmNotificationsEnabled"] = bool(payload.notificationsEnabled)
+    if update:
+        await db.users.update_one({"_id": ObjectId(current_user["_id"])}, {"$set": update})
+    return {"ok": True, **update}
+
 
 # ==================== WEBSOCKET ====================
 

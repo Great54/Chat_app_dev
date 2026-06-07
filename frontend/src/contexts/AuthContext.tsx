@@ -34,6 +34,7 @@ interface AuthContextType {
   register: (email: string, password: string, username: string, displayName: string) => Promise<void>;
   logout: () => Promise<void>;
   refreshUser: () => Promise<void>;
+  autoJoin: () => Promise<{ roomId: string; roomName: string; wasResumed: boolean } | null>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -65,7 +66,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await storage.setItem('auth_token', response.data.access_token);
     const userResponse = await api.get('/auth/me');
     setUser(userResponse.data);
-    router.replace('/(tabs)');
+    // Redirect to landing screen (Rooms tab); the landing screen handles the auto-join indicator
+    router.replace('/(tabs)?autojoin=1');
   };
 
   const register = async (email: string, password: string, username: string, displayName: string) => {
@@ -78,7 +80,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await storage.setItem('auth_token', response.data.access_token);
     const userResponse = await api.get('/auth/me');
     setUser(userResponse.data);
-    router.replace('/(tabs)');
+    router.replace('/(tabs)?autojoin=1');
   };
 
   const logout = async () => {
@@ -96,8 +98,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  const autoJoin = async () => {
+    try {
+      const response = await api.post('/rooms/auto-join');
+      return response.data as { roomId: string; roomName: string; wasResumed: boolean };
+    } catch (error) {
+      console.error('Auto-join failed:', error);
+      return null;
+    }
+  };
+
   return (
-    <AuthContext.Provider value={{ user, loading, login, register, logout, refreshUser }}>
+    <AuthContext.Provider value={{ user, loading, login, register, logout, refreshUser, autoJoin }}>
       {children}
     </AuthContext.Provider>
   );

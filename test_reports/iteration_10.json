@@ -1,0 +1,48 @@
+{
+  "summary": "Full end-to-end test of the iteration_10 DM + Auto-Join redesign. Backend: 8/8 pytest cases PASS (auto-join new-user→World Vibez + resume, join/leave preserving lastRoomId, DM unread total increment+mark-as-read, conversation delete count, dm-settings defaults & PUT persistence, seeded users smoke). Frontend (Playwright on the public preview URL): login as dmtest1 → auto-join-indicator rendered ✓, navigated into /room/<World Vibez id> ✓, direct-messages-btn visible ✓, dm-unread-dot rendered after a seeded DM ✓, DM modal opens with both tabs ✓, conversation row tapped → options popup with all 4 buttons (view-profile/view-message/report-block/delete) ✓, View Message opens chat view with composer input + send button ✓, Settings tab shows 3 chips + notifications toggle and the Friends chip click was persisted server-side (GET /dm-settings returned allowMessagesFrom='friends').",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "DM modal — top bar", "issues": ["Inactive tab label ('Settings' when Messages is active) is white on light-blue (#5cc1f2), low contrast. Active tab uses pure white with a yellow underline which reads fine. Consider darkening the inactive tab text or adding higher contrast."]},
+      {"screen": "DM modal — Settings", "issues": ["Notifications toggle thumb on the OFF (false) track is white-on-light-grey (#cbd5e1), low visibility. Functional, but easy to miss."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_dm_autojoin.py",
+    "/app/test_reports/pytest/iter10_dm_autojoin.xml"
+  ],
+  "verified_flows": {
+    "POST /api/rooms/auto-join (new user)": "PASS — returns roomName='World Vibez', wasResumed=false; second call returns wasResumed=true with same roomId.",
+    "Join + Leave preserves lastRoomId": "PASS — leave clears currentRoomId but auto-join resumes the same room via lastRoomId.",
+    "POST /api/rooms/{id}/join sets currentRoomId": "PASS",
+    "GET /api/messages/direct/unread/total": "PASS — base→+2 after two DMs, then back to base after conversation fetch (mark-as-read).",
+    "DELETE /api/messages/direct/conversation/{user_id}": "PASS — returns 'deleted':4, subsequent GETs from both sides return []",
+    "GET/PUT /api/users/me/dm-settings": "PASS — defaults everyone/true; PUT friends+false persists; PUT nobody keeps notifications=false; invalid 'aliens' silently ignored (200 + no change).",
+    "Frontend auto-join-indicator (testid)": "PASS — detected ~150ms after Sign-In click on dmtest1; landed on /room/6a251e92a684769d62955051 (World Vibez).",
+    "Frontend dm-unread-dot": "PASS — appeared on direct-messages-btn after seeding a DM from dmtest2 → dmtest1.",
+    "Frontend DM modal (tabs + conv row + options + chat view + settings)": "PASS — all listed data-testids present and functional. Settings chip click persisted to backend (allowMessagesFrom='friends')."
+  },
+  "action_items": [
+    "(LOW / cosmetic) Improve contrast on inactive tab label in DM modal top bar (light-blue background).",
+    "(LOW) Notification toggle thumb visibility when OFF.",
+    "(LOW) Console warning: 'props.pointerEvents is deprecated. Use style.pointerEvents.' — pre-existing from iteration_9, still emitted; safe to ignore but worth migrating.",
+    "(NOTE) The auto-join indicator first renders 'Finding your room…' for ~50–200ms before swapping to 'Joining <RoomName>…'. The testID auto-join-indicator is the same in both states, so spec is met. If the spec requires the 'Joining <Room>…' text to always be the first thing visible, set roomName from a pre-flight GET /api/users/me (lastRoomId → /api/rooms/{id}) before calling autoJoin()."
+  ],
+  "critical_code_review_comments": [
+    "PrivateMessagesModal.tsx: handleSendMessage does optimistic-then-reload via loadMessages; consider appending the new message to local state immediately to avoid the ~2s reload flash. Non-blocking.",
+    "Backend update_dm_settings silently drops invalid allowMessagesFrom values and still returns ok=true. Acceptable as a soft contract but worth returning 422 for stricter clients.",
+    "delete_dm_conversation is a hard delete on both directions of the conversation — fine for this product but the docstring says 'hard delete is fine here as both ends share the row', though rows are NOT shared (sender/receiver inverted); harmless because the $or covers both."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_dm_autojoin.py (new)"
+  ],
+  "success_rate": {"backend": "100% (8/8)", "frontend": "100% of listed flows"},
+  "test_credentials": "dmtest1 / pass1234, dmtest2 / pass1234 (seeded). Tests also self-register TEST_dm_* users.",
+  "seed_data_creation": "During Playwright test, 1 DM was sent from dmtest2 → dmtest1 to trigger the unread dot. Pytest creates ephemeral TEST_dm* users (left in DB; can be purged by username prefix).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "iter10 DM + auto-join is fully verified end-to-end on the public preview URL. The auto-join indicator can be caught with a tight polling loop (~150ms cadence) immediately after the Sign In click; it lives ~900ms total. Re-running the pytest file is safe and idempotent — it self-registers fresh users each run. Backend defaults for dm-settings are everyone/true. Frontend persists settings via PUT on every chip/switch interaction.",
+  "rca_of_the_issue": "n/a — no failures encountered."
+}
