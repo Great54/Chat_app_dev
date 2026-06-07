@@ -22,15 +22,19 @@
 - Leaderboards: Points Earned (default) and Coins Spent
 
 ## Implemented in this iteration (Jan 2026)
-- **Leaderboard restructured** — replaced `Coins/Active` tabs with `Points Earned` (default) + `Coins Spent`; new endpoints `/api/leaderboard/points`, `/api/leaderboard/coins-spent`
-- **Game resolution rewritten** — winner + runner-up share pot 70/30; `pointsEarned`, `gameWins`, `gameRunnerUps` tracked on user
-- **Light-themed gameplay arena** — modal opens for hosts/joiners with hero image, status pill, players list, animated pulse and rules card
-- **Game logos / banner images** added via Unsplash CDN (in `GAME_TYPES`); host modal uses image cards with CTA
-- **Tournament feature** — knockout 4-player brackets; manual create / auto-fire at full; `/api/rooms/{id}/tournaments`, `/api/tournaments/{tid}/join`, `/start`, `/{tid}`; full bracket UI with podium + bracket viewer
-- **Tournament button** placed in room header right next to Back arrow (`open-tournaments-btn`)
-- **Coin gifting** — `POST /api/coins/send` (min 10, daily 1000 cap), `GET /api/coins/send-status`; new **Send Coins** action button in user profile popup
-- **Bug fix** — `currentRoomId` was never being set (ObjectId vs string mismatch in `update_one`); fixed → all in-room actions (games, tournaments) now work end-to-end
-- **.env bootstrap** — created `/app/backend/.env` and `/app/frontend/.env` (were missing, preventing server boot)
+- **Dynamic tournament size & entry fee** — creator picks any size 2–32 and any entry fee 1–100 000 🪙 via two-step modal (Step 1: pick game · Step 2: name + size + fee, with presets and live pot preview). Bracket auto-builds for any size with byes for odd counts; rounds labelled `final / semifinal / quarterfinal / round-of-16 / round-of-N`.
+- **Dynamic game entry fee + max players** — `POST /api/rooms/{id}/games` accepts optional `entryFee` (1–100 000) and `maxPlayers` (2–32). Host modal first picks a game, then opens a Config sheet with fee & max-players presets and live payout preview.
+- **50 / 50 pot split** — for both games and tournaments, the pot is divided equally between winner and runner-up (winner gets the extra coin on odd pots). Champion still earns VIP Pro (30 days) + 30 pts as a perk; runner-up +20 pts; 3rd +10 pts (no pot share for 3rd).
+- **VIP downgrade guard** — champion grant no longer downgrades a higher tier (e.g. 'elite' stays 'elite', only `vipExpiresAt` extended).
+- **Validation hardening** — `create_tournament` now uses `is not None` defaulting so explicit `0` is rejected.
+
+## Implemented previously
+- Leaderboard restructured (`Points Earned` first, `Coins Spent` second)
+- Light-themed gameplay arena with Unsplash hero images, taglines, "How it works" card
+- Tournament button next to Back arrow in room header
+- User-to-user coin gifting via "Send Coins" on profile popup — min 10, max 1000 outgoing per 24 h
+- Bug fix: `currentRoomId` not being set due to ObjectId/string mismatch
+- `.env` bootstrap (backend + frontend)
 
 ## What works (verified)
 - 18/18 backend tests pass: `pytest /app/backend/tests/test_games_tournaments_gifting.py`

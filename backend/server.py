@@ -2454,8 +2454,8 @@ async def list_room_tournaments(room_id: str, current_user: dict = Depends(get_c
 async def create_tournament(room_id: str, payload: TournamentCreate, current_user: dict = Depends(get_current_user)):
     if payload.gameType not in GAME_TYPES:
         raise HTTPException(status_code=400, detail="Invalid game type")
-    size = payload.size or 4
-    fee = payload.entryFee or 10
+    size = payload.size if payload.size is not None else 4
+    fee = payload.entryFee if payload.entryFee is not None else 10
     if size < TOURNAMENT_MIN_SIZE or size > TOURNAMENT_MAX_SIZE:
         raise HTTPException(status_code=400, detail=f"Size must be between {TOURNAMENT_MIN_SIZE} and {TOURNAMENT_MAX_SIZE}")
     if fee < TOURNAMENT_MIN_FEE or fee > TOURNAMENT_MAX_FEE:
@@ -2589,10 +2589,20 @@ async def _award_tournament_placement(user_id: str, placement: int, coins: int, 
         await db.users.update_one({"_id": ObjectId(user_id)}, {"$inc": inc_fields})
     if placement == 1:
         expires_at = datetime.utcnow() + timedelta(days=CHAMPION_VIP_DAYS)
-        await db.users.update_one(
-            {"_id": ObjectId(user_id)},
-            {"$set": {"vipTier": CHAMPION_VIP_TIER, "vipExpiresAt": expires_at}},
-        )
+        # Don't downgrade a user who is already on a higher tier than 'pro'.
+        user_doc = await db.users.find_one({"_id": ObjectId(user_id)}, {"vipTier": 1})
+        current_tier = (user_doc or {}).get("vipTier")
+        higher_tiers = {"elite", "legend"}
+        if current_tier in higher_tiers:
+            await db.users.update_one(
+                {"_id": ObjectId(user_id)},
+                {"$set": {"vipExpiresAt": expires_at}},
+            )
+        else:
+            await db.users.update_one(
+                {"_id": ObjectId(user_id)},
+                {"$set": {"vipTier": CHAMPION_VIP_TIER, "vipExpiresAt": expires_at}},
+            )
     medal = {1: "🏆", 2: "🥈", 3: "🥉"}.get(placement, "🎖")
     parts: List[str] = []
     if coins > 0:
