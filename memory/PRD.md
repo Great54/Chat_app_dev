@@ -51,3 +51,20 @@
 
 ### Notes for future agents
 - Backend `/app/backend/.env` was missing on this container at start of iteration_13; tester re-created it (`MONGO_URL=mongodb://localhost:27017`, `DB_NAME=genc_vibez`). If you see uvicorn `KeyError: 'MONGO_URL'`, restore this file.
+
+## Iteration 16 (Jun 2026) — Cloudflare 520 RCA, VIP scale 1.18, scattered room placement
+
+### Changes shipped
+1. **Cloudflare 520 on Forgot Password — RCA & recovery.** Backend had crashed because `/app/backend/.env` was missing on the container (uvicorn `KeyError: 'MONGO_URL'`). Recreated `/app/backend/.env` with `MONGO_URL=mongodb://localhost:27017` + `DB_NAME=genc_vibez`. Verified `POST /api/auth/forgot-password` returns 200 with generic success message on the external preview URL.
+2. **VIP avatar scale reduced 1.25 → 1.18** in three locations: `VIP_PRO_AVATAR_SCALE` constant, `VIP_STYLES.elite.avatarScale` in `DraggableMember.tsx`, and the doc comment in `AvatarWithAura.tsx`.
+3. **Scattered initial placement for room avatars.** Replaced the strict row-grid (`row = idx/perRow, col = idx % perRow`) with a deterministic Halton low-discrepancy sequence (base-2 for X, base-3 for Y) plus a small ±12% per-userId hash jitter. Result: members are spread across the full room canvas in different X **and** Y positions instead of stacked in a perfect line at the top, while ordering is preserved (lower `initialIndex` → Halton-earlier cell) and positions are stable across reloads.
+
+### Verified by testing agent (iteration_14)
+- 4/4 scenarios PASS. forgot-password 200, both scale constants = 1.18, avatars rendered at e.g. (146,69) / (88,136) / (223,31) in a 374×294 canvas — clearly not a row. Position stable on reload. Tap-to-move still glides.
+
+### Important environment note
+- Expo Metro is launched with `CI=true` in supervisor → **no HMR**. After any frontend code change main agent MUST `sudo supervisorctl restart frontend` and wait ~40s for the web bundle to recompile. If a recent change is "missing", suspect the stale bundle first.
+- If backend returns 502/520 again, check `/var/log/supervisor/backend.err.log` — most likely cause is `/app/backend/.env` being absent.
+
+### Smart enhancement idea
+> Right after the scatter, run a single Lloyd's relaxation step server-side (or client-side memoized) so avatars settle into a Voronoi-balanced layout. Adds zero perceived load time and prevents the rare case where two members' Halton+jitter coords overlap. Combined with a tiny entrance "pop" animation (Animated.spring scale 0→1) it turns the room screen into a satisfying micro-moment of life that increases the average time-in-room.
