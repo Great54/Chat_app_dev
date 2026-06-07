@@ -28,3 +28,26 @@
 
 ## Smart enhancement idea
 > The profile-like is a low-friction signal that's gold for personalization. Surface a **"People who liked your profile"** list inside the user's *own* full profile (above the Posts pill) — leverages the new collection without any extra API spend and creates a satisfying "who's checked me out" moment that drives daily opens. Pair with a "+1 like" haptic + heart particle burst for delight.
+
+## Iteration 15 (Jun 2026) — Game Aborted modal fix + Gaming Arena Leaderboard theme
+
+### Changes shipped
+1. **Bug fix — "Game Aborted" modal kept re-opening every 1.5s after Done.**
+   - Root cause: `GamePanel.tsx` polls `/rooms/:id/games` every 1.5s via `setInterval` set inside a `useEffect` keyed only on `roomId`. The interval callback closed over the initial `resultsShown` state (empty `Set`) and `resultModalGame` (`null`), so the `!resultsShown.has(g.id)` and `!resultModalGame` guards were ALWAYS true on every poll. Result: the aborted-game modal re-appeared every tick even after the user pressed Done.
+   - Fix: introduced three `useRef`s — `resultsShownRef`, `dismissedRef`, `resultModalGameRef` — and refactored `loadGames()` to read/write refs (always current) instead of state. The Done button and Modal `onRequestClose` now add the game id to BOTH `dismissedRef` and `resultsShownRef` before clearing modal state, so the polling loop short-circuits permanently.
+   - Verified by testing agent: 18s of continuous polling after pressing Done — modal did NOT reappear. (iteration_13.json)
+
+2. **Leaderboard — Gaming Arena Champions theme (Option 3 from references).**
+   - Rewrote `app/(tabs)/leaderboard.tsx`. Dark-navy arena background (`#070512`) with radial neon red & cyan glows + scanline highlights.
+   - Header: neon-red "GAMING ARENA" eyebrow, bold white "Leaderboard" title, game-controller badge.
+   - Tabs: pill-shaped, active = solid neon red with red shadow glow.
+   - Top-3 podium: octagon-style rotated frames (#1 gold center+raised+trophy, #2 cyan left, #3 magenta right) each with neon shadow + numbered chip.
+   - Ranks 4-10: dark glass-card list with gold metric pills.
+   - VIP tier badges (Elite/Pro/regular) rendered inline.
+
+### Verified by testing agent (iteration_13)
+- Bug fix: 3/3 scenarios PASS, 0 console errors, 18s post-Done idle, no re-appearance.
+- Leaderboard renders, both tabs trigger correct `/api/leaderboard/{points|coins-spent}` calls.
+
+### Notes for future agents
+- Backend `/app/backend/.env` was missing on this container at start of iteration_13; tester re-created it (`MONGO_URL=mongodb://localhost:27017`, `DB_NAME=genc_vibez`). If you see uvicorn `KeyError: 'MONGO_URL'`, restore this file.
