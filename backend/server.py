@@ -14,6 +14,9 @@ import logging
 from pathlib import Path
 import random
 import json
+import asyncio
+
+import resend
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -40,9 +43,66 @@ DEFAULT_AVATAR_FILES = [
     "default-3-alien.png",
 ]
 
+# Email (Resend) — used for password-reset OTPs.
+RESEND_API_KEY = os.environ.get("RESEND_API_KEY", "")
+SENDER_EMAIL = os.environ.get("SENDER_EMAIL", "onboarding@resend.dev")
+if RESEND_API_KEY:
+    resend.api_key = RESEND_API_KEY
+
+
 def pick_random_default_avatar() -> str:
     """Return a server-relative URL for a random default avatar."""
     return f"/api/static/avatars/{random.choice(DEFAULT_AVATAR_FILES)}"
+
+
+async def send_reset_otp_email(recipient_email: str, otp: str) -> bool:
+    """Send the 6-digit reset OTP via Resend. Returns True on success.
+
+    Falls back to logging the OTP when no RESEND_API_KEY is configured so the
+    dev experience never breaks.
+    """
+    if not RESEND_API_KEY:
+        logger.warning("RESEND_API_KEY not set — skipping email send, OTP logged only.")
+        return False
+
+    html = f"""
+    <!doctype html>
+    <html>
+      <body style="margin:0;padding:0;background:#0b0820;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#fff;">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#0b0820;padding:32px 0;">
+          <tr><td align="center">
+            <table role="presentation" width="440" cellpadding="0" cellspacing="0" style="background:#15102e;border-radius:18px;padding:28px;">
+              <tr><td style="text-align:center;">
+                <div style="color:#ff2e5b;font-size:11px;letter-spacing:3px;font-weight:800;">GENC VIBEZ</div>
+                <h1 style="color:#fff;font-size:22px;margin:8px 0 4px;">Reset your password</h1>
+                <p style="color:#b9b3d6;font-size:14px;margin:0 0 18px;">Use this one-time code to finish resetting your password. It expires in 15 minutes.</p>
+                <div style="background:rgba(255,46,91,0.10);border:1px solid rgba(255,46,91,0.55);border-radius:14px;padding:18px 12px;margin:6px 0 18px;">
+                  <div style="font-size:36px;letter-spacing:10px;font-weight:900;color:#ffcd3d;">{otp}</div>
+                </div>
+                <p style="color:#7f7aa3;font-size:11px;line-height:1.5;margin:0;">If you didn't request this, you can safely ignore this email — your account stays secure.</p>
+              </td></tr>
+            </table>
+            <div style="color:#5a5078;font-size:11px;margin-top:14px;">Sent by GenC Vibez · do not reply</div>
+          </td></tr>
+        </table>
+      </body>
+    </html>
+    """
+    params = {
+        "from": SENDER_EMAIL,
+        "to": [recipient_email],
+        "subject": "Your GenC Vibez password reset code",
+        "html": html,
+    }
+    try:
+        # resend SDK is sync — run in a thread so we don't block the event loop
+        await asyncio.to_thread(resend.Emails.send, params)
+        return True
+    except Exception as e:
+        logger.error(f"Resend send failed: {e}")
+        return False
+
+
 
 # Create the main app
 app = FastAPI(title="GenC Vibez API")
@@ -752,23 +812,24 @@ async def login(user_data: UserLogin):
 @api_router.post("/auth/forgot-password")
 async def forgot_password(request: ForgotPasswordRequest):
     """
-    Request a password reset token. 
-    The token is logged to console (for testing) - in production, send via email.
+    Request a password reset token. Sends the 6-digit code via Resend email.
+    Falls back to logging the token to the console if email service is
+    unavailable, so the flow keeps working in dev.
     """
     email = request.email.lower().strip()
-    
+
     # Find user by email
     user = await db.users.find_one({"email": email})
-    
+
     # Always return success to prevent email enumeration attacks
     # But only generate token if user exists
     if user:
         # Generate 6-digit token
         token = ''.join([str(random.randint(0, 9)) for _ in range(6)])
-        
+
         # Store token with 15 minute expiry
         expiry = datetime.utcnow() + timedelta(minutes=15)
-        
+
         await db.password_reset_tokens.update_one(
             {"email": email},
             {
@@ -782,17 +843,16 @@ async def forgot_password(request: ForgotPasswordRequest):
             },
             upsert=True
         )
-        
-        # Log the token to console (MOCK - replace with email service in production)
+
+        # Send the reset code via email
+        emailed = await send_reset_otp_email(email, token)
+
+        # Always log to server console as a safety net (helpful in dev)
         logger.info("=" * 50)
-        logger.info(f"PASSWORD RESET TOKEN for {email}: {token}")
+        logger.info(f"PASSWORD RESET TOKEN for {email}: {token} (emailed={emailed})")
         logger.info(f"Token expires at: {expiry}")
         logger.info("=" * 50)
-        print(f"\n{'=' * 50}")
-        print(f"PASSWORD RESET TOKEN for {email}: {token}")
-        print(f"Token expires at: {expiry}")
-        print(f"{'=' * 50}\n")
-    
+
     return {"message": "If an account with that email exists, a reset token has been sent."}
 
 @api_router.post("/auth/reset-password")
@@ -3353,6 +3413,7 @@ async def initialize_rooms():
 from routes import tournaments as _tournaments_router  # noqa: E402, F401
 from routes import leaderboard as _leaderboard_router  # noqa: E402, F401
 from routes import vip as _vip_router  # noqa: E402, F401
+from routes import payments as _payments_router  # noqa: E402, F401
 
 # Include router
 app.include_router(api_router)

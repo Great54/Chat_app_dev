@@ -29,6 +29,15 @@ interface VipTierConfig {
   perks: string[];
 }
 
+interface PaymentPackage {
+  id: string;       // vip_pro | vip_elite
+  tier: 'pro' | 'elite';
+  name: string;
+  amount: number;   // 319 / 499
+  currency: string; // INR
+  days: number;
+}
+
 interface Props {
   visible: boolean;
   onClose: () => void;
@@ -76,21 +85,65 @@ const showConfirm = (title: string, message: string, onConfirm: () => void) => {
 export default function VipShopModal({ visible, onClose }: Props) {
   const { user, refreshUser } = useAuth();
   const [tiers, setTiers] = useState<VipTierConfig[]>([]);
+  const [packages, setPackages] = useState<PaymentPackage[]>([]);
   const [loading, setLoading] = useState(false);
+  const [payLoadingTier, setPayLoadingTier] = useState<string | null>(null);
   const [showVipProSettings, setShowVipProSettings] = useState(false);
 
   useEffect(() => {
-    if (visible) loadTiers();
+    if (visible) {
+      loadTiers();
+      loadPackages();
+    }
   }, [visible]);
 
   const loadTiers = async () => {
     try {
       const res = await api.get('/vip/tiers');
-      // Ensure tiers is always an array
       setTiers(Array.isArray(res.data) ? res.data : []);
-    } catch (e) {
-      console.error('Failed to load VIP tiers');
+    } catch {
       setTiers([]);
+    }
+  };
+
+  const loadPackages = async () => {
+    try {
+      const res = await api.get('/payments/vip/packages');
+      setPackages(Array.isArray(res.data) ? res.data : []);
+    } catch {
+      setPackages([]);
+    }
+  };
+
+  const packageForTier = (tierId: 'pro' | 'elite') =>
+    packages.find((p) => p.tier === tierId);
+
+  const handlePayWithCard = async (tier: VipTierConfig) => {
+    const pkg = packageForTier(tier.id);
+    if (!pkg) {
+      showAlert('Unavailable', 'Card payment is not configured yet — please try again later.');
+      return;
+    }
+    if (Platform.OS !== 'web' || typeof window === 'undefined') {
+      showAlert('Use the web app', 'Card checkout is only available in the web app for now.');
+      return;
+    }
+    setPayLoadingTier(tier.id);
+    try {
+      const res = await api.post('/payments/vip/checkout', {
+        packageId: pkg.id,
+        originUrl: window.location.origin,
+      });
+      const url: string | undefined = res.data?.url;
+      if (url) {
+        window.location.href = url;
+      } else {
+        showAlert('Error', 'Could not start checkout. Please try again.');
+        setPayLoadingTier(null);
+      }
+    } catch (e: any) {
+      showAlert('Payment error', e.response?.data?.detail || 'Could not start checkout.');
+      setPayLoadingTier(null);
     }
   };
 
