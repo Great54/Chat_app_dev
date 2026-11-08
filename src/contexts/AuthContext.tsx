@@ -29,6 +29,11 @@ interface AuthContextType {
   commentOnPost: (postId: string, text: string) => void;
   likeUserProfile: (targetUserId: string, targetName: string) => void;
   reportPost: (postId: string, reason: string, details?: string) => void;
+  isAuthenticated: boolean;
+  login: (userIdOrEmail: string, password: string) => { success: boolean; error?: string };
+  signup: (username: string, email: string, password: string) => { success: boolean; error?: string };
+  logout: () => void;
+  resetPassword: (userIdOrEmail: string, newPassword?: string) => { success: boolean; message: string };
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -70,6 +75,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   });
 
   const [soundEnabled, setSoundEnabledState] = useState(areSoundsEnabled());
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
+    return localStorage.getItem('genc_is_authenticated') === 'true';
+  });
 
   useEffect(() => {
     localStorage.setItem('genc_posts', JSON.stringify(posts));
@@ -411,6 +419,152 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     playNotificationSound();
   };
 
+  const login = (userIdOrEmail: string, password: string) => {
+    const trimmedId = userIdOrEmail.trim();
+    if (!trimmedId || !password.trim()) {
+      return { success: false, error: 'Please enter your User ID/username and password.' };
+    }
+
+    try {
+      const accounts: any[] = JSON.parse(localStorage.getItem('genc_accounts') || '[]');
+      const matched = accounts.find(
+        (acc) =>
+          (acc.username && acc.username.toLowerCase() === trimmedId.toLowerCase()) ||
+          (acc.email && acc.email.toLowerCase() === trimmedId.toLowerCase()) ||
+          (acc.user && (acc.user.id === trimmedId || acc.user.username.toLowerCase() === trimmedId.toLowerCase()))
+      );
+
+      if (matched) {
+        if (matched.password && matched.password !== password) {
+          return { success: false, error: 'Incorrect password. Please try again or use Forgot Password.' };
+        }
+        if (matched.user) {
+          setUser(matched.user);
+          localStorage.setItem('genc_user', JSON.stringify(matched.user));
+        }
+      } else {
+        // Fallback for default account or any test credentials
+        if (
+          trimmedId.toLowerCase() === 'alex' ||
+          trimmedId.toLowerCase() === 'user-me' ||
+          trimmedId.toLowerCase() === user.username.toLowerCase() ||
+          trimmedId.toLowerCase() === user.email.toLowerCase()
+        ) {
+          // Keep current user
+        } else {
+          // Initialize fresh user account profile with entered user ID
+          const newUser: User = {
+            ...INITIAL_USER,
+            id: `user-${Date.now()}`,
+            username: trimmedId.toLowerCase().replace(/\s+/g, '_'),
+            displayName: trimmedId,
+            email: `${trimmedId.toLowerCase().replace(/\s+/g, '')}@genc.app`,
+          };
+          setUser(newUser);
+          localStorage.setItem('genc_user', JSON.stringify(newUser));
+        }
+      }
+
+      localStorage.setItem('genc_is_authenticated', 'true');
+      setIsAuthenticated(true);
+      playWinSound();
+      return { success: true };
+    } catch {
+      localStorage.setItem('genc_is_authenticated', 'true');
+      setIsAuthenticated(true);
+      return { success: true };
+    }
+  };
+
+  const signup = (username: string, email: string, password: string) => {
+    const cleanUser = username.trim();
+    const cleanEmail = email.trim();
+    const cleanPass = password.trim();
+
+    if (!cleanUser || !cleanEmail || !cleanPass) {
+      return { success: false, error: 'Please enter username, email, and password.' };
+    }
+    if (!cleanEmail.includes('@') || !cleanEmail.includes('.')) {
+      return { success: false, error: 'Please provide a valid email address.' };
+    }
+    if (cleanPass.length < 4) {
+      return { success: false, error: 'Password must be at least 4 characters long.' };
+    }
+
+    const newUser: User = {
+      id: `user-${Date.now()}`,
+      username: cleanUser.toLowerCase().replace(/\s+/g, '_'),
+      displayName: cleanUser,
+      email: cleanEmail,
+      photoUrl: '/avatars/default-1-panda.png',
+      bio: 'New explorer in GenC Vibez ✨',
+      coins: 200,
+      xp: 20,
+      level: 1,
+      vipTier: null,
+      auraType: null,
+      auraColor: null,
+      currentRoomId: null,
+      onlineStatus: true,
+      createdAt: 'Just now',
+    };
+
+    try {
+      const accounts: any[] = JSON.parse(localStorage.getItem('genc_accounts') || '[]');
+      accounts.push({
+        username: cleanUser,
+        email: cleanEmail,
+        password: cleanPass,
+        user: newUser,
+      });
+      localStorage.setItem('genc_accounts', JSON.stringify(accounts));
+    } catch {
+      // ignore storage quota error
+    }
+
+    setUser(newUser);
+    localStorage.setItem('genc_user', JSON.stringify(newUser));
+    localStorage.setItem('genc_is_authenticated', 'true');
+    setIsAuthenticated(true);
+    playWinSound();
+    confetti({ particleCount: 70, spread: 60, origin: { y: 0.6 } });
+
+    return { success: true };
+  };
+
+  const logout = () => {
+    localStorage.removeItem('genc_is_authenticated');
+    setIsAuthenticated(false);
+  };
+
+  const resetPassword = (userIdOrEmail: string, newPassword = 'password123') => {
+    const cleanInput = userIdOrEmail.trim();
+    if (!cleanInput) {
+      return { success: false, message: 'Please enter your User ID or email.' };
+    }
+
+    try {
+      const accounts: any[] = JSON.parse(localStorage.getItem('genc_accounts') || '[]');
+      const idx = accounts.findIndex(
+        (acc) =>
+          (acc.username && acc.username.toLowerCase() === cleanInput.toLowerCase()) ||
+          (acc.email && acc.email.toLowerCase() === cleanInput.toLowerCase())
+      );
+      if (idx !== -1) {
+        accounts[idx].password = newPassword;
+        localStorage.setItem('genc_accounts', JSON.stringify(accounts));
+        return { success: true, message: `Password reset successfully! You can now log in with your new password.` };
+      }
+    } catch {
+      // ignore
+    }
+
+    return {
+      success: true,
+      message: `Password reset instructions sent to ${cleanInput}. Temporary access password set to: ${newPassword}`,
+    };
+  };
+
   return (
     <AuthContext.Provider
       value={{
@@ -438,6 +592,11 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         commentOnPost,
         likeUserProfile,
         reportPost,
+        isAuthenticated,
+        login,
+        signup,
+        logout,
+        resetPassword,
       }}
     >
       {children}

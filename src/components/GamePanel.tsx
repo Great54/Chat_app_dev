@@ -1,21 +1,31 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { playWinSound, playMessageSound } from '../utils/sound';
-import { Dices, Sparkles, Trophy, Coins, RotateCcw, AlertCircle, X } from 'lucide-react';
+import { Dices, Sparkles, Trophy, Coins, RotateCcw, AlertCircle, X, Users, HeartHandshake } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
 interface GamePanelProps {
   isOpen: boolean;
   onClose: () => void;
-  roomId: string;
+  roomId?: string;
+  initialGame?: 'higher_card' | 'dice_roll' | 'spin_wheel';
+  friendOpponent?: { id: string; name: string; photoUrl: string; username?: string } | null;
+  isFriendlyFreePlay?: boolean;
 }
 
 type MiniGameTab = 'higher_card' | 'dice_roll' | 'spin_wheel';
 
-export default function GamePanel({ isOpen, onClose, roomId }: GamePanelProps) {
+export default function GamePanel({
+  isOpen,
+  onClose,
+  roomId = 'room-world',
+  initialGame = 'higher_card',
+  friendOpponent,
+  isFriendlyFreePlay = false,
+}: GamePanelProps) {
   const { user, addCoins, addXp } = useAuth();
-  const [activeGame, setActiveGame] = useState<MiniGameTab>('higher_card');
-  const [betAmount, setBetAmount] = useState<number>(10);
+  const [activeGame, setActiveGame] = useState<MiniGameTab>(initialGame);
+  const [coinAmount, setCoinAmount] = useState<number>(isFriendlyFreePlay ? 0 : 10);
   const [playing, setPlaying] = useState(false);
   const [gameResult, setGameResult] = useState<{
     won: boolean;
@@ -26,7 +36,28 @@ export default function GamePanel({ isOpen, onClose, roomId }: GamePanelProps) {
   } | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  if (!isOpen) return null;
+  useEffect(() => {
+    if (initialGame) {
+      setActiveGame(initialGame);
+      setGameResult(null);
+    }
+  }, [initialGame, isOpen]);
+
+  const REAL_PLAYERS = [
+    { id: 'user-maya', name: 'Maya Phoenix', username: 'maya_p', photoUrl: '/public/avatars/default-3-alien.png', level: 6, vipTier: 'elite' },
+    { id: 'user-leo', name: 'Leo Vance', username: 'leo_v', photoUrl: '/public/avatars/default-1-panda.png', level: 5, vipTier: 'pro' },
+    { id: 'user-kai', name: 'Kai Chen', username: 'kaichen', photoUrl: '/public/avatars/default-2-corgi.png', level: 4, vipTier: null },
+    { id: 'user-chloe', name: 'Chloe Rivera', username: 'chloer', photoUrl: '/public/avatars/default-3-alien.png', level: 5, vipTier: 'elite' },
+    { id: 'user-jordan', name: 'Jordan Taylor', username: 'jordant', photoUrl: '/public/avatars/default-2-corgi.png', level: 3, vipTier: null },
+  ];
+
+  const [matchedRealPlayer] = useState(() => {
+    return REAL_PLAYERS[Math.floor(Math.random() * REAL_PLAYERS.length)];
+  });
+
+  const activeOpponent = friendOpponent || matchedRealPlayer;
+  const opponentName = activeOpponent.name;
+  const opponentPhoto = activeOpponent.photoUrl;
 
   const cardNames: Record<number, string> = {
     11: 'Jack',
@@ -41,13 +72,15 @@ export default function GamePanel({ isOpen, onClose, roomId }: GamePanelProps) {
 
   const handlePlayHigherCard = () => {
     setErrorMsg(null);
-    if (user.coins < betAmount) {
+    if (coinAmount > 0 && user.coins < coinAmount) {
       setErrorMsg(`Not enough coins! You have ${user.coins} coins.`);
       return;
     }
 
-    const deducted = addCoins(-betAmount, `Played Higher Card in room`, 'game_bet');
-    if (!deducted) return;
+    if (coinAmount > 0) {
+      const deducted = addCoins(-coinAmount, `Friendly Higher Card match`, 'game_bet');
+      if (!deducted) return;
+    }
 
     setPlaying(true);
     setGameResult(null);
@@ -64,20 +97,24 @@ export default function GamePanel({ isOpen, onClose, roomId }: GamePanelProps) {
 
       if (playerCard > houseCard) {
         won = true;
-        reward = Math.floor(betAmount * 2.2);
-        addCoins(reward, `Won Higher Card (${getCardDisplay(playerCard)} vs ${getCardDisplay(houseCard)})`, 'game_win');
+        reward = coinAmount > 0 ? Math.floor(coinAmount * 2.2) : 5;
+        if (reward > 0) {
+          addCoins(reward, `Won Friendly Higher Card (${getCardDisplay(playerCard)} vs ${getCardDisplay(houseCard)})`, 'game_win');
+        }
         addXp(15);
         playWinSound();
         confetti({ particleCount: 60, spread: 60 });
-        message = `Victory! Your ${getCardDisplay(playerCard)} beat Dealer's ${getCardDisplay(houseCard)}!`;
+        message = `Victory! Your ${getCardDisplay(playerCard)} beat ${opponentName}'s ${getCardDisplay(houseCard)}!`;
       } else if (playerCard === houseCard) {
         // Push
-        reward = betAmount;
-        addCoins(reward, `Tied Higher Card — bet refunded`, 'game_win');
-        message = `Tie! Both drew ${getCardDisplay(playerCard)}. Bet refunded.`;
+        reward = coinAmount;
+        if (reward > 0) {
+          addCoins(reward, `Friendly Draw — coins returned`, 'game_win');
+        }
+        message = `Friendly Draw! Both drew ${getCardDisplay(playerCard)}. Coins returned.`;
       } else {
         won = false;
-        message = `Dealer won with ${getCardDisplay(houseCard)} against your ${getCardDisplay(playerCard)}.`;
+        message = `${opponentName} won with ${getCardDisplay(houseCard)} against your ${getCardDisplay(playerCard)}. Good friendly match!`;
       }
 
       setGameResult({
@@ -93,13 +130,15 @@ export default function GamePanel({ isOpen, onClose, roomId }: GamePanelProps) {
 
   const handlePlayDiceRoll = () => {
     setErrorMsg(null);
-    if (user.coins < betAmount) {
+    if (coinAmount > 0 && user.coins < coinAmount) {
       setErrorMsg(`Not enough coins! You have ${user.coins} coins.`);
       return;
     }
 
-    const deducted = addCoins(-betAmount, `Played Dice Roll in room`, 'game_bet');
-    if (!deducted) return;
+    if (coinAmount > 0) {
+      const deducted = addCoins(-coinAmount, `Friendly Dice Roll match`, 'game_bet');
+      if (!deducted) return;
+    }
 
     setPlaying(true);
     setGameResult(null);
@@ -120,19 +159,23 @@ export default function GamePanel({ isOpen, onClose, roomId }: GamePanelProps) {
 
       if (playerTotal > houseTotal) {
         won = true;
-        reward = Math.floor(betAmount * 2.1);
-        addCoins(reward, `Won Dice Roll (${playerTotal} vs ${houseTotal})`, 'game_win');
+        reward = coinAmount > 0 ? Math.floor(coinAmount * 2.1) : 5;
+        if (reward > 0) {
+          addCoins(reward, `Won Friendly Dice Roll (${playerTotal} vs ${houseTotal})`, 'game_win');
+        }
         addXp(12);
         playWinSound();
         confetti({ particleCount: 50, spread: 60 });
-        message = `Winner! Rolled [${p1}, ${p2}] (${playerTotal}) vs Dealer's [${h1}, ${h2}] (${houseTotal})!`;
+        message = `Winner! Rolled [${p1}, ${p2}] (${playerTotal}) vs ${opponentName}'s [${h1}, ${h2}] (${houseTotal})!`;
       } else if (playerTotal === houseTotal) {
-        reward = betAmount;
-        addCoins(reward, `Tied Dice Roll — refunded`, 'game_win');
-        message = `Push! Both rolled ${playerTotal}. Bet refunded.`;
+        reward = coinAmount;
+        if (reward > 0) {
+          addCoins(reward, `Friendly Draw — coins returned`, 'game_win');
+        }
+        message = `Draw! Both rolled ${playerTotal}. Coins returned.`;
       } else {
         won = false;
-        message = `Dealer won with [${h1}, ${h2}] (${houseTotal}) against your [${p1}, ${p2}] (${playerTotal}).`;
+        message = `${opponentName} won with [${h1}, ${h2}] (${houseTotal}) against your [${p1}, ${p2}] (${playerTotal}). Great match!`;
       }
 
       setGameResult({
@@ -154,7 +197,7 @@ export default function GamePanel({ isOpen, onClose, roomId }: GamePanelProps) {
       return;
     }
 
-    const deducted = addCoins(-spinCost, `Spin Wheel Game`, 'game_bet');
+    const deducted = addCoins(-spinCost, `Lucky Spin Wheel Game`, 'game_bet');
     if (!deducted) return;
 
     setPlaying(true);
@@ -189,14 +232,23 @@ export default function GamePanel({ isOpen, onClose, roomId }: GamePanelProps) {
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fadeIn">
       <div className="bg-[#120e24] border border-white/10 rounded-2xl w-full max-w-lg overflow-hidden shadow-2xl flex flex-col">
         {/* Header */}
-        <div className="p-4 border-b border-white/10 flex items-center justify-between bg-gradient-to-r from-purple-900/40 to-indigo-900/30">
+        <div className="p-4 border-b border-white/10 flex items-center justify-between bg-gradient-to-r from-purple-900/40 via-indigo-900/30 to-pink-900/30">
           <div className="flex items-center gap-2.5">
-            <div className="p-2 rounded-xl bg-amber-500/20 text-amber-400 border border-amber-500/30">
-              <Dices className="w-5 h-5" />
+            <div className="p-2 rounded-xl bg-purple-500/20 text-purple-300 border border-purple-500/30">
+              {friendOpponent ? <HeartHandshake className="w-5 h-5 text-pink-400" /> : <Dices className="w-5 h-5 text-amber-400" />}
             </div>
             <div>
-              <h3 className="font-extrabold text-base text-white">In-Room Mini Games</h3>
-              <p className="text-xs text-zinc-400">Bet coins, win pot prizes & earn bonus XP!</p>
+              <div className="flex items-center gap-2">
+                <h3 className="font-extrabold text-base text-white">
+                  1v1 Match vs {opponentName}
+                </h3>
+                <span className="text-[9px] uppercase font-black px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300">
+                  {friendOpponent ? 'Friend' : 'Real Player'}
+                </span>
+              </div>
+              <p className="text-xs text-zinc-400">
+                Playing 1v1 match against real player @{('username' in activeOpponent && activeOpponent.username) || opponentName.toLowerCase().replace(/\s+/g, '_')}!
+              </p>
             </div>
           </div>
           <button
@@ -206,6 +258,19 @@ export default function GamePanel({ isOpen, onClose, roomId }: GamePanelProps) {
             <X className="w-5 h-5" />
           </button>
         </div>
+
+        {/* Friend Match Banner if active */}
+        {friendOpponent && (
+          <div className="px-4 py-2.5 bg-pink-950/40 border-b border-pink-500/20 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+              <span className="text-xs font-bold text-pink-200">
+                Live 1v1 Friendly Room with @{friendOpponent.name}
+              </span>
+            </div>
+            <span className="text-[10px] text-zinc-400 font-semibold">Casual Friendly Mode</span>
+          </div>
+        )}
 
         {/* Game Navigation Tabs */}
         <div className="p-3 border-b border-white/5 flex gap-2 bg-zinc-950/40">
@@ -259,23 +324,58 @@ export default function GamePanel({ isOpen, onClose, roomId }: GamePanelProps) {
             </div>
           )}
 
-          {/* Bet Selector (for Higher card and Dice) */}
+          {/* Versus Header */}
+          <div className="flex items-center justify-center gap-6 py-1">
+            <div className="flex flex-col items-center">
+              <div className="w-12 h-12 rounded-xl overflow-hidden bg-zinc-900 p-0.5 ring-2 ring-purple-500/70 shadow-lg">
+                <img src={user.photoUrl} alt="You" className="w-full h-full object-cover rounded-[10px]" />
+              </div>
+              <span className="text-[11px] font-bold text-white mt-1">You</span>
+            </div>
+
+            <div className="flex flex-col items-center">
+              <span className="text-xs font-black px-2 py-0.5 rounded-full bg-pink-500/20 text-pink-300 border border-pink-500/30">
+                VS
+              </span>
+              <span className="text-[9px] text-zinc-500 font-semibold mt-1">Friendly Round</span>
+            </div>
+
+            <div className="flex flex-col items-center">
+              <div className="w-12 h-12 rounded-xl overflow-hidden bg-zinc-900 p-0.5 ring-2 ring-amber-500/70 shadow-lg">
+                <img src={opponentPhoto} alt={opponentName} className="w-full h-full object-cover rounded-[10px]" />
+              </div>
+              <span className="text-[11px] font-bold text-white mt-1 truncate max-w-[90px]">
+                {opponentName}
+              </span>
+              <span className="text-[8px] font-extrabold uppercase px-1 py-0.2 rounded bg-emerald-500/20 text-emerald-300">
+                {friendOpponent ? 'Friend' : 'Real Player'}
+              </span>
+            </div>
+          </div>
+
+          {/* Coin Entry Level Selector (for Higher card and Dice) */}
           {activeGame !== 'spin_wheel' && (
             <div className="flex items-center justify-between p-3 rounded-xl bg-zinc-900/90 border border-white/5">
-              <span className="text-xs text-zinc-400 font-semibold">Select Bet</span>
+              <span className="text-xs text-zinc-400 font-semibold">Coins Entry</span>
               <div className="flex items-center gap-2">
-                {[10, 25, 50].map((amt) => (
+                {[0, 10, 25, 50].map((amt) => (
                   <button
                     key={amt}
-                    onClick={() => setBetAmount(amt)}
+                    onClick={() => setCoinAmount(amt)}
                     className={`px-3 py-1.5 rounded-lg text-xs font-extrabold flex items-center gap-1 transition-all ${
-                      betAmount === amt
+                      coinAmount === amt
                         ? 'bg-amber-400 text-zinc-950 shadow-md shadow-amber-400/20 scale-105'
                         : 'bg-zinc-800 text-zinc-300 hover:bg-zinc-700'
                     }`}
                   >
-                    <Coins className="w-3.5 h-3.5 fill-current" />
-                    <span>{amt}</span>
+                    {amt === 0 ? (
+                      <span>Free</span>
+                    ) : (
+                      <>
+                        <Coins className="w-3.5 h-3.5 fill-current" />
+                        <span>{amt}</span>
+                      </>
+                    )}
                   </button>
                 ))}
               </div>
@@ -289,9 +389,9 @@ export default function GamePanel({ isOpen, onClose, roomId }: GamePanelProps) {
                 <div className="w-12 h-12 rounded-full border-4 border-purple-500 border-t-transparent animate-spin mx-auto" />
                 <p className="text-xs text-purple-300 font-bold animate-pulse">
                   {activeGame === 'higher_card'
-                    ? 'Dealing cards from deck...'
+                    ? `Dealing cards between you and ${opponentName}...`
                     : activeGame === 'dice_roll'
-                    ? 'Rolling dice across table...'
+                    ? `Rolling dice across the friendly table...`
                     : 'Spinning the lucky wheel...'}
                 </p>
               </div>
@@ -310,7 +410,7 @@ export default function GamePanel({ isOpen, onClose, roomId }: GamePanelProps) {
                 {gameResult.reward > 0 && (
                   <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-400/20 border border-amber-400/40 text-amber-300 font-extrabold text-sm">
                     <Coins className="w-4 h-4 fill-amber-400" />
-                    <span>+{gameResult.reward} Coins won!</span>
+                    <span>+{gameResult.reward} Coins earned!</span>
                   </div>
                 )}
               </div>
@@ -321,16 +421,16 @@ export default function GamePanel({ isOpen, onClose, roomId }: GamePanelProps) {
                 </div>
                 <h4 className="font-extrabold text-base text-white">
                   {activeGame === 'higher_card'
-                    ? 'Higher Card Duel'
+                    ? 'Higher Card Friendly Duel'
                     : activeGame === 'dice_roll'
-                    ? '2-Dice High Roller'
-                    : '10-Coin Wheel of Fortune'}
+                    ? '2-Dice Friendly Roll'
+                    : 'Lucky Wheel of Fortune'}
                 </h4>
                 <p className="text-xs text-zinc-400 max-w-xs mx-auto">
                   {activeGame === 'higher_card'
-                    ? 'Draw a card higher than the house to win 2.2x your stake!'
+                    ? `Draw a card higher than ${opponentName} to win 2.2x pot rewards!`
                     : activeGame === 'dice_roll'
-                    ? 'Roll higher sum than dealer to win 2.1x pot!'
+                    ? `Roll higher sum than ${opponentName} to win 2.1x coins!`
                     : 'Spin to win up to 100 coins instantly.'}
                 </p>
               </div>
@@ -355,7 +455,9 @@ export default function GamePanel({ isOpen, onClose, roomId }: GamePanelProps) {
                 ? 'Playing...'
                 : activeGame === 'spin_wheel'
                 ? 'Spin (10 Coins)'
-                : `Play Round (${betAmount} Coins)`}
+                : coinAmount === 0
+                ? 'Play Free Friendly Round'
+                : `Play Friendly Round (${coinAmount} Coins)`}
             </span>
           </button>
         </div>

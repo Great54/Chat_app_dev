@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { X, Crown, Star, Diamond, Shield, Heart, UserPlus, Ban, Flag, Gift as GiftIcon, MessageSquare } from 'lucide-react';
+import { X, Crown, Star, Diamond, Shield, Heart, UserPlus, Ban, Flag, Gift as GiftIcon, MessageSquare, Camera } from 'lucide-react';
 import GiftModal from './GiftModal';
+import ChangeAvatarModal from './ChangeAvatarModal';
 
 interface ProfilePopupModalProps {
   isOpen: boolean;
@@ -21,6 +22,7 @@ interface ProfilePopupModalProps {
 export default function ProfilePopupModal({ isOpen, onClose, targetUser, onOpenDm }: ProfilePopupModalProps) {
   const { user, friends, addFriend, removeFriend, likeUserProfile } = useAuth();
   const [giftModalOpen, setGiftModalOpen] = useState(false);
+  const [avatarModalOpen, setAvatarModalOpen] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
   const [hasLiked, setHasLiked] = useState(false);
 
@@ -77,28 +79,28 @@ export default function ProfilePopupModal({ isOpen, onClose, targetUser, onOpenD
 
           {/* Profile Card Info */}
           <div className="px-5 pb-5 -mt-12 text-center flex flex-col items-center">
-            {/* Avatar with VIP frame */}
+            {/* Avatar with VIP frame - Square Avatar */}
             <div className="relative mb-3">
               <div
-                className={`w-24 h-24 rounded-2xl overflow-hidden p-1 shadow-xl ${
+                className={`w-24 h-24 rounded-xl overflow-hidden p-1 shadow-xl aspect-square ${
                   targetUser.vipTier === 'elite'
                     ? 'bg-gradient-to-tr from-pink-500 via-purple-500 to-cyan-400'
                     : targetUser.vipTier === 'pro'
                     ? 'bg-gradient-to-tr from-amber-400 via-amber-500 to-yellow-300'
-                    : 'bg-zinc-800 border-2 border-white/10'
+                    : 'bg-zinc-800 shadow-md'
                 }`}
               >
                 <img
-                  src={targetUser.photoUrl}
+                  src={isSelf ? user.photoUrl : targetUser.photoUrl}
                   alt={targetUser.displayName}
-                  className="w-full h-full object-cover rounded-xl bg-zinc-900"
+                  className="w-full h-full object-cover rounded-lg bg-zinc-900 aspect-square"
                 />
               </div>
 
               {/* VIP Icon Badge */}
               {targetUser.vipTier && (
                 <div
-                  className={`absolute -top-2 -right-2 p-1.5 rounded-xl border shadow-lg ${
+                  className={`absolute -top-2 -right-2 p-1.5 rounded-lg border shadow-lg ${
                     targetUser.vipTier === 'elite'
                       ? 'bg-pink-500 border-white/40 text-white'
                       : 'bg-amber-400 border-white/40 text-zinc-950'
@@ -113,9 +115,21 @@ export default function ProfilePopupModal({ isOpen, onClose, targetUser, onOpenD
               )}
             </div>
 
+            {/* Change Profile Picture Button when viewing self */}
+            {isSelf && (
+              <button
+                type="button"
+                onClick={() => setAvatarModalOpen(true)}
+                className="mb-2 text-xs font-bold text-teal-400 hover:text-teal-300 flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-teal-500/15 border border-teal-500/30 hover:bg-teal-500/25 transition-all shadow-xs"
+              >
+                <Camera className="w-3.5 h-3.5" />
+                <span>Change Profile Picture</span>
+              </button>
+            )}
+
             {/* Names & VIP Chip */}
             <div className="flex items-center gap-1.5 justify-center">
-              <h3 className="font-extrabold text-lg text-white">{targetUser.displayName}</h3>
+              <h3 className="font-extrabold text-lg text-white">{isSelf ? user.displayName : targetUser.displayName}</h3>
               {targetUser.vipTier && (
                 <span
                   className={`text-[9px] font-extrabold px-1.5 py-0.5 rounded uppercase ${
@@ -215,6 +229,11 @@ export default function ProfilePopupModal({ isOpen, onClose, targetUser, onOpenD
         isOpen={giftModalOpen}
         onClose={() => setGiftModalOpen(false)}
         targetUser={{ id: targetUser.id, name: targetUser.displayName, photoUrl: targetUser.photoUrl }}
+      />
+
+      <ChangeAvatarModal
+        isOpen={avatarModalOpen}
+        onClose={() => setAvatarModalOpen(false)}
       />
     </>
   );

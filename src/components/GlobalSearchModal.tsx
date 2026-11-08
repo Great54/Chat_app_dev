@@ -64,7 +64,7 @@ export default function GlobalSearchModal({
 
   const games = [
     { id: 'higher_card', name: 'Higher Card Duel', desc: 'Card game with 2.2x pot multiplier', icon: '🃏' },
-    { id: 'dice_roll', name: '2-Dice High Roller', desc: 'Roll dice higher than dealer', icon: '🎲' },
+    { id: 'dice_roll', name: '2-Dice High Roller', desc: 'Roll dice higher than opponent', icon: '🎲' },
     { id: 'spin_wheel', name: 'Wheel of Fortune', desc: '10-coin spin for up to 100 coins', icon: '🎡' },
     { id: 'tourney', name: 'Knockout Tournament', desc: '8-Player championship bracket', icon: '🏆' },
   ].filter((g) => !q || g.name.toLowerCase().includes(q) || g.desc.toLowerCase().includes(q));

@@ -74,24 +74,24 @@ export const INITIAL_USER: User = {
 
 export const INITIAL_MEMBERS: Record<string, RoomMember[]> = {
   'room-world': [
-    { userId: 'user-luna', username: 'luna_star', displayName: 'Luna Star', photoUrl: '/public/avatars/default-3-alien.png', level: 14, vipTier: 'elite', auraColor: '#FF6B9D', auraType: 'sparkle', x: 22, y: 35 },
-    { userId: 'user-kai', username: 'kai_nova', displayName: 'Kai Nova', photoUrl: '/public/avatars/default-2-corgi.png', level: 8, vipTier: 'pro', auraColor: '#FFD700', auraType: 'glow', x: 74, y: 28 },
-    { userId: 'user-zack', username: 'zack_blaze', displayName: 'Zack Blaze', photoUrl: '/public/avatars/default-1-panda.png', level: 6, x: 42, y: 65 },
-    { userId: 'user-sam', username: 'sammy_g', displayName: 'Sammy G', photoUrl: '/public/avatars/default-2-corgi.png', level: 4, x: 80, y: 72 },
-    { userId: 'user-maya', username: 'maya_p', displayName: 'Maya Phoenix', photoUrl: '/public/avatars/default-3-alien.png', level: 19, vipTier: 'elite', auraColor: '#22d3ee', auraType: 'frame', x: 18, y: 78 },
+    { userId: 'user-luna', username: 'luna_star', displayName: 'Luna Star', photoUrl: '/avatars/default-3-alien.png', level: 14, vipTier: 'elite', auraColor: '#FF6B9D', auraType: 'sparkle', x: 4, y: 68 },
+    { userId: 'user-kai', username: 'kai_nova', displayName: 'Kai Nova', photoUrl: '/avatars/default-2-corgi.png', level: 8, vipTier: 'pro', auraColor: '#FFD700', auraType: 'glow', x: 95, y: 45 },
+    { userId: 'user-zack', username: 'zack_blaze', displayName: 'Zack Blaze', photoUrl: '/avatars/default-1-panda.png', level: 6, x: 18, y: 92 },
+    { userId: 'user-sam', username: 'sammy_g', displayName: 'Sammy G', photoUrl: '/avatars/default-2-corgi.png', level: 4, x: 92, y: 91 },
+    { userId: 'user-maya', username: 'maya_p', displayName: 'Maya Phoenix', photoUrl: '/avatars/default-3-alien.png', level: 19, vipTier: 'elite', auraColor: '#22d3ee', auraType: 'frame', x: 50, y: 93 },
   ],
   'room-games': [
-    { userId: 'user-maya', username: 'maya_p', displayName: 'Maya Phoenix', photoUrl: '/public/avatars/default-3-alien.png', level: 19, vipTier: 'elite', auraColor: '#22d3ee', auraType: 'frame', x: 30, y: 40 },
-    { userId: 'user-kai', username: 'kai_nova', displayName: 'Kai Nova', photoUrl: '/public/avatars/default-2-corgi.png', level: 8, vipTier: 'pro', auraColor: '#FFD700', auraType: 'glow', x: 65, y: 32 },
-    { userId: 'user-zack', username: 'zack_blaze', displayName: 'Zack Blaze', photoUrl: '/public/avatars/default-1-panda.png', level: 6, x: 50, y: 70 },
+    { userId: 'user-maya', username: 'maya_p', displayName: 'Maya Phoenix', photoUrl: '/avatars/default-3-alien.png', level: 19, vipTier: 'elite', auraColor: '#22d3ee', auraType: 'frame', x: 5, y: 70 },
+    { userId: 'user-kai', username: 'kai_nova', displayName: 'Kai Nova', photoUrl: '/avatars/default-2-corgi.png', level: 8, vipTier: 'pro', auraColor: '#FFD700', auraType: 'glow', x: 94, y: 60 },
+    { userId: 'user-zack', username: 'zack_blaze', displayName: 'Zack Blaze', photoUrl: '/avatars/default-1-panda.png', level: 6, x: 50, y: 92 },
   ],
   'room-bts': [
-    { userId: 'user-luna', username: 'luna_star', displayName: 'Luna Star', photoUrl: '/public/avatars/default-3-alien.png', level: 14, vipTier: 'elite', auraColor: '#FF6B9D', auraType: 'sparkle', x: 35, y: 45 },
-    { userId: 'user-sam', username: 'sammy_g', displayName: 'Sammy G', photoUrl: '/public/avatars/default-2-corgi.png', level: 4, x: 70, y: 60 },
+    { userId: 'user-luna', username: 'luna_star', displayName: 'Luna Star', photoUrl: '/avatars/default-3-alien.png', level: 14, vipTier: 'elite', auraColor: '#FF6B9D', auraType: 'sparkle', x: 5, y: 50 },
+    { userId: 'user-sam', username: 'sammy_g', displayName: 'Sammy G', photoUrl: '/avatars/default-2-corgi.png', level: 4, x: 94, y: 88 },
   ],
   'room-hp': [
-    { userId: 'user-kai', username: 'kai_nova', displayName: 'Kai Nova', photoUrl: '/public/avatars/default-2-corgi.png', level: 8, vipTier: 'pro', auraColor: '#FFD700', auraType: 'glow', x: 45, y: 50 },
-    { userId: 'user-zack', username: 'zack_blaze', displayName: 'Zack Blaze', photoUrl: '/public/avatars/default-1-panda.png', level: 6, x: 25, y: 65 },
+    { userId: 'user-kai', username: 'kai_nova', displayName: 'Kai Nova', photoUrl: '/avatars/default-2-corgi.png', level: 8, vipTier: 'pro', auraColor: '#FFD700', auraType: 'glow', x: 6, y: 85 },
+    { userId: 'user-zack', username: 'zack_blaze', displayName: 'Zack Blaze', photoUrl: '/avatars/default-1-panda.png', level: 6, x: 93, y: 72 },
   ],
 };
 

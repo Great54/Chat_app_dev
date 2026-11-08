@@ -6,26 +6,22 @@ import { playMessageSound, playNotificationSound } from '../utils/sound';
 import {
   ArrowLeft,
   Users,
-  Dices,
-  Trophy,
   Send,
-  Sparkles,
-  Crown,
-  Diamond,
-  Star,
-  Info,
-  Gift,
-  Plus,
   Search,
   X,
   MessageSquare,
   FileText,
-  MousePointerClick,
+  Sun,
+  MapPin,
+  Heart,
+  Trees,
+  Camera,
+  UserPlus,
+  UserMinus,
 } from 'lucide-react';
-import GamePanel from '../components/GamePanel';
-import TournamentModal from '../components/TournamentModal';
 import ProfilePopupModal from '../components/ProfilePopupModal';
 import BoardPostsSection from '../components/BoardPostsSection';
+import ChangeAvatarModal from '../components/ChangeAvatarModal';
 
 interface RoomDetailViewProps {
   roomId: string;
@@ -33,16 +29,138 @@ interface RoomDetailViewProps {
   onOpenDm?: (user: { id: string; name: string }) => void;
 }
 
+// Scenic monument, park, and heart scenes
+const SCENIC_PARK_SCENES = [
+  {
+    id: 'monument',
+    name: 'Monument Park',
+    subtitle: 'Parisian Monument & Spring Lawns',
+    image: '/scenes/monument_park.jpg',
+    icon: MapPin,
+  },
+  {
+    id: 'heart',
+    name: 'Floral Heart Garden',
+    subtitle: 'Sunlit Botanical Heart Arch',
+    image: '/scenes/heart_garden.jpg',
+    icon: Heart,
+  },
+  {
+    id: 'park',
+    name: 'Sunlit City Park',
+    subtitle: 'Willow Pond & Stone Footbridge',
+    image: '/scenes/city_park.jpg',
+    icon: Trees,
+  },
+];
+
+// Extra members used to test transitions above 13 members
+const EXTRA_SIMULATED_MEMBERS: RoomMember[] = [
+  {
+    userId: 'bot-sim-1',
+    username: 'pixel_kate',
+    displayName: 'Pixel Kate',
+    photoUrl: '/avatars/female2.png',
+    level: 14,
+    vipTier: 'pro',
+    auraColor: '#f59e0b',
+    auraType: 'flame',
+    x: 14,
+    y: 38,
+  },
+  {
+    userId: 'bot-sim-2',
+    username: 'neon_ray',
+    displayName: 'Ray Cyber',
+    photoUrl: '/avatars/male3.png',
+    level: 19,
+    vipTier: 'elite',
+    auraColor: '#ec4899',
+    auraType: 'rainbow',
+    x: 84,
+    y: 34,
+  },
+  {
+    userId: 'bot-sim-3',
+    username: 'zoey_vibez',
+    displayName: 'Zoey V',
+    photoUrl: '/avatars/female1.png',
+    level: 8,
+    x: 28,
+    y: 82,
+  },
+  {
+    userId: 'bot-sim-4',
+    username: 'sam_beats',
+    displayName: 'Sam Beats',
+    photoUrl: '/avatars/male1.png',
+    level: 11,
+    x: 72,
+    y: 80,
+  },
+  {
+    userId: 'bot-sim-5',
+    username: 'corgi_fan',
+    displayName: 'Corgi Fan',
+    photoUrl: 'https://images.unsplash.com/photo-1543466835-00a7907e9de1?w=300&h=300&fit=crop&crop=faces',
+    level: 9,
+    x: 42,
+    y: 28,
+  },
+  {
+    userId: 'bot-sim-6',
+    username: 'maya_sky',
+    displayName: 'Maya Sky',
+    photoUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=300&h=300&fit=crop&crop=faces',
+    level: 16,
+    vipTier: 'pro',
+    auraColor: '#10b981',
+    auraType: 'sparkle',
+    x: 60,
+    y: 42,
+  },
+  {
+    userId: 'bot-sim-7',
+    username: 'lucas_art',
+    displayName: 'Lucas Art',
+    photoUrl: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=300&h=300&fit=crop&crop=faces',
+    level: 12,
+    x: 18,
+    y: 62,
+  },
+  {
+    userId: 'bot-sim-8',
+    username: 'tara_vibez',
+    displayName: 'Tara Star',
+    photoUrl: 'https://images.unsplash.com/photo-1517841905240-472988babdf9?w=300&h=300&fit=crop&crop=faces',
+    level: 15,
+    x: 88,
+    y: 88,
+  },
+];
+
 export default function RoomDetailView({ roomId, onBack, onOpenDm }: RoomDetailViewProps) {
-  const { user, addXp, addCoins, posts } = useAuth();
+  const { user, addXp, posts } = useAuth();
   const room = INITIAL_ROOMS.find((r) => r.id === roomId) || INITIAL_ROOMS[0];
 
   const [activeTab, setActiveTab] = useState<'chat' | 'posts'>('chat');
   const roomPostsCount = posts.filter((p) => p.roomId === roomId).length;
+  const [changeAvatarModalOpen, setChangeAvatarModalOpen] = useState(false);
+  const [extraCrowd, setExtraCrowd] = useState(false);
 
+  // Scenic scenery selection (picks monument/park/heart based on room or random)
+  const [selectedSceneIndex, setSelectedSceneIndex] = useState(() => {
+    if (roomId === 'room-world') return 0; // Monument
+    if (roomId === 'room-bts') return 1; // Heart Garden
+    if (roomId === 'room-games') return 2; // City Park
+    return Math.floor(Math.random() * SCENIC_PARK_SCENES.length);
+  });
+
+  const currentDayScene = SCENIC_PARK_SCENES[selectedSceneIndex];
+
+  // Distribute initial avatars across wide boundaries: left-most (3%), right-most (95%), bottom-most (92%)
   const [members, setMembers] = useState<RoomMember[]>(() => {
     const list = INITIAL_MEMBERS[roomId] || INITIAL_MEMBERS['room-world'];
-    // Insert user into members canvas
     return [
       {
         userId: user.id,
@@ -53,13 +171,33 @@ export default function RoomDetailView({ roomId, onBack, onOpenDm }: RoomDetailV
         vipTier: user.vipTier,
         auraColor: user.auraColor,
         auraType: user.auraType,
-        x: 50,
-        y: 50,
+        x: 48,
+        y: 68,
         isSelf: true,
       },
       ...list,
     ];
   });
+
+  // Keep self member's photoUrl, displayName, and vipTier updated when user updates their profile
+  useEffect(() => {
+    setMembers((prev) =>
+      prev.map((m) =>
+        m.isSelf
+          ? {
+              ...m,
+              photoUrl: user.photoUrl,
+              displayName: user.displayName,
+              vipTier: user.vipTier,
+            }
+          : m
+      )
+    );
+  }, [user.photoUrl, user.displayName, user.vipTier]);
+
+  // Dynamic effective members list and < 13 sizing rule
+  const displayMembers = extraCrowd ? [...members, ...EXTRA_SIMULATED_MEMBERS] : members;
+  const isUnder13 = displayMembers.length < 13;
 
   const [messages, setMessages] = useState<Message[]>(() => {
     return INITIAL_MESSAGES[roomId] || INITIAL_MESSAGES['room-world'];
@@ -69,11 +207,7 @@ export default function RoomDetailView({ roomId, onBack, onOpenDm }: RoomDetailV
   const [chatSearchOpen, setChatSearchOpen] = useState(false);
   const [chatSearchQuery, setChatSearchQuery] = useState('');
   const [selectedProfile, setSelectedProfile] = useState<any>(null);
-  const [gamePanelOpen, setGamePanelOpen] = useState(false);
-  const [tournamentOpen, setTournamentOpen] = useState(false);
   const [targetBeacon, setTargetBeacon] = useState<{ x: number; y: number } | null>(null);
-  const [isMoving, setIsMoving] = useState(false);
-  const [dragging, setDragging] = useState(false);
   const canvasRef = useRef<HTMLDivElement>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
 
@@ -86,24 +220,22 @@ export default function RoomDetailView({ roomId, onBack, onOpenDm }: RoomDetailV
     );
   });
 
-  // Auto-scroll chat on new message
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  // Handle canvas click to move self avatar slowly and smoothly
+  // Handle canvas click to move self avatar freely across the full space (2% to 98% X, 6% to 95% Y)
   const handleCanvasClick = (e: React.MouseEvent<HTMLDivElement>) => {
     if (!canvasRef.current) return;
     const rect = canvasRef.current.getBoundingClientRect();
-    const x = Math.min(90, Math.max(10, ((e.clientX - rect.left) / rect.width) * 100));
-    const y = Math.min(85, Math.max(15, ((e.clientY - rect.top) / rect.height) * 100));
+    // Allow avatars to roam completely to right most (98%), left most (2%), and bottom most (95%)
+    const x = Math.min(98, Math.max(2, ((e.clientX - rect.left) / rect.width) * 100));
+    const y = Math.min(95, Math.max(6, ((e.clientY - rect.top) / rect.height) * 100));
 
-    // Set waypoint beacon and moving status
+    // Show gentle beacon (no borders)
     setTargetBeacon({ x, y });
-    setIsMoving(true);
     setTimeout(() => {
       setTargetBeacon(null);
-      setIsMoving(false);
     }, 1500);
 
     setMembers((prev) =>
@@ -131,9 +263,9 @@ export default function RoomDetailView({ roomId, onBack, onOpenDm }: RoomDetailV
 
     setMessages((prev) => [...prev, newMsg]);
     playMessageSound();
-    addXp(1); // 1 XP per message
+    addXp(1);
 
-    // Random response after 1.5s
+    // Friendly reply from a room member
     setTimeout(() => {
       const otherMembers = members.filter((m) => !m.isSelf);
       if (otherMembers.length === 0) return;
@@ -141,10 +273,10 @@ export default function RoomDetailView({ roomId, onBack, onOpenDm }: RoomDetailV
 
       const replies = [
         `Totally agree with you @${user.displayName}! 🙌`,
-        `Nice vibe! Who wants to play Higher Card next?`,
-        `Welcome to ${room.roomName}! ✨`,
-        `Let's go for the tournament pot! 🏆`,
-        `Big energy today! Loving these vibez.`,
+        `Loving the park vibez here in ${room.roomName}! ☀️`,
+        `Awesome energy in the room! ✨`,
+        `Welcome to the lounge @${user.displayName}!`,
+        `Great seeing you here! 🌟`,
       ];
       const replyText = replies[Math.floor(Math.random() * replies.length)];
 
@@ -164,70 +296,73 @@ export default function RoomDetailView({ roomId, onBack, onOpenDm }: RoomDetailV
   };
 
   return (
-    <div className="flex flex-col space-y-3 pb-24 animate-room-enter">
-      {/* Header Bar - Compact, Short, Dynamic display without unwanted spacing */}
-      <div className="p-2 sm:p-2.5 bg-zinc-900/60 rounded-xl flex items-center justify-between gap-2 shadow-sm">
-        <div className="flex items-center gap-2 min-w-0">
+    <div className="flex flex-col space-y-4 pb-24 animate-fadeIn">
+      {/* Top Header Bar - Smooth Light Themed, No Hard Borders */}
+      <div className="p-3 bg-white/95 rounded-3xl flex items-center justify-between gap-2 shadow-sm backdrop-blur-md">
+        <div className="flex items-center gap-3 min-w-0">
           <button
             onClick={onBack}
-            className="p-1.5 rounded-lg bg-zinc-800 text-zinc-300 hover:text-white transition-colors shrink-0"
+            className="p-2.5 rounded-2xl bg-slate-100 text-slate-700 hover:bg-slate-200 transition-colors shrink-0 shadow-xs"
             title="Return to Rooms"
           >
             <ArrowLeft className="w-4 h-4" />
           </button>
           <div className="min-w-0">
-            <div className="flex items-center gap-1.5">
-              <h2 className="font-extrabold text-sm sm:text-base text-white truncate">{room.roomName}</h2>
-              <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-purple-500/20 text-purple-300 shrink-0">
+            <div className="flex items-center gap-2">
+              <h2 className="font-black text-base sm:text-lg text-slate-900 truncate tracking-tight">
+                {room.roomName}
+              </h2>
+              <span className="text-[10px] font-black px-2.5 py-0.5 rounded-full bg-purple-100 text-purple-700 shrink-0">
                 {room.roomCategory}
               </span>
             </div>
-            <div className="flex items-center gap-1.5 text-[11px] text-zinc-400">
-              <span className="flex items-center gap-1 text-[10px]">
-                <Users className="w-3 h-3 text-purple-400" />
-                {members.length}/{room.maxCapacity}
+            <div className="flex items-center gap-2 text-xs text-slate-500">
+              <span className="flex items-center gap-1 font-bold text-slate-700">
+                <Users className="w-3.5 h-3.5 text-purple-600" />
+                {displayMembers.length}/{room.maxCapacity} members
               </span>
-              <span>•</span>
-              <span className="text-zinc-500 text-[10px] truncate">Tap canvas to move</span>
+              <span className="text-slate-300">•</span>
+              <span className="text-slate-500 font-semibold truncate flex items-center gap-1">
+                <Sun className="w-3.5 h-3.5 text-amber-500" />
+                {currentDayScene.name}
+              </span>
+              <span className="text-slate-300">•</span>
+              <span className={`text-[10px] px-2 py-0.5 rounded-full font-black ${
+                isUnder13 ? 'bg-amber-100 text-amber-800' : 'bg-slate-100 text-slate-700'
+              }`}>
+                {isUnder13 ? '⭐ Big Avatars (<13)' : 'Standard (13+)'}
+              </span>
             </div>
           </div>
         </div>
 
-        {/* Action Controls */}
-        <div className="flex items-center gap-1.5 shrink-0">
+        <div className="flex items-center gap-2">
           <button
-            onClick={() => setGamePanelOpen(true)}
-            className="px-2.5 py-1 rounded-lg bg-purple-600/30 text-purple-200 text-[11px] font-bold hover:bg-purple-600/50 transition-colors flex items-center gap-1 shadow-sm"
+            onClick={() => setChangeAvatarModalOpen(true)}
+            className="px-3 py-1.5 rounded-2xl bg-teal-500/10 text-teal-800 hover:bg-teal-500/20 text-xs font-bold transition-all flex items-center gap-1.5 shadow-xs shrink-0"
+            title="Change your profile picture"
           >
-            <Dices className="w-3.5 h-3.5 text-purple-300" />
-            <span>Games</span>
-          </button>
-
-          <button
-            onClick={() => setTournamentOpen(true)}
-            className="px-2.5 py-1 rounded-lg bg-amber-500 text-zinc-950 text-[11px] font-black hover:bg-amber-400 transition-colors flex items-center gap-1 shadow-sm"
-          >
-            <Trophy className="w-3.5 h-3.5 fill-current" />
-            <span>Tourney</span>
+            <Camera className="w-3.5 h-3.5 text-teal-700" />
+            <span className="hidden sm:inline">Change Photo</span>
           </button>
         </div>
       </div>
 
-      {/* Upper Area: Big Chat & Board Posts (Dynamic Display Without Borders) */}
-      <div className="flex flex-col rounded-2xl overflow-hidden bg-gradient-to-b from-[#110d22]/90 to-[#0a0718]/95 shadow-xl">
-        {/* Navigation Tabs for Chat vs Posts */}
-        <div className="p-2 sm:p-2.5 bg-black/40 backdrop-blur-md flex items-center justify-between">
+      {/* SECTION 1: ROOM CHAT & POSTS (CREAM THEMED BACKGROUND, NO BORDERS) */}
+      <div className="flex flex-col rounded-3xl overflow-hidden bg-[#FAF6EE] shadow-sm">
+        {/* Chat / Posts Tabs Header - Warm Cream Tone */}
+        <div className="p-2 sm:p-2.5 bg-[#F3ECE0] flex items-center justify-between">
           <div className="flex items-center gap-2">
             <button
               onClick={() => setActiveTab('chat')}
-              className={`px-3.5 py-1.5 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 ${
+              className={`px-4 py-2 rounded-2xl text-xs font-black transition-all flex items-center gap-1.5 ${
                 activeTab === 'chat'
-                  ? 'bg-purple-600 text-white shadow-md shadow-purple-600/40'
-                  : 'text-zinc-400 hover:text-zinc-200 hover:bg-white/5'
+                  ? 'bg-purple-600 text-white shadow-sm shadow-purple-600/30'
+                  : 'text-stone-700 hover:text-stone-900 hover:bg-white/50'
               }`}
             >
               <MessageSquare className="w-4 h-4" />
-              <span>💬 Room Chat</span>
+              <span>Room Chat</span>
               <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-purple-500/20 text-purple-200 font-bold">
                 msg
               </span>
@@ -235,60 +370,62 @@ export default function RoomDetailView({ roomId, onBack, onOpenDm }: RoomDetailV
 
             <button
               onClick={() => setActiveTab('posts')}
-              className={`px-3.5 py-1.5 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 ${
+              className={`px-4 py-2 rounded-2xl text-xs font-black transition-all flex items-center gap-1.5 ${
                 activeTab === 'posts'
-                  ? 'bg-pink-600 text-white shadow-md shadow-pink-600/40'
-                  : 'text-zinc-400 hover:text-zinc-200 hover:bg-white/5'
+                  ? 'bg-pink-600 text-white shadow-sm shadow-pink-600/30'
+                  : 'text-stone-700 hover:text-stone-900 hover:bg-white/50'
               }`}
             >
-              <FileText className="w-4 h-4 text-pink-300" />
-              <span>📌 Room Posts</span>
-              <span className="text-[10px] px-2 py-0.2 rounded-full bg-pink-500/30 text-white font-black">
+              <FileText className="w-4 h-4" />
+              <span>Room Posts</span>
+              <span className="text-[10px] px-2 py-0.2 rounded-full bg-pink-100 text-pink-700 font-black">
                 {roomPostsCount}
               </span>
             </button>
           </div>
 
           {activeTab === 'chat' && (
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 pr-1">
               <button
                 onClick={() => {
                   setChatSearchOpen(!chatSearchOpen);
                   if (chatSearchOpen) setChatSearchQuery('');
                 }}
-                className={`p-1.5 rounded-lg transition-colors ${
+                className={`p-2 rounded-xl transition-all shadow-xs ${
                   chatSearchOpen || chatSearchQuery
-                    ? 'bg-purple-600/30 text-purple-300'
-                    : 'bg-white/5 text-zinc-400 hover:text-white'
+                    ? 'bg-purple-100 text-purple-700'
+                    : 'bg-white text-stone-600 hover:text-stone-900'
                 }`}
-                title="Search messages in this room"
+                title="Search messages"
               >
                 <Search className="w-3.5 h-3.5" />
               </button>
-              <span className="text-[11px] text-zinc-400 hidden sm:inline">{filteredMessages.length} msgs</span>
+              <span className="text-[11px] text-stone-500 hidden sm:inline font-semibold">
+                {filteredMessages.length} msgs
+              </span>
             </div>
           )}
         </div>
 
-        {/* Tab 1: Room Chat View (Generous Big Height) */}
+        {/* Tab 1: Room Chat View - Warm Cream Background */}
         {activeTab === 'chat' && (
-          <div className="flex flex-col h-[480px] sm:h-[540px]">
-            {/* In-Room Chat Search Bar */}
+          <div className="flex flex-col h-[480px] sm:h-[540px] bg-[#FAF6EE]">
+            {/* In-Room Chat Search */}
             {chatSearchOpen && (
-              <div className="p-2 bg-zinc-950/90 flex items-center gap-2 animate-fadeIn">
-                <Search className="w-3.5 h-3.5 text-zinc-400 shrink-0 ml-1" />
+              <div className="p-3 bg-white flex items-center gap-2 animate-fadeIn shadow-xs">
+                <Search className="w-3.5 h-3.5 text-stone-400 shrink-0 ml-1" />
                 <input
                   type="text"
                   placeholder="Search messages by sender or keyword..."
                   value={chatSearchQuery}
                   onChange={(e) => setChatSearchQuery(e.target.value)}
-                  className="flex-1 bg-transparent text-xs text-white placeholder:text-zinc-500 focus:outline-none"
+                  className="flex-1 bg-transparent text-xs text-stone-900 placeholder:text-stone-400 focus:outline-none"
                   autoFocus
                 />
                 {chatSearchQuery && (
                   <button
                     onClick={() => setChatSearchQuery('')}
-                    className="p-1 text-zinc-400 hover:text-white"
+                    className="p-1 text-stone-400 hover:text-stone-700"
                   >
                     <X className="w-3.5 h-3.5" />
                   </button>
@@ -296,10 +433,10 @@ export default function RoomDetailView({ roomId, onBack, onOpenDm }: RoomDetailV
               </div>
             )}
 
-            {/* Messages Scroll Area */}
-            <div className="flex-1 overflow-y-auto p-3 space-y-3">
+            {/* Messages Scroll Area - Cream Colored Background */}
+            <div className="flex-1 overflow-y-auto p-4 space-y-3.5 bg-[#FAF6EE]">
               {filteredMessages.length === 0 ? (
-                <div className="py-8 text-center text-xs text-zinc-500">
+                <div className="py-12 text-center text-xs text-stone-400">
                   No messages match "{chatSearchQuery}"
                 </div>
               ) : (
@@ -313,25 +450,25 @@ export default function RoomDetailView({ roomId, onBack, onOpenDm }: RoomDetailV
                       <img
                         src={msg.senderPhoto}
                         alt={msg.senderName}
-                        className="w-8 h-8 rounded-xl object-cover bg-zinc-800 shrink-0"
+                        className="w-8 h-8 rounded-lg aspect-square object-cover bg-stone-200 shrink-0 shadow-xs"
                       />
                       <div className={`max-w-[78%] ${isMine ? 'text-right' : ''}`}>
                         <div className="flex items-center gap-1.5 mb-0.5">
-                          <span className={`text-[11px] font-bold ${isMine ? 'text-purple-300' : 'text-zinc-300'}`}>
+                          <span className={`text-[11px] font-black ${isMine ? 'text-purple-700' : 'text-stone-800'}`}>
                             {msg.senderName}
                           </span>
                           {msg.senderVipTier && (
-                            <span className="text-[9px] uppercase font-bold text-amber-400">
+                            <span className="text-[9px] uppercase font-bold text-amber-600 bg-amber-50 px-1.5 py-0.2 rounded-full">
                               {msg.senderVipTier}
                             </span>
                           )}
-                          <span className="text-[9px] text-zinc-500">{msg.createdAt}</span>
+                          <span className="text-[9px] text-stone-400">{msg.createdAt}</span>
                         </div>
                         <div
-                          className={`p-2.5 rounded-2xl text-xs leading-relaxed ${
+                          className={`p-3 rounded-2xl text-xs sm:text-[13px] leading-relaxed shadow-xs ${
                             isMine
-                              ? 'bg-purple-600 text-white rounded-tr-none shadow-md'
-                              : 'bg-zinc-900/90 text-zinc-200 rounded-tl-none'
+                              ? 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white rounded-tr-none font-medium'
+                              : 'bg-white text-stone-800 rounded-tl-none font-normal'
                           }`}
                         >
                           {msg.messageText}
@@ -344,20 +481,23 @@ export default function RoomDetailView({ roomId, onBack, onOpenDm }: RoomDetailV
               <div ref={chatEndRef} />
             </div>
 
-            {/* Chat Input Bar - Borderless Dynamic Display */}
-            <form onSubmit={handleSendMessage} className="p-2.5 sm:p-3 bg-black/40 backdrop-blur-md flex items-center gap-2">
+            {/* Chat Input Bar - Warm Cream Tone, Borderless */}
+            <form
+              onSubmit={handleSendMessage}
+              className="p-3 bg-[#F3ECE0] flex items-center gap-2 shadow-xs"
+            >
               <input
                 type="text"
                 placeholder={`Send message to #${room.roomName}...`}
                 value={inputText}
                 onChange={(e) => setInputText(e.target.value)}
-                className="flex-1 px-3.5 py-2.5 rounded-xl bg-white/[0.06] text-white text-xs placeholder:text-zinc-500 focus:outline-none focus:ring-1 focus:ring-purple-400/70 transition-colors"
+                className="flex-1 px-4 py-2.5 rounded-2xl bg-white text-stone-900 text-xs sm:text-sm placeholder:text-stone-400 focus:outline-none transition-colors shadow-xs"
               />
               <button
                 type="submit"
                 disabled={!inputText.trim()}
-                className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-purple-600 to-pink-600 text-white hover:brightness-110 active:scale-95 transition-all disabled:opacity-40 disabled:hover:brightness-100 flex items-center gap-1.5 font-bold text-xs"
-                title="Send"
+                className="px-4 py-2.5 rounded-2xl bg-gradient-to-r from-purple-600 to-indigo-600 text-white hover:brightness-105 active:scale-95 transition-all disabled:opacity-40 disabled:hover:brightness-100 flex items-center gap-1.5 font-bold text-xs shadow-sm shadow-purple-600/30"
+                title="Send message"
               >
                 <Send className="w-3.5 h-3.5" />
                 <span className="hidden sm:inline">Send</span>
@@ -368,50 +508,112 @@ export default function RoomDetailView({ roomId, onBack, onOpenDm }: RoomDetailV
 
         {/* Tab 2: Room Board / Posts View */}
         {activeTab === 'posts' && (
-          <div className="p-3 sm:p-4 min-h-[480px] max-h-[640px] overflow-y-auto">
+          <div className="p-3 sm:p-4 min-h-[480px] max-h-[640px] overflow-y-auto bg-[#FAF6EE]">
             <BoardPostsSection roomId={roomId} roomName={room.roomName} />
           </div>
         )}
       </div>
 
-      {/* Bottom Area: Big Interactive Avatar Canvas (Dynamic Display Without Borders) */}
-      <div className="rounded-2xl overflow-hidden bg-gradient-to-b from-[#0b081a] to-[#04020c] shadow-xl flex flex-col">
-        {/* Canvas Header */}
-        <div className="px-3 py-2 sm:px-4 sm:py-2.5 bg-black/40 backdrop-blur-md flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <span className="text-xs sm:text-sm font-black text-white flex items-center gap-2">
-              <span>🎭 Room Avatars & Mascots</span>
-              <span className="text-[10px] px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-300 font-bold">
-                {members.length}/{room.maxCapacity} active
-              </span>
+      {/* SECTION 2: AVATAR SECTION (SMOOTH LIGHT THEMED, NO BORDERS, BIGGER PRO/ELITE AVATARS) */}
+      <div className="rounded-3xl overflow-hidden bg-white shadow-sm flex flex-col">
+        {/* Avatar Section Header - Smooth, Light Themed, No Borders */}
+        <div className="px-4 py-3 bg-slate-50/80 flex flex-wrap items-center justify-between gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs sm:text-sm font-black text-slate-900 flex items-center gap-2">
+              <Sun className="w-4 h-4 text-amber-500" />
+              <span>Park Avatars</span>
+            </span>
+            <span className="text-[10px] px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-bold">
+              {displayMembers.length}/{room.maxCapacity} live
+            </span>
+            <span
+              className={`text-[10px] px-2.5 py-0.5 rounded-full font-black ${
+                isUnder13 ? 'bg-amber-100 text-amber-900' : 'bg-slate-200 text-slate-700'
+              }`}
+            >
+              {isUnder13 ? '⭐ Big Avatars (<13 in room)' : 'Standard Size (13+ in room)'}
             </span>
           </div>
-          <div className="flex items-center gap-1.5 text-[11px] text-zinc-400">
-            <MousePointerClick className="w-3.5 h-3.5 text-purple-400" />
-            <span className="hidden sm:inline">Tap canvas to move your mascot gently</span>
-            <span className="sm:hidden">Tap to move mascot</span>
+
+          <div className="flex flex-wrap items-center gap-2">
+            {/* Quick Change Avatar Button */}
+            <button
+              onClick={() => setChangeAvatarModalOpen(true)}
+              className="px-3 py-1 rounded-xl text-[11px] font-bold bg-teal-500/10 text-teal-800 hover:bg-teal-500/20 transition-all flex items-center gap-1.5 shadow-xs"
+              title="Change your avatar or upload photo"
+            >
+              <Camera className="w-3.5 h-3.5 text-teal-700" />
+              <span>Change Photo</span>
+            </button>
+
+            {/* Test Crowd Size Toggle (<13 vs 14+ members) */}
+            <button
+              onClick={() => setExtraCrowd(!extraCrowd)}
+              className={`px-3 py-1 rounded-xl text-[11px] font-bold transition-all flex items-center gap-1.5 shadow-xs ${
+                extraCrowd
+                  ? 'bg-purple-600 text-white shadow-sm'
+                  : 'bg-purple-100 text-purple-700 hover:bg-purple-200'
+              }`}
+              title="Toggle to test avatar size transition when crossing 13 members"
+            >
+              {extraCrowd ? <UserMinus className="w-3.5 h-3.5" /> : <UserPlus className="w-3.5 h-3.5" />}
+              <span>{extraCrowd ? 'Reset to <13' : 'Test 14+ Members'}</span>
+            </button>
+
+            {/* Scene Switcher: Monument, Heart Garden, City Park (Borderless) */}
+            <div className="flex items-center gap-1 bg-slate-100/90 p-1 rounded-2xl shadow-xs">
+              {SCENIC_PARK_SCENES.map((scene, idx) => {
+                const Icon = scene.icon;
+                const isSelected = selectedSceneIndex === idx;
+                return (
+                  <button
+                    key={scene.id}
+                    onClick={() => setSelectedSceneIndex(idx)}
+                    className={`px-3 py-1 rounded-xl text-[11px] font-bold transition-all flex items-center gap-1 ${
+                      isSelected
+                        ? 'bg-white text-purple-700 shadow-xs'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                    title={scene.subtitle}
+                  >
+                    <Icon className="w-3.5 h-3.5" />
+                    <span className="hidden sm:inline">{scene.name}</span>
+                  </button>
+                );
+              })}
+            </div>
           </div>
         </div>
 
-        {/* Big Canvas Surface */}
+        {/* Spacious Canvas Surface with Real Monument / Park / Heart Photo Background */}
         <div
           ref={canvasRef}
           onClick={handleCanvasClick}
-          className="h-[420px] sm:h-[480px] lg:h-[540px] w-full relative overflow-hidden cursor-crosshair select-none"
+          className="h-[480px] sm:h-[540px] lg:h-[600px] w-full relative overflow-hidden select-none cursor-crosshair"
           style={{
-            backgroundImage: `radial-gradient(circle at 50% 50%, rgba(139, 92, 246, 0.12) 0%, rgba(12, 10, 24, 0.98) 100%)`,
+            backgroundImage: `url(${currentDayScene.image})`,
+            backgroundSize: 'cover',
+            backgroundPosition: 'center',
           }}
         >
-          {/* Subtle grid background */}
-          <div
-            className="absolute inset-0 opacity-10 pointer-events-none"
-            style={{
-              backgroundImage: 'radial-gradient(#8b5cf6 1px, transparent 1px)',
-              backgroundSize: '24px 24px',
-            }}
-          />
+          {/* Subtle soft ambient overlay */}
+          <div className="absolute inset-0 bg-white/10 pointer-events-none backdrop-blur-[0.5px]" />
+          <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-black/15 pointer-events-none" />
 
-          {/* Target Waypoint Beacon when user taps canvas */}
+          {/* Location label pill - Borderless */}
+          <div className="absolute bottom-3 left-3 pointer-events-none px-3.5 py-2 rounded-2xl bg-white/95 backdrop-blur-md shadow-md flex items-center gap-2 z-10">
+            <currentDayScene.icon className="w-4 h-4 text-purple-600" />
+            <div className="text-left">
+              <span className="text-[11px] font-black text-slate-900 block leading-tight">
+                {currentDayScene.name}
+              </span>
+              <span className="text-[9px] text-slate-500 font-semibold block leading-tight">
+                {currentDayScene.subtitle}
+              </span>
+            </div>
+          </div>
+
+          {/* Waypoint Beacon when user taps canvas to walk (No Borders) */}
           {targetBeacon && (
             <div
               style={{
@@ -421,21 +623,48 @@ export default function RoomDetailView({ roomId, onBack, onOpenDm }: RoomDetailV
               }}
               className="absolute pointer-events-none z-10 flex items-center justify-center"
             >
-              <div className="w-9 h-9 rounded-full border-2 border-purple-400 bg-purple-500/20 animate-ping" />
-              <div className="absolute w-3 h-3 rounded-full bg-purple-400 shadow-lg shadow-purple-500 ring-2 ring-white/60" />
+              <div className="w-12 h-12 rounded-full bg-purple-500/30 animate-ping shadow-lg" />
+              <div className="absolute w-4 h-4 rounded-full bg-white shadow-xl shadow-purple-600" />
             </div>
           )}
 
-          {/* Hint Overlay */}
-          <div className="absolute top-2 left-2 pointer-events-none px-2.5 py-1 rounded-lg bg-black/60 backdrop-blur-md border border-white/10 text-[10px] text-zinc-300 flex items-center gap-1.5 z-10 shadow">
-            <Info className="w-3 h-3 text-purple-400" />
-            <span>Tap canvas to move mascot gently • Tap avatar to inspect or like</span>
-          </div>
-
-          {/* Member Avatars */}
-          {members.map((member) => {
+          {/* Member Avatars - Dynamic sizing: BIG when < 13 members, standard when >= 13 members */}
+          {displayMembers.map((member) => {
             const isElite = member.vipTier === 'elite';
             const isPro = member.vipTier === 'pro';
+
+            // Dynamic size classes based on room member count:
+            // Under 13 members: All avatars are BIG!
+            // 13 members and above: standard size.
+            const sizeClasses = isUnder13
+              ? isElite
+                ? 'w-32 h-32 sm:w-36 sm:h-36 p-1.5'
+                : isPro
+                ? 'w-28 h-28 sm:w-32 sm:h-32 p-1.5'
+                : 'w-24 h-24 sm:w-28 sm:h-28 p-1'
+              : isElite
+                ? 'w-24 h-24 p-1.5'
+                : isPro
+                ? 'w-20 h-20 p-1.5'
+                : 'w-16 h-16 p-1';
+
+            const shadowSize = isUnder13
+              ? isElite
+                ? 'w-28 sm:w-32 h-5'
+                : isPro
+                ? 'w-24 sm:w-28 h-4.5'
+                : 'w-20 sm:w-24 h-4'
+              : isElite
+                ? 'w-22 h-4'
+                : isPro
+                ? 'w-18 h-3.5'
+                : 'w-14 h-3';
+
+            const borderGradient = isElite
+              ? 'bg-gradient-to-tr from-pink-500 via-purple-500 to-cyan-400 shadow-pink-500/40 shadow-xl'
+              : isPro
+              ? 'bg-gradient-to-tr from-amber-400 via-amber-500 to-yellow-300 shadow-amber-400/40 shadow-lg'
+              : 'bg-white shadow-md';
 
             return (
               <div
@@ -454,52 +683,51 @@ export default function RoomDetailView({ roomId, onBack, onOpenDm }: RoomDetailV
                   member.isSelf ? 'z-20' : 'z-10'
                 }`}
               >
-                {/* Aura Ring / Halo */}
+                {/* Scaled Avatar Ground Shadow (No borders) */}
+                <div
+                  className={`${shadowSize} rounded-full bg-black/35 blur-[3px] absolute -bottom-1.5 left-1/2 -translate-x-1/2 pointer-events-none transition-all duration-300`}
+                />
+
+                {/* Avatar Container: Square avatar (aspect-square, rounded-2xl outer, rounded-xl inner, NO CIRCLES) */}
                 <div className="relative">
                   <div
-                    className={`rounded-2xl p-1 transition-transform group-hover:scale-110 ${
-                      isElite
-                        ? 'w-14 h-14 bg-gradient-to-tr from-pink-500 via-purple-500 to-cyan-400 shadow-lg shadow-pink-500/40 animate-pulse-glow'
-                        : isPro
-                        ? 'w-12 h-12 bg-gradient-to-tr from-amber-400 via-amber-500 to-yellow-300 shadow-md shadow-amber-400/30'
-                        : 'w-11 h-11 bg-zinc-800 border-2 border-white/20'
-                    }`}
+                    className={`${sizeClasses} ${borderGradient} rounded-2xl aspect-square overflow-hidden transition-all duration-300 group-hover:scale-105`}
                   >
                     <img
                       src={member.photoUrl}
                       alt={member.displayName}
-                      className="w-full h-full object-cover rounded-xl bg-zinc-950"
+                      className="w-full h-full object-cover rounded-xl aspect-square bg-slate-100"
                     />
                   </div>
 
-                  {/* VIP Icon Badge */}
+                  {/* VIP Badge */}
                   {member.vipTier && (
                     <div
-                      className={`absolute -top-1 -right-1 p-0.5 rounded-md border shadow-md ${
+                      className={`absolute -top-1 -right-1 px-1.5 py-0.5 rounded-md shadow-md text-[9px] font-black uppercase ${
                         isElite ? 'bg-pink-500 text-white' : 'bg-amber-400 text-zinc-950'
                       }`}
                     >
-                      {isElite ? <Diamond className="w-3 h-3 fill-current" /> : <Crown className="w-3 h-3 fill-current" />}
+                      {member.vipTier}
                     </div>
                   )}
 
                   {/* Self Tag Badge */}
                   {member.isSelf && (
-                    <div className="absolute -bottom-1.5 left-1/2 -translate-x-1/2 px-1.5 py-0.2 rounded-full bg-purple-600 text-white text-[8px] font-black uppercase tracking-wider shadow">
+                    <div className="absolute -bottom-2 left-1/2 -translate-x-1/2 px-2.5 py-0.5 rounded-md bg-gradient-to-r from-purple-600 to-indigo-600 text-white text-[9px] font-black uppercase tracking-wider shadow-md">
                       You
                     </div>
                   )}
                 </div>
 
-                {/* Name & Level label */}
-                <div className="mt-1 text-center pointer-events-none">
+                {/* Name Label with Clean Frosted Light styling - Borderless */}
+                <div className="mt-2 text-center pointer-events-none">
                   <span
-                    className={`text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-black/70 backdrop-blur-md border border-white/10 ${
+                    className={`text-[11px] font-black px-2.5 py-0.5 rounded-xl bg-white/95 backdrop-blur-md shadow-md ${
                       isElite
-                        ? 'text-pink-300 font-extrabold'
+                        ? 'text-pink-600 font-black'
                         : isPro
-                        ? 'text-amber-300 font-extrabold'
-                        : 'text-zinc-200'
+                        ? 'text-amber-700 font-black'
+                        : 'text-slate-800'
                     }`}
                   >
                     {member.displayName}
@@ -511,24 +739,18 @@ export default function RoomDetailView({ roomId, onBack, onOpenDm }: RoomDetailV
         </div>
       </div>
 
-      {/* Interactive Modals */}
-      <GamePanel
-        isOpen={gamePanelOpen}
-        onClose={() => setGamePanelOpen(false)}
-        roomId={roomId}
-      />
-
-      <TournamentModal
-        isOpen={tournamentOpen}
-        onClose={() => setTournamentOpen(false)}
-        roomId={roomId}
-      />
-
+      {/* Member Profile Popup Modal (when user taps an avatar) */}
       <ProfilePopupModal
         isOpen={!!selectedProfile}
         onClose={() => setSelectedProfile(null)}
         targetUser={selectedProfile}
         onOpenDm={onOpenDm}
+      />
+
+      {/* Change Avatar Modal */}
+      <ChangeAvatarModal
+        isOpen={changeAvatarModalOpen}
+        onClose={() => setChangeAvatarModalOpen(false)}
       />
     </div>
   );
